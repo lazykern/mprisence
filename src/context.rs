@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, path::Path, time::Duration};
 
-use lofty::{AudioFile, ItemKey, TaggedFileExt};
+use lofty::{AudioFile, ItemKey, Picture, TaggedFileExt};
 use mpris::Player;
 use url::Url;
 
@@ -130,6 +130,10 @@ impl Context {
 
     pub fn tag(&self) -> Option<&lofty::Tag> {
         self.tag.as_ref()
+    }
+
+    pub fn picture(&self) -> Option<Picture> {
+        None
     }
 
     pub fn data(&self) -> BTreeMap<String, String> {

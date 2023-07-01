@@ -1,14 +1,19 @@
+pub mod client;
 pub mod config;
 pub mod consts;
 pub mod context;
 pub mod error;
+pub mod picture;
 
-use discord_rich_presence::activity::Timestamps;
+use client::Client;
+use discord_rich_presence::activity::{Assets, Timestamps};
 use handlebars::Handlebars;
 
-use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
+use discord_rich_presence::activity;
 use lazy_static::lazy_static;
 use mpris::{PlaybackStatus, Player, PlayerFinder};
+use picture::provider::Provider;
+use picture::PictureURLFinder;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -21,108 +26,10 @@ lazy_static! {
     pub static ref CONFIG: Config = Config::load();
 }
 
-enum ClientState {
-    Connected,
-    Disconnected,
-}
-
-struct Client {
-    app_id: String,
-    state: ClientState,
-    client: Option<DiscordIpcClient>,
-}
-
-impl Client {
-    pub fn new<T>(app_id: T) -> Self
-    where
-        T: Into<String>,
-    {
-        Client {
-            app_id: app_id.into(),
-            state: ClientState::Disconnected,
-            client: None,
-        }
-    }
-
-    pub fn connect(&mut self) -> Result<(), Error> {
-        match self.state {
-            ClientState::Connected => return Ok(()),
-            ClientState::Disconnected => {}
-        }
-
-        let mut client = match DiscordIpcClient::new(self.app_id.as_str()) {
-            Ok(client) => client,
-            Err(_) => return Err(Error::DiscordError("Could not create client".to_string())),
-        };
-
-        match client.connect() {
-            Ok(_) => {
-                self.state = ClientState::Connected;
-                self.client = Some(client);
-                Ok(())
-            }
-            Err(_) => Err(Error::DiscordError(
-                "Could not connect to discord".to_string(),
-            )),
-        }
-    }
-
-    pub fn set_activity(&mut self, activity: activity::Activity) -> Result<(), Error> {
-        match self.client {
-            Some(ref mut client) => {
-                match client.set_activity(activity) {
-                    Ok(_) => {}
-                    Err(_) => {
-                        return Err(Error::DiscordError("Could not set activity".to_string()))
-                    }
-                }
-                Ok(())
-            }
-            None => Err(Error::DiscordError("Client is not connected".to_string())),
-        }
-    }
-
-    pub fn clear_activity(&mut self) -> Result<(), Error> {
-        match self.client {
-            Some(ref mut client) => {
-                match client.clear_activity() {
-                    Ok(_) => {}
-                    Err(_) => {
-                        return Err(Error::DiscordError("Could not clear activity".to_string()))
-                    }
-                }
-                Ok(())
-            }
-            None => Err(Error::DiscordError("Client is not connected".to_string())),
-        }
-    }
-
-    pub fn close(&mut self) -> Result<(), Error> {
-        match self.client {
-            Some(ref mut client) => {
-                match client.close() {
-                    Ok(_) => {}
-                    Err(_) => {
-                        return Err(Error::DiscordError("Could not close client".to_string()))
-                    }
-                }
-                self.state = ClientState::Disconnected;
-                Ok(())
-            }
-            None => Ok(()),
-        }
-    }
-}
-
-impl Default for Client {
-    fn default() -> Self {
-        Client::new(consts::DEFAULT_APP_ID)
-    }
-}
-
 pub struct Mprisence {
     current_player: String,
     clients: HashMap<String, Client>,
+    picture_url_finder: PictureURLFinder,
 }
 
 impl Mprisence {
@@ -139,9 +46,23 @@ impl Mprisence {
 
         clients.insert("fallback".to_string(), fallback_client);
 
+        let provider = match CONFIG.image.provider.provider.to_lowercase().as_str() {
+            "imgbb" => Some(Provider::new_imgbb(
+                &CONFIG
+                    .image
+                    .provider
+                    .imgbb
+                    .api_key
+                    .clone()
+                    .unwrap_or_default(),
+            )),
+            _ => None,
+        };
+
         Mprisence {
             current_player: "fallback".to_string(),
             clients,
+            picture_url_finder: PictureURLFinder::new(provider),
         }
     }
 
@@ -224,6 +145,17 @@ impl Mprisence {
             activity = activity.state(state.as_str());
         }
 
+        let pic_url = match context.metadata() {
+            Some(metadata) => self.picture_url_finder.from_metadata(metadata).await,
+            None => None,
+        };
+
+        let pic_url = pic_url.unwrap_or_default();
+        if !pic_url.is_empty() {
+            let assets = Assets::new().large_image(pic_url.as_str());
+            activity = activity.assets(assets);
+        }
+
         match playback_status {
             PlaybackStatus::Playing => {
                 if CONFIG.time.show {
@@ -263,7 +195,7 @@ fn get_player() -> Option<Player> {
                     }
                 }
             }
-            match CONFIG.player.get(&name) {
+            match &CONFIG.player.get(&name) {
                 Some(player_config) => !player_config.ignore,
                 None => true,
             }
@@ -278,10 +210,10 @@ fn get_player() -> Option<Player> {
         let b_state = b.get_playback_status().unwrap_or(PlaybackStatus::Stopped);
 
         let _default = Default::default();
-        let a_i = CONFIG.player.get(&a_identity).unwrap_or(&_default);
-        let b_i = CONFIG.player.get(&b_identity).unwrap_or(&_default);
+        let a_i = &CONFIG.player.get(&a_identity).unwrap_or(&_default);
+        let b_i = &CONFIG.player.get(&b_identity).unwrap_or(&_default);
 
-        match CONFIG.playing_first {
+        match &CONFIG.playing_first {
             true => {
                 if a_state == PlaybackStatus::Playing && b_state != PlaybackStatus::Playing {
                     Ordering::Less

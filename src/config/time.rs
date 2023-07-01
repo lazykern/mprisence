@@ -1,4 +1,4 @@
-use crate::consts::*;
+use crate::config::default::*;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
@@ -16,8 +16,4 @@ impl Default for TimeConfig {
             as_elapsed: default_false(),
         }
     }
-}
-
-pub fn default_time_config() -> TimeConfig {
-    TimeConfig::default()
 }

@@ -1,4 +1,4 @@
-use crate::consts::*;
+use crate::config::default::*;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Hash)]

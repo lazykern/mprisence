@@ -1,12 +1,14 @@
 #[derive(Debug)]
 pub enum Error {
     UpdateError(String),
+    ProviderError(String),
     ContextError(String),
     DiscordError(String),
     RenderError(handlebars::RenderError),
     TemplateError(handlebars::TemplateError),
     LoftyError(lofty::LoftyError),
     DBusError(mpris::DBusError),
+    ImgBBError(imgbb::Error),
 }
 
 impl From<handlebars::RenderError> for Error {
@@ -30,5 +32,11 @@ impl From<lofty::LoftyError> for Error {
 impl From<mpris::DBusError> for Error {
     fn from(error: mpris::DBusError) -> Self {
         Error::DBusError(error)
+    }
+}
+
+impl From<imgbb::Error> for Error {
+    fn from(error: imgbb::Error) -> Self {
+        Error::ImgBBError(error)
     }
 }
