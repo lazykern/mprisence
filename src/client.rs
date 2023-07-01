@@ -3,6 +3,7 @@ use discord_rich_presence::{activity::*, DiscordIpc, DiscordIpcClient};
 use crate::{config::PlayerConfig, error::Error, CONFIG};
 
 pub struct Client {
+    pub has_icon: bool,
     identity: String,
     unique_name: String,
     app_id: String,
@@ -19,12 +20,16 @@ impl Client {
         let unique_name = unique_name.into();
 
         let fallback_player_config = PlayerConfig::default();
+        let mut has_icon = false;
 
         let player_config = match CONFIG
             .player
             .get(&identity.to_lowercase().replace(" ", "_"))
         {
-            Some(player_config) => player_config,
+            Some(player_config) => {
+                has_icon = true;
+                player_config
+            }
             None => match CONFIG.player.get("default") {
                 Some(player_config) => player_config,
                 None => &fallback_player_config,
@@ -39,6 +44,7 @@ impl Client {
             unique_name,
             app_id,
             icon,
+            has_icon,
             client: None,
         }
     }
@@ -104,7 +110,7 @@ impl Client {
         Ok(())
     }
 
-    pub fn update(&mut self, activity: Activity) -> Result<(), Error> {
+    pub fn set_activity(&mut self, activity: Activity) -> Result<(), Error> {
         match &mut self.client {
             Some(client) => match client.set_activity(activity) {
                 Ok(_) => {}

@@ -109,7 +109,6 @@ impl Mprisence {
         }
     }
 
-
     async fn update_by_context(&mut self, context: &Context) -> Result<(), Error> {
         let player = match context.player() {
             Some(player) => player,
@@ -160,9 +159,18 @@ impl Mprisence {
             None => None,
         };
 
-        let pic_url = pic_url.unwrap_or_default();
-        if !pic_url.is_empty() {
-            assets = assets.large_image(&pic_url);
+        let large_image = pic_url.unwrap_or(client.icon().to_string());
+        if !large_image.is_empty() {
+            assets = assets.large_image(&large_image);
+        }
+
+        let small_image = client.icon().to_string();
+        if CONFIG.show_icon
+            && !small_image.is_empty()
+            && client.has_icon
+            && large_image != small_image
+        {
+            assets = assets.small_image(&small_image);
         }
 
         activity = activity.assets(assets);
@@ -172,11 +180,11 @@ impl Mprisence {
                 if let Some(timestamps) = get_timestamps(&context) {
                     activity = activity.timestamps(timestamps);
                 }
-                client.update(activity)?;
+                client.set_activity(activity)?;
             }
             PlaybackStatus::Paused => {
                 if !CONFIG.clear_on_pause {
-                    client.update(activity)?;
+                    client.set_activity(activity)?;
                 }
             }
             _ => client.clear()?,
