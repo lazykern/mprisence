@@ -2,7 +2,6 @@ use std::{collections::BTreeMap, path::Path, time::Duration};
 
 use lofty::{AudioFile, ItemKey, TaggedFileExt};
 use mpris::Player;
-use serde::Serialize;
 use url::Url;
 
 use crate::error::Error;
@@ -132,13 +131,11 @@ impl Context {
     pub fn tag(&self) -> Option<&lofty::Tag> {
         self.tag.as_ref()
     }
-}
 
-impl Into<BTreeMap<String, String>> for Context {
-    fn into(self) -> BTreeMap<String, String> {
+    pub fn data(&self) -> BTreeMap<String, String> {
         let mut btree_map: BTreeMap<String, String> = BTreeMap::new();
 
-        if let Some(player) = self.player {
+        if let Some(player) = &self.player {
             btree_map.insert("identity".to_string(), player.identity().to_string());
 
             let position_dur = player.get_position().unwrap_or(Duration::from_secs(0));
