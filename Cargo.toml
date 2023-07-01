@@ -1,0 +1,23 @@
+[package]
+name = "mprisence"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+confique = { version = "0.2.3", features = ["toml"] }
+dirs = "5.0.1"
+discord-rich-presence = "0.2.3"
+handlebars = "4.3.7"
+imgbb = "1.0.0"
+lazy_static = "1.4.0"
+lofty = "0.14.0"
+mpris = "2.0.1"
+serde = { version = "1.0.164", features = ["derive"] }
+tera = "1.19.0"
+tokio = { version = "1.29.0", features = ["macros", "rt-multi-thread"] }
+toml = "0.7.5"
+url = "2.4.0"
+urlencoding = "2.1.2"
+walkdir = "2.3.3"
