@@ -140,7 +140,7 @@ impl Context {
         let mut btree_map: BTreeMap<String, String> = BTreeMap::new();
 
         if let Some(player) = &self.player {
-            btree_map.insert("identity".to_string(), player.identity().to_string());
+            btree_map.insert("player".to_string(), player.identity().to_string());
 
             let position_dur = player.get_position().unwrap_or(Duration::from_secs(0));
 
