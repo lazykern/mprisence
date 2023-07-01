@@ -1,102 +1,136 @@
-use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
+use discord_rich_presence::{activity::*, DiscordIpc, DiscordIpcClient};
 
-use crate::{consts, error::Error};
-
-pub enum ClientState {
-    Connected,
-    Disconnected,
-}
+use crate::{config::PlayerConfig, error::Error, CONFIG};
 
 pub struct Client {
+    identity: String,
+    unique_name: String,
     app_id: String,
-    state: ClientState,
+    icon: String,
     client: Option<DiscordIpcClient>,
 }
 
 impl Client {
-    pub fn new<T>(app_id: T) -> Self
+    pub fn new<T>(identity: T, unique_name: T) -> Self
     where
         T: Into<String>,
     {
+        let identity = identity.into();
+        let unique_name = unique_name.into();
+
+        let fallback_player_config = PlayerConfig::default();
+
+        let player_config = match CONFIG
+            .player
+            .get(&identity.to_lowercase().replace(" ", "_"))
+        {
+            Some(player_config) => player_config,
+            None => match CONFIG.player.get("default") {
+                Some(player_config) => player_config,
+                None => &fallback_player_config,
+            },
+        };
+
+        let app_id = player_config.app_id.clone();
+        let icon = player_config.icon.clone();
+
         Client {
-            app_id: app_id.into(),
-            state: ClientState::Disconnected,
+            identity,
+            unique_name,
+            app_id,
+            icon,
             client: None,
         }
     }
 
+    pub fn identity(&self) -> &str {
+        &self.identity
+    }
+
+    pub fn unique_name(&self) -> &str {
+        &self.unique_name
+    }
+
+    pub fn app_id(&self) -> &str {
+        &self.app_id
+    }
+
+    pub fn icon(&self) -> &str {
+        &self.icon
+    }
+
     pub fn connect(&mut self) -> Result<(), Error> {
-        match self.state {
-            ClientState::Connected => return Ok(()),
-            ClientState::Disconnected => {}
+        if self.client.is_some() {
+            return Ok(());
         }
 
-        let mut client = match DiscordIpcClient::new(self.app_id.as_str()) {
+        let mut client = match DiscordIpcClient::new(self.app_id()) {
             Ok(client) => client,
-            Err(_) => return Err(Error::DiscordError("Could not create client".to_string())),
+            Err(_) => {
+                return Err(Error::DiscordError(
+                    "Failed to connect to Discord".to_string(),
+                ))
+            }
         };
 
         match client.connect() {
-            Ok(_) => {
-                self.state = ClientState::Connected;
-                self.client = Some(client);
-                Ok(())
+            Ok(_) => {}
+            Err(_) => {
+                return Err(Error::DiscordError(
+                    "Failed to connect to Discord".to_string(),
+                ))
             }
-            Err(_) => Err(Error::DiscordError(
-                "Could not connect to discord".to_string(),
-            )),
         }
-    }
 
-    pub fn set_activity(&mut self, activity: activity::Activity) -> Result<(), Error> {
-        match self.client {
-            Some(ref mut client) => {
-                match client.set_activity(activity) {
-                    Ok(_) => {}
-                    Err(_) => {
-                        return Err(Error::DiscordError("Could not set activity".to_string()))
-                    }
-                }
-                Ok(())
-            }
-            None => Err(Error::DiscordError("Client is not connected".to_string())),
-        }
-    }
+        self.client = Some(client);
 
-    pub fn clear_activity(&mut self) -> Result<(), Error> {
-        match self.client {
-            Some(ref mut client) => {
-                match client.clear_activity() {
-                    Ok(_) => {}
-                    Err(_) => {
-                        return Err(Error::DiscordError("Could not clear activity".to_string()))
-                    }
-                }
-                Ok(())
-            }
-            None => Err(Error::DiscordError("Client is not connected".to_string())),
-        }
+        Ok(())
     }
 
     pub fn close(&mut self) -> Result<(), Error> {
-        match self.client {
-            Some(ref mut client) => {
-                match client.close() {
-                    Ok(_) => {}
-                    Err(_) => {
-                        return Err(Error::DiscordError("Could not close client".to_string()))
-                    }
+        match &mut self.client {
+            Some(client) => match client.close() {
+                Ok(_) => {
+                    self.client = None;
                 }
-                self.state = ClientState::Disconnected;
-                Ok(())
-            }
-            None => Ok(()),
+                Err(_) => {
+                    return Err(Error::DiscordError(
+                        "Failed to close Discord connection".to_string(),
+                    ))
+                }
+            },
+            None => {}
         }
+        Ok(())
     }
-}
 
-impl Default for Client {
-    fn default() -> Self {
-        Client::new(consts::DEFAULT_APP_ID)
+    pub fn update(&mut self, activity: Activity) -> Result<(), Error> {
+        match &mut self.client {
+            Some(client) => match client.set_activity(activity) {
+                Ok(_) => {}
+                Err(_) => {
+                    return Err(Error::DiscordError(
+                        "Failed to update Discord activity".to_string(),
+                    ))
+                }
+            },
+            None => {}
+        }
+        Ok(())
+    }
+
+    pub fn clear(&mut self) -> Result<(), Error> {
+        match &mut self.client {
+            Some(client) => match client.clear_activity() {
+                Ok(_) => {}
+                Err(_) => {
+                    return Err(Error::DiscordError(
+                        "Failed to clear Discord activity".to_string(),
+                    ))
+                }
+            },
+            None => {}
+        }
+        Ok(())
     }
 }

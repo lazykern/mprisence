@@ -6,18 +6,18 @@ pub mod error;
 pub mod picture;
 
 use client::Client;
-use discord_rich_presence::activity::{Assets, Timestamps};
+use consts::DEFAULT_DETAIL;
+use discord_rich_presence::activity::{Activity, Assets, Timestamps};
 use handlebars::Handlebars;
 
-use discord_rich_presence::activity;
 use lazy_static::lazy_static;
 use mpris::{PlaybackStatus, Player, PlayerFinder};
 use picture::provider::Provider;
 use picture::PictureURLFinder;
-use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::config::default::DEFAULT_STATE;
 use crate::config::Config;
 use crate::context::Context;
 use crate::error::Error;
@@ -27,25 +27,12 @@ lazy_static! {
 }
 
 pub struct Mprisence {
-    current_player: String,
-    clients: HashMap<String, Client>,
     picture_url_finder: PictureURLFinder,
+    client_map: BTreeMap<String, Client>,
 }
 
 impl Mprisence {
     pub fn new() -> Self {
-        let mut clients: HashMap<String, Client> = HashMap::new();
-
-        for (player, player_config) in CONFIG.player.iter() {
-            let app_id = player_config.app_id.clone();
-            clients.insert(player.to_string().replace(" ", "_"), Client::new(app_id));
-        }
-
-        let fallback_app_id = consts::DEFAULT_APP_ID;
-        let fallback_client = Client::new(fallback_app_id);
-
-        clients.insert("fallback".to_string(), fallback_client);
-
         let provider = match CONFIG.image.provider.provider.to_lowercase().as_str() {
             "imgbb" => Some(Provider::new_imgbb(
                 &CONFIG
@@ -60,17 +47,9 @@ impl Mprisence {
         };
 
         Mprisence {
-            current_player: "fallback".to_string(),
-            clients,
             picture_url_finder: PictureURLFinder::new(provider),
+            client_map: BTreeMap::new(),
         }
-    }
-
-    fn close_all_clients(&mut self) -> Result<(), Error> {
-        for (_, client) in self.clients.iter_mut() {
-            client.close()?;
-        }
-        Ok(())
     }
 
     pub async fn start(&mut self) {
@@ -85,66 +64,96 @@ impl Mprisence {
         }
     }
 
-    pub fn clear_all_activities(&mut self) -> Result<(), Error> {
-        for (_, client) in self.clients.iter_mut() {
-            client.clear_activity()?;
+    fn clean_client_map(&mut self, players: &Vec<Player>) {
+        let client_to_remove = self
+            .client_map
+            .keys()
+            .filter(|unique_name| {
+                !players
+                    .iter()
+                    .any(|p| p.unique_name() == unique_name.as_str())
+            })
+            .map(|unique_name| unique_name.to_owned())
+            .collect::<Vec<String>>();
+
+        for unique_name in client_to_remove {
+            let client = self.client_map.get_mut(&unique_name).unwrap();
+            match client.clear() {
+                Ok(_) => {}
+                Err(error) => {
+                    println!("{:?}", error);
+                }
+            }
+
+            match client.close() {
+                Ok(_) => {
+                    self.client_map.remove(&unique_name);
+                }
+                Err(error) => {
+                    println!("{:?}", error);
+                }
+            }
         }
-        Ok(())
     }
 
     pub async fn update(&mut self) -> Result<(), Error> {
-        let player = match get_player() {
+        let players = get_players();
+
+        self.clean_client_map(&players);
+
+        for player in players {
+            let context = Context::from_player(player);
+            self.update_by_context(&context).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn update_by_context(&mut self, context: &Context) -> Result<(), Error> {
+        let player = match context.player() {
             Some(player) => player,
+            None => return Err(Error::UpdateError("No player in context".to_owned())),
+        };
+        let identity = player.identity().to_lowercase().replace(" ", "_");
+        let unique_name = player.unique_name().to_owned();
+
+        let playback_status = player
+            .get_playback_status()
+            .unwrap_or(PlaybackStatus::Stopped);
+
+        let c = Client::new(&identity, &unique_name);
+        let client = match self.client_map.get_mut(&unique_name) {
+            Some(client) => client,
             None => {
-                self.close_all_clients()?;
-                return Err(Error::UpdateError("No player found".to_string()));
+                self.client_map.insert(unique_name.clone(), c);
+                self.client_map.get_mut(&unique_name).unwrap()
             }
         };
 
-        let player_identity = player.identity().to_lowercase().replace(" ", "_");
-
-        if player_identity != self.current_player {
-            self.close_all_clients()?;
-            self.current_player = player_identity.clone();
-        }
-
-        let playback_status = player.get_playback_status()?;
-
-        let context = Context::from_player(player);
-
-        let data = context.data();
-
-        let handlebars = Handlebars::new();
-
-        let mut client = self
-            .clients
-            .get_mut(player_identity.to_lowercase().replace(" ", "_").as_str());
-
-        if client.is_none() {
-            client = self.clients.get_mut("default");
-        }
-
-        let mut _default = Default::default();
-        if client.is_none() {
-            client = Some(&mut _default);
-        }
-
-        let client = client.unwrap();
-
         client.connect()?;
 
-        let mut activity = activity::Activity::new();
-        let detail = handlebars.render_template(&CONFIG.template.detail, &data)?;
-        let state = handlebars.render_template(&CONFIG.template.state, &data)?;
+        let mut activity = Activity::new();
+
+        let data = context.data();
+        let reg = Handlebars::new();
+        let detail = match reg.render_template(&CONFIG.template.detail, &data) {
+            Ok(detail) => detail,
+            Err(_) => reg.render_template(DEFAULT_DETAIL, &data).unwrap(),
+        };
+        let state = match reg.render_template(&CONFIG.template.state, &data) {
+            Ok(state) => state,
+            Err(_) => reg.render_template(DEFAULT_STATE, &data).unwrap(),
+        };
 
         if !detail.is_empty() {
-            activity = activity.details(detail.as_str());
+            activity = activity.details(&detail);
         }
 
         if !state.is_empty() {
-            activity = activity.state(state.as_str());
+            activity = activity.state(&state);
         }
 
+        let mut assets = Assets::new();
         let pic_url = match context.metadata() {
             Some(metadata) => self.picture_url_finder.from_metadata(metadata).await,
             None => None,
@@ -152,30 +161,31 @@ impl Mprisence {
 
         let pic_url = pic_url.unwrap_or_default();
         if !pic_url.is_empty() {
-            let assets = Assets::new().large_image(pic_url.as_str());
-            activity = activity.assets(assets);
+            assets = assets.large_image(&pic_url);
         }
+
+        activity = activity.assets(assets);
 
         match playback_status {
             PlaybackStatus::Playing => {
-                if CONFIG.time.show {
-                    if let Some(timestamps) = get_timestamps(&context) {
-                        activity = activity.timestamps(timestamps);
-                    }
+                if let Some(timestamps) = get_timestamps(&context) {
+                    activity = activity.timestamps(timestamps);
                 }
-                client.set_activity(activity)?
+                client.update(activity)?;
             }
-            PlaybackStatus::Paused => match CONFIG.clear_on_pause {
-                true => client.clear_activity()?,
-                false => client.set_activity(activity)?,
-            },
-            _ => client.clear_activity()?,
+            PlaybackStatus::Paused => {
+                if !CONFIG.clear_on_pause {
+                    client.update(activity)?;
+                }
+            }
+            _ => client.clear()?,
         }
+
         Ok(())
     }
 }
 
-fn get_player() -> Option<Player> {
+fn get_players() -> Vec<Player> {
     let player_finder = PlayerFinder::new().expect("Could not connect to D-Bus");
 
     let mut players = match player_finder.find_all() {
@@ -202,32 +212,7 @@ fn get_player() -> Option<Player> {
         })
         .collect();
 
-    players.sort_by(|a, b| {
-        let a_identity = a.identity().to_lowercase().replace(" ", "_");
-        let b_identity = b.identity().to_lowercase().replace(" ", "_");
-
-        let a_state = a.get_playback_status().unwrap_or(PlaybackStatus::Stopped);
-        let b_state = b.get_playback_status().unwrap_or(PlaybackStatus::Stopped);
-
-        let _default = Default::default();
-        let a_i = &CONFIG.player.get(&a_identity).unwrap_or(&_default);
-        let b_i = &CONFIG.player.get(&b_identity).unwrap_or(&_default);
-
-        match &CONFIG.playing_first {
-            true => {
-                if a_state == PlaybackStatus::Playing && b_state != PlaybackStatus::Playing {
-                    Ordering::Less
-                } else if a_state != PlaybackStatus::Playing && b_state == PlaybackStatus::Playing {
-                    Ordering::Greater
-                } else {
-                    a_i.cmp(&b_i)
-                }
-            }
-            false => a_i.cmp(&b_i),
-        }
-    });
-
-    players.into_iter().nth(0)
+    players
 }
 
 fn get_timestamps(context: &Context) -> Option<Timestamps> {
