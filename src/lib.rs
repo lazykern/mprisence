@@ -64,6 +64,19 @@ impl Mprisence {
         }
     }
 
+    pub async fn update(&mut self) -> Result<(), Error> {
+        let players = get_players();
+
+        self.clean_client_map(&players);
+
+        for player in players {
+            let context = Context::from_player(player);
+            self.update_by_context(&context).await?;
+        }
+
+        Ok(())
+    }
+
     fn clean_client_map(&mut self, players: &Vec<Player>) {
         let client_to_remove = self
             .client_map
@@ -96,18 +109,6 @@ impl Mprisence {
         }
     }
 
-    pub async fn update(&mut self) -> Result<(), Error> {
-        let players = get_players();
-
-        self.clean_client_map(&players);
-
-        for player in players {
-            let context = Context::from_player(player);
-            self.update_by_context(&context).await?;
-        }
-
-        Ok(())
-    }
 
     async fn update_by_context(&mut self, context: &Context) -> Result<(), Error> {
         let player = match context.player() {

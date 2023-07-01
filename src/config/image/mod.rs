@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 pub mod provider;
 
-use provider::ImageProviderConfig;
+pub use provider::ImageProviderConfig;
 
 use crate::config::default::*;
 

@@ -4,9 +4,7 @@ pub mod player;
 pub mod template;
 pub mod time;
 
-pub use crate::config::{
-    image::ImageConfig, player::PlayerConfig, template::TemplateConfig, time::TimeConfig,
-};
+pub use crate::config::{image::*, player::*, template::*, time::*};
 
 use crate::config::default::*;
 use crate::consts::*;
@@ -21,8 +19,6 @@ pub struct Config {
     pub allow_streaming: bool,
     #[serde(default = "default_true")]
     pub clear_on_pause: bool,
-    #[serde(default = "default_false")]
-    pub playing_first: bool,
     #[serde(default = "default_image_config")]
     pub image: ImageConfig,
     #[serde(default = "default_player_hashmap_config")]
@@ -38,7 +34,6 @@ impl Default for Config {
         Self {
             allow_streaming: default_false(),
             clear_on_pause: default_true(),
-            playing_first: default_false(),
             image: ImageConfig::default(),
             player: HashMap::new(),
             template: TemplateConfig::default(),
@@ -60,16 +55,4 @@ impl Config {
         )
         .unwrap()
     }
-}
-
-fn default_image_config() -> ImageConfig {
-    ImageConfig::default()
-}
-
-fn default_player_hashmap_config() -> HashMap<String, PlayerConfig> {
-    HashMap::new()
-}
-
-fn default_template_config() -> TemplateConfig {
-    TemplateConfig::default()
 }

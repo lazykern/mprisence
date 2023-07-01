@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 use crate::consts::*;
 
-use crate::config::{
+use super::{
     image::provider::{ImageProviderConfig, ImgBBConfig},
     time::TimeConfig,
+    ImageConfig, PlayerConfig, TemplateConfig,
 };
 
 pub fn default_app_id() -> String {
@@ -43,6 +46,18 @@ pub fn default_image_file_names() -> Vec<String> {
 
 pub fn default_image_provider() -> String {
     DEFAULT_IMAGE_PROVIDER.to_string()
+}
+
+pub fn default_image_config() -> ImageConfig {
+    ImageConfig::default()
+}
+
+pub fn default_player_hashmap_config() -> HashMap<String, PlayerConfig> {
+    HashMap::new()
+}
+
+pub fn default_template_config() -> TemplateConfig {
+    TemplateConfig::default()
 }
 
 pub fn default_time_config() -> TimeConfig {
