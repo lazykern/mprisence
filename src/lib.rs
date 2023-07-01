@@ -227,41 +227,6 @@ impl Mprisence {
         match playback_status {
             PlaybackStatus::Playing => {
                 if CONFIG.time.show {
-                    fn get_timestamps(context: &Context) -> Option<Timestamps> {
-                        let mut timestamps = Timestamps::new();
-                        match SystemTime::now().duration_since(UNIX_EPOCH) {
-                            Ok(t) => {
-                                let p = context.player().unwrap();
-                                let position = p.get_position();
-                                let position_dur = position.unwrap_or(Duration::from_secs(0));
-                                let start_dur = match t > position_dur {
-                                    true => t - position_dur,
-                                    false => t,
-                                };
-
-                                timestamps = timestamps.start(start_dur.as_secs() as i64);
-
-                                if !CONFIG.time.as_elapsed {
-                                    let m = match context.metadata() {
-                                        Some(m) => m,
-                                        None => return None,
-                                    };
-                                    let length_dur = match m.length() {
-                                        Some(l) => l,
-                                        None => return None,
-                                    };
-
-                                    let end_dur = start_dur + length_dur;
-
-                                    timestamps = timestamps.end(end_dur.as_secs() as i64);
-                                }
-                            }
-                            _ => return None,
-                        }
-
-                        Some(timestamps)
-                    }
-
                     if let Some(timestamps) = get_timestamps(&context) {
                         activity = activity.timestamps(timestamps);
                     }
@@ -331,4 +296,39 @@ fn get_player() -> Option<Player> {
     });
 
     players.into_iter().nth(0)
+}
+
+fn get_timestamps(context: &Context) -> Option<Timestamps> {
+    let mut timestamps = Timestamps::new();
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(t) => {
+            let p = context.player().unwrap();
+            let position = p.get_position();
+            let position_dur = position.unwrap_or(Duration::from_secs(0));
+            let start_dur = match t > position_dur {
+                true => t - position_dur,
+                false => t,
+            };
+
+            timestamps = timestamps.start(start_dur.as_secs() as i64);
+
+            if !CONFIG.time.as_elapsed {
+                let m = match context.metadata() {
+                    Some(m) => m,
+                    None => return None,
+                };
+                let length_dur = match m.length() {
+                    Some(l) => l,
+                    None => return None,
+                };
+
+                let end_dur = start_dur + length_dur;
+
+                timestamps = timestamps.end(end_dur.as_secs() as i64);
+            }
+        }
+        _ => return None,
+    }
+
+    Some(timestamps)
 }
