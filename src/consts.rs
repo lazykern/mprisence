@@ -28,3 +28,7 @@ pub fn default_i8max() -> i8 {
 pub fn default_false() -> bool {
     false
 }
+
+pub fn default_true() -> bool {
+    true
+}
