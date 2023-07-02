@@ -20,24 +20,34 @@ impl Client {
         let unique_name = unique_name.into();
 
         let fallback_player_config = PlayerConfig::default();
+        let mut app_id = fallback_player_config.app_id.as_ref().unwrap();
+        let mut icon = fallback_player_config.icon.as_ref().unwrap();
         let mut has_icon = false;
 
-        let player_config = match CONFIG
+        match CONFIG.player.get("default") {
+            Some(player_config) => {
+                app_id = player_config.app_id.as_ref().unwrap_or(app_id);
+                icon = player_config.icon.as_ref().unwrap_or(icon);
+            }
+            None => {}
+        }
+
+        match CONFIG
             .player
             .get(&identity.to_lowercase().replace(" ", "_"))
         {
             Some(player_config) => {
-                has_icon = true;
-                player_config
+                app_id = player_config.app_id.as_ref().unwrap_or(app_id);
+                if let Some(i) = player_config.icon.as_ref() {
+                    icon = i;
+                    has_icon = true;
+                }
             }
-            None => match CONFIG.player.get("default") {
-                Some(player_config) => player_config,
-                None => &fallback_player_config,
-            },
+            None => {}
         };
 
-        let app_id = player_config.app_id.clone();
-        let icon = player_config.icon.clone();
+        let app_id = app_id.to_string();
+        let icon = icon.to_string();
 
         Client {
             identity,
@@ -90,6 +100,23 @@ impl Client {
 
         self.client = Some(client);
 
+        Ok(())
+    }
+
+    pub fn reconnect(&mut self) -> Result<(), Error> {
+        match &mut self.client {
+            Some(client) => match client.reconnect() {
+                Ok(_) => {
+                    self.client = None;
+                }
+                Err(_) => {
+                    return Err(Error::DiscordError(
+                        "Failed to reconnect to Discord".to_string(),
+                    ))
+                }
+            },
+            None => {}
+        }
         Ok(())
     }
 

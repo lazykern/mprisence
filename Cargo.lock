@@ -757,6 +757,7 @@ dependencies = [
  "imgbb",
  "lazy_static",
  "lofty",
+ "log",
  "mpris",
  "serde",
  "sha256",

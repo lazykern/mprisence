@@ -103,6 +103,7 @@ impl Mprisence {
                     self.client_map.remove(&unique_name);
                 }
                 Err(error) => {
+                    client.reconnect().unwrap_or_default();
                     println!("{:?}", error);
                 }
             }
