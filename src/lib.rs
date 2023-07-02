@@ -162,31 +162,43 @@ impl Mprisence {
             None => None,
         };
 
-        let large_image = pic_url.unwrap_or(client.icon().to_string());
-        if !large_image.is_empty() {
-            assets = assets.large_image(&large_image);
-        }
-
-        let small_image = client.icon().to_string();
-        if CONFIG.show_icon
-            && !small_image.is_empty()
-            && client.has_icon
-            && large_image != small_image
-        {
-            assets = assets.small_image(&small_image);
-        }
-
+        let large_image: String;
+        let small_image: String;
         let large_text: String;
         let small_text: String;
-        if !large_image.is_empty() {
-            if large_image != small_image {
+
+        if pic_url.is_some() {
+            large_image = pic_url.unwrap_or_default();
+            if !large_image.is_empty() {
+                assets = assets.large_image(&large_image);
+
                 large_text = match reg.render_template(&CONFIG.template.large_text, &data) {
                     Ok(large_text) => large_text,
                     Err(_) => reg
                         .render_template(&DEFAULT_LARGE_TEXT_TEMPLATE, &data)
                         .unwrap(),
                 };
-            } else {
+                assets = assets.large_text(&large_text);
+
+                small_text = match reg.render_template(&CONFIG.template.small_text, &data) {
+                    Ok(small_text) => small_text,
+                    Err(_) => reg
+                        .render_template(&DEFAULT_SMALL_TEXT_TEMPLATE, &data)
+                        .unwrap(),
+                };
+
+                assets = assets.small_text(&small_text);
+            }
+
+            small_image = client.icon().to_string();
+            if CONFIG.show_icon && client.has_icon && !small_image.is_empty() {
+                assets = assets.small_image(&small_image);
+            }
+        } else {
+            large_image = client.icon().to_string();
+            if !large_image.is_empty() {
+                assets = assets.large_image(&large_image);
+
                 large_text =
                     match reg.render_template(&CONFIG.template.large_text_no_album_image, &data) {
                         Ok(large_text) => large_text,
@@ -194,20 +206,8 @@ impl Mprisence {
                             .render_template(&DEFAULT_LARGE_TEXT_NO_ALBUM_IMAGE_TEMPLATE, &data)
                             .unwrap(),
                     };
+                assets = assets.large_text(&large_text);
             }
-
-            assets = assets.large_text(&large_text);
-        }
-
-        if !small_image.is_empty() {
-            small_text = match reg.render_template(&CONFIG.template.small_text, &data) {
-                Ok(small_text) => small_text,
-                Err(_) => reg
-                    .render_template(&DEFAULT_SMALL_TEXT_TEMPLATE, &data)
-                    .unwrap(),
-            };
-
-            assets = assets.small_text(&small_text);
         }
 
         activity = activity.assets(assets);
