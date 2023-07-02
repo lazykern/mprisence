@@ -113,7 +113,7 @@ impl Mprisence {
             match client.clear() {
                 Ok(_) => {}
                 Err(error) => {
-                    log::error!("Error clearing client {}: {:?}", client.app_id(),error);
+                    log::error!("Error clearing client {}: {:?}", client.app_id(), error);
                 }
             }
 
@@ -123,7 +123,7 @@ impl Mprisence {
                 }
                 Err(error) => {
                     client.reconnect().unwrap_or_default();
-                    log::error!("Error closing client {}: {:?}", client.app_id(),error);
+                    log::error!("Error closing client {}: {:?}", client.app_id(), error);
                 }
             }
         }
@@ -131,7 +131,7 @@ impl Mprisence {
 
     async fn update_by_context(&mut self, context: &Context) -> Result<(), Error> {
         log::info!("Updating rich presence by context");
-        
+
         let player = match context.player() {
             Some(player) => player,
             None => return Err(Error::UpdateError("No player in context".to_owned())),
@@ -147,7 +147,6 @@ impl Mprisence {
             .get_playback_status()
             .unwrap_or(PlaybackStatus::Stopped);
 
-
         log::debug!("Getting client from client map");
         let c = Client::new(&identity, &unique_name);
         let client = match self.client_map.get_mut(&unique_name) {
@@ -158,16 +157,17 @@ impl Mprisence {
             }
         };
         if playback_status == PlaybackStatus::Stopped {
-            return client.close();
+            client.close()?;
+            return Ok(());
         }
         log::info!("Connecting client");
         client.connect()?;
         log::debug!("Client after connecting: {:?}", client);
 
-
         if playback_status == PlaybackStatus::Paused && CONFIG.clear_on_pause {
-                log::info!("Clearing activity");
-                return client.clear();
+            log::info!("Clearing activity");
+            client.clear()?;
+            return Ok(());
         }
 
         log::info!("Creating activity");
@@ -197,7 +197,6 @@ impl Mprisence {
         };
         log::debug!("State: {}", state);
 
-
         if !detail.is_empty() {
             log::debug!("Setting activity detail to {}", detail);
             activity = activity.details(&detail);
@@ -221,7 +220,6 @@ impl Mprisence {
             }
         };
 
-
         let large_image: String;
         let small_image: String;
         let large_text: String;
@@ -230,7 +228,7 @@ impl Mprisence {
         // If we have a pic_url, then we have a song with an album image
         if pic_url.is_some() {
             log::info!("Album image found, setting album art");
-            
+
             large_image = pic_url.unwrap_or_default();
             log::debug!("Large image: {}", large_image);
             if !large_image.is_empty() {
@@ -240,15 +238,13 @@ impl Mprisence {
                     Ok(large_text) => large_text,
                     Err(_) => {
                         log::warn!("Error rendering large text template, using default");
-                        reg
-                        .render_template(&DEFAULT_LARGE_TEXT_TEMPLATE, &data)
-                        .unwrap()
+                        reg.render_template(&DEFAULT_LARGE_TEXT_TEMPLATE, &data)
+                            .unwrap()
                     }
                 };
                 log::debug!("Large text: {}", large_text);
 
                 assets = assets.large_text(&large_text);
-
 
                 small_image = client.icon().to_string();
                 log::debug!("Small image: {}", small_image);
@@ -264,9 +260,8 @@ impl Mprisence {
                     Ok(small_text) => small_text,
                     Err(_) => {
                         log::warn!("Error rendering small text template, using default");
-                        reg
-                        .render_template(&DEFAULT_SMALL_TEXT_TEMPLATE, &data)
-                        .unwrap()
+                        reg.render_template(&DEFAULT_SMALL_TEXT_TEMPLATE, &data)
+                            .unwrap()
                     }
                 };
 
@@ -276,7 +271,6 @@ impl Mprisence {
             } else {
                 log::warn!("Large image is empty, not setting large image and large text");
             }
-
         } else {
             log::info!("Album image not found, using player icon");
 
@@ -291,10 +285,9 @@ impl Mprisence {
                         Ok(large_text) => large_text,
                         Err(_) => {
                             log::warn!("Error rendering large text template, using default");
-                            reg
-                            .render_template(&DEFAULT_LARGE_TEXT_NO_ALBUM_IMAGE_TEMPLATE, &data)
-                            .unwrap() }
-
+                            reg.render_template(&DEFAULT_LARGE_TEXT_NO_ALBUM_IMAGE_TEMPLATE, &data)
+                                .unwrap()
+                        }
                     };
 
                 log::debug!("Large text: {}", large_text);
@@ -372,7 +365,7 @@ fn get_timestamps(context: &Context) -> Option<Timestamps> {
         Ok(t) => t,
         Err(e) => {
             log::error!("Error getting current time: {:?}", e);
-            return None
+            return None;
         }
     };
 
@@ -381,7 +374,7 @@ fn get_timestamps(context: &Context) -> Option<Timestamps> {
         Some(p) => p.get_position(),
         None => {
             log::warn!("No player in context, returning timestamps as none");
-            return None
+            return None;
         }
     };
 
@@ -389,7 +382,7 @@ fn get_timestamps(context: &Context) -> Option<Timestamps> {
         Ok(p) => p,
         Err(e) => {
             log::warn!("Error getting position: {:?}", e);
-            return None
+            return None;
         }
     };
     log::debug!("Position: {:?}", position_dur);
@@ -415,7 +408,7 @@ fn get_timestamps(context: &Context) -> Option<Timestamps> {
         Some(m) => m,
         None => {
             log::warn!("No metadata in context, returning timestamps as none");
-            return None
+            return None;
         }
     };
 
@@ -424,7 +417,7 @@ fn get_timestamps(context: &Context) -> Option<Timestamps> {
         Some(l) => l,
         None => {
             log::warn!("No length in metadata, returning timestamps as none");
-            return None
+            return None;
         }
     };
 
