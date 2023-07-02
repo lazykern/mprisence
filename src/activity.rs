@@ -67,7 +67,7 @@ impl Activity {
     where
         S: Into<String>,
     {
-        let large_text = large_text.into();
+        let large_text = large_text.into() + "\0";
         if large_text.is_empty() {
             self.large_text = None;
         } else {
@@ -79,7 +79,7 @@ impl Activity {
     where
         S: Into<String>,
     {
-        let small_image = small_image.into() + "\0";
+        let small_image = small_image.into();
         if small_image.is_empty() {
             self.small_image = None;
         } else {
