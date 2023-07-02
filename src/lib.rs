@@ -300,13 +300,21 @@ impl Mprisence {
 
         activity = activity.assets(assets);
 
-        if let Some(timestamps) = get_timestamps(&context) {
-            activity = activity.timestamps(timestamps);
-        } else {
-            log::warn!("No timestamps, not setting timestamps");
-        }
+        match playback_status {
+            PlaybackStatus::Playing => {
+                if let Some(timestamps) = get_timestamps(&context) {
+                    activity = activity.timestamps(timestamps);
+                } else {
+                    log::warn!("No timestamps, not setting timestamps");
+                }
 
-        client.set_activity(activity)?;
+                client.set_activity(activity)?;
+            }
+            PlaybackStatus::Paused => {
+                client.set_activity(activity)?;
+            }
+            _ => {}
+        }
 
         Ok(())
     }
