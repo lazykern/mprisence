@@ -18,6 +18,8 @@ pub struct Config {
     #[serde(default = "default_false")]
     pub show_icon: bool,
     #[serde(default = "default_false")]
+    pub show_default_player_icon: bool,
+    #[serde(default = "default_false")]
     pub allow_streaming: bool,
     #[serde(default = "default_true")]
     pub clear_on_pause: bool,
@@ -35,6 +37,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             show_icon: default_false(),
+            show_default_player_icon: default_false(),
             allow_streaming: default_false(),
             clear_on_pause: default_true(),
             image: ImageConfig::default(),

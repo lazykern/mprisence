@@ -246,7 +246,9 @@ impl Mprisence {
 
                 activity.set_large_text(&large_text);
 
-                if CONFIG.show_icon {
+                if (CONFIG.show_icon && client.has_icon)
+                    || (CONFIG.show_icon && CONFIG.show_default_player_icon)
+                {
                     small_image = client.icon().to_string();
                     log::debug!("Small image: {}", small_image);
                     if !small_image.is_empty() {
