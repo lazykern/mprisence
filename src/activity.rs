@@ -32,24 +32,23 @@ impl Activity {
     where
         S: Into<String>,
     {
-        let details = details.into();
+        let details = details.into() + "\0";
         if details.is_empty() {
             self.details = None;
-        } else {
-            self.details = Some(details);
+            return;
         }
+        self.details = Some(details);
     }
 
     pub fn set_state<S>(&mut self, state: S)
     where
         S: Into<String>,
     {
-        let state = state.into();
+        let state = state.into() + "\0";
         if state.is_empty() {
             self.state = None;
-        } else {
-            self.state = Some(state);
         }
+        self.state = Some(state);
     }
 
     pub fn set_large_image<S>(&mut self, large_image: S)
@@ -80,7 +79,7 @@ impl Activity {
     where
         S: Into<String>,
     {
-        let small_image = small_image.into();
+        let small_image = small_image.into() + "\0";
         if small_image.is_empty() {
             self.small_image = None;
         } else {
@@ -92,7 +91,7 @@ impl Activity {
     where
         S: Into<String>,
     {
-        let small_text = small_text.into();
+        let small_text = small_text.into() + "\0";
         if small_text.is_empty() {
             self.small_text = None;
         } else {
