@@ -151,6 +151,25 @@ impl Context {
             );
 
             btree_map.insert("position".to_string(), position);
+
+            match player.get_playback_status() {
+                Ok(status) => btree_map.insert(
+                    "status".to_string(),
+                    match status {
+                        mpris::PlaybackStatus::Playing => "playing".to_string(),
+                        mpris::PlaybackStatus::Paused => "paused".to_string(),
+                        mpris::PlaybackStatus::Stopped => "stopped".to_string(),
+                    },
+                ),
+                Err(_) => None,
+            };
+
+            match player.get_volume() {
+                Ok(volume) => {
+                    btree_map.insert("volume".to_string(), ((volume * 100.0) as u8).to_string())
+                }
+                Err(_) => None,
+            };
         }
 
         if let Some(metadata) = &self.metadata {
