@@ -4,6 +4,7 @@ pub mod config;
 pub mod consts;
 pub mod context;
 pub mod error;
+pub mod hbs;
 pub mod image;
 pub mod player;
 
@@ -12,7 +13,6 @@ use consts::{
     DEFAULT_DETAIL_TEMPLATE, DEFAULT_LARGE_TEXT_NO_ALBUM_IMAGE_TEMPLATE,
     DEFAULT_LARGE_TEXT_TEMPLATE, DEFAULT_SMALL_TEXT_TEMPLATE, DEFAULT_STATE_TEMPLATE,
 };
-use handlebars::Handlebars;
 
 use image::provider::Provider;
 use image::ImageURLFinder;
@@ -33,6 +33,7 @@ lazy_static! {
 pub struct Mprisence {
     image_url_finder: ImageURLFinder,
     client_map: BTreeMap<String, Client>,
+    handlebars: handlebars::Handlebars<'static>,
 }
 
 impl Mprisence {
@@ -55,6 +56,7 @@ impl Mprisence {
         Mprisence {
             image_url_finder: ImageURLFinder::new(provider),
             client_map: BTreeMap::new(),
+            handlebars: hbs::new_hbs(),
         }
     }
 
@@ -183,23 +185,32 @@ impl Mprisence {
         let data = context.data();
         log::debug!("Data: {:?}", data);
 
-        let reg = Handlebars::new();
-        log::debug!("Reg: {:?}", reg);
+        log::debug!("self.handlebars: {:?}", self.handlebars);
 
-        let detail = match reg.render_template(&CONFIG.template.detail, &data) {
+        let detail = match self
+            .handlebars
+            .render_template(&CONFIG.template.detail, &data)
+        {
             Ok(detail) => detail,
             Err(e) => {
                 log::warn!("Error rendering detail template, using default: {:?}", e);
-                reg.render_template(DEFAULT_DETAIL_TEMPLATE, &data).unwrap()
+                self.handlebars
+                    .render_template(DEFAULT_DETAIL_TEMPLATE, &data)
+                    .unwrap()
             }
         };
         log::debug!("Detail: {}", detail);
 
-        let state = match reg.render_template(&CONFIG.template.state, &data) {
+        let state = match self
+            .handlebars
+            .render_template(&CONFIG.template.state, &data)
+        {
             Ok(state) => state,
             Err(e) => {
                 log::warn!("Error rendering state template, using default: {:?}", e);
-                reg.render_template(DEFAULT_STATE_TEMPLATE, &data).unwrap()
+                self.handlebars
+                    .render_template(DEFAULT_STATE_TEMPLATE, &data)
+                    .unwrap()
             }
         };
         log::debug!("State: {}", state);
@@ -256,11 +267,15 @@ impl Mprisence {
             if !large_image.is_empty() {
                 activity.set_large_image(&large_image);
 
-                large_text = match reg.render_template(&CONFIG.template.large_text, &data) {
+                large_text = match self
+                    .handlebars
+                    .render_template(&CONFIG.template.large_text, &data)
+                {
                     Ok(large_text) => large_text,
                     Err(_) => {
                         log::warn!("Error rendering large text template, using default");
-                        reg.render_template(&DEFAULT_LARGE_TEXT_TEMPLATE, &data)
+                        self.handlebars
+                            .render_template(&DEFAULT_LARGE_TEXT_TEMPLATE, &data)
                             .unwrap()
                     }
                 };
@@ -276,11 +291,15 @@ impl Mprisence {
                     if !small_image.is_empty() {
                         activity.set_small_image(&small_image);
 
-                        small_text = match reg.render_template(&CONFIG.template.small_text, &data) {
+                        small_text = match self
+                            .handlebars
+                            .render_template(&CONFIG.template.small_text, &data)
+                        {
                             Ok(small_text) => small_text,
                             Err(_) => {
                                 log::warn!("Error rendering small text template, using default");
-                                reg.render_template(&DEFAULT_SMALL_TEXT_TEMPLATE, &data)
+                                self.handlebars
+                                    .render_template(&DEFAULT_SMALL_TEXT_TEMPLATE, &data)
                                     .unwrap()
                             }
                         };
@@ -302,15 +321,18 @@ impl Mprisence {
             if !large_image.is_empty() {
                 activity.set_large_image(&large_image);
 
-                large_text =
-                    match reg.render_template(&CONFIG.template.large_text_no_album_image, &data) {
-                        Ok(large_text) => large_text,
-                        Err(_) => {
-                            log::warn!("Error rendering large text template, using default");
-                            reg.render_template(&DEFAULT_LARGE_TEXT_NO_ALBUM_IMAGE_TEMPLATE, &data)
-                                .unwrap()
-                        }
-                    };
+                large_text = match self
+                    .handlebars
+                    .render_template(&CONFIG.template.large_text_no_album_image, &data)
+                {
+                    Ok(large_text) => large_text,
+                    Err(_) => {
+                        log::warn!("Error rendering large text template, using default");
+                        self.handlebars
+                            .render_template(&DEFAULT_LARGE_TEXT_NO_ALBUM_IMAGE_TEMPLATE, &data)
+                            .unwrap()
+                    }
+                };
 
                 log::debug!("Large text: {}", large_text);
 
