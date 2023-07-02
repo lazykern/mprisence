@@ -153,15 +153,28 @@ impl Context {
             btree_map.insert("position".to_string(), position);
 
             match player.get_playback_status() {
-                Ok(status) => btree_map.insert(
-                    "status".to_string(),
-                    match status {
-                        mpris::PlaybackStatus::Playing => "playing".to_string(),
-                        mpris::PlaybackStatus::Paused => "paused".to_string(),
-                        mpris::PlaybackStatus::Stopped => "stopped".to_string(),
-                    },
-                ),
-                Err(_) => None,
+                Ok(playback_status) => {
+                    let status;
+                    let status_icon;
+
+                    match playback_status {
+                        mpris::PlaybackStatus::Playing => {
+                            status = "playing";
+                            status_icon = "▶";
+                        }
+                        mpris::PlaybackStatus::Paused => {
+                            status = "paused";
+                            status_icon = "⏸";
+                        }
+                        mpris::PlaybackStatus::Stopped => {
+                            status = "stopped";
+                            status_icon = "⏹";
+                        }
+                    };
+                    btree_map.insert("status".to_string(), status.to_string());
+                    btree_map.insert("status_icon".to_string(), status_icon.to_string());
+                }
+                Err(_) => {}
             };
 
             match player.get_volume() {
