@@ -12,14 +12,14 @@ use self::{cache::Cache, provider::Provider};
 pub mod cache;
 pub mod provider;
 
-pub struct PictureURLFinder {
+pub struct ImageURLFinder {
     cache: Cache,
     provider: Option<Provider>,
 }
 
-impl PictureURLFinder {
+impl ImageURLFinder {
     pub fn new(provider: Option<Provider>) -> Self {
-        PictureURLFinder {
+        ImageURLFinder {
             cache: Cache::new(),
             provider,
         }

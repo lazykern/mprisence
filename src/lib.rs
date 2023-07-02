@@ -3,7 +3,7 @@ pub mod config;
 pub mod consts;
 pub mod context;
 pub mod error;
-pub mod picture;
+pub mod image;
 
 use client::Client;
 use consts::DEFAULT_DETAIL;
@@ -12,8 +12,8 @@ use handlebars::Handlebars;
 
 use lazy_static::lazy_static;
 use mpris::{PlaybackStatus, Player, PlayerFinder};
-use picture::provider::Provider;
-use picture::PictureURLFinder;
+use image::provider::Provider;
+use image::ImageURLFinder;
 use std::collections::BTreeMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -27,7 +27,7 @@ lazy_static! {
 }
 
 pub struct Mprisence {
-    picture_url_finder: PictureURLFinder,
+    image_url_finder: ImageURLFinder,
     client_map: BTreeMap<String, Client>,
 }
 
@@ -47,7 +47,7 @@ impl Mprisence {
         };
 
         Mprisence {
-            picture_url_finder: PictureURLFinder::new(provider),
+            image_url_finder: ImageURLFinder::new(provider),
             client_map: BTreeMap::new(),
         }
     }
@@ -156,7 +156,7 @@ impl Mprisence {
 
         let mut assets = Assets::new();
         let pic_url = match context.metadata() {
-            Some(metadata) => self.picture_url_finder.from_metadata(metadata).await,
+            Some(metadata) => self.image_url_finder.from_metadata(metadata).await,
             None => None,
         };
 
