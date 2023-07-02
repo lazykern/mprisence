@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 dirs = "5.0.1"
 discord-rich-presence = "0.2.3"
+env_logger = "0.10.0"
 handlebars = "4.3.7"
 imgbb = "1.0.0"
 lazy_static = "1.4.0"
