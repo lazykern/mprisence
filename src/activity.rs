@@ -34,11 +34,22 @@ impl Activity {
     where
         S: Into<String>,
     {
-        let details = details.into() + "\0";
+        let mut details = details.into();
+
         if details.is_empty() {
             self.details = None;
             return;
         }
+
+        if details.len() == 1 {
+            details += "\0";
+        }
+
+        if details.len() > 128 {
+            log::warn!("Details is too long, truncating to 128 characters");
+            details.truncate(128);
+        }
+
         self.details = Some(details);
     }
 
@@ -46,10 +57,17 @@ impl Activity {
     where
         S: Into<String>,
     {
-        let state = state.into() + "\0";
+        let mut state = state.into() + "\0";
         if state.is_empty() {
             self.state = None;
+            return;
         }
+
+        if state.len() > 128 {
+            log::warn!("State is too long, truncating to 128 characters");
+            state.truncate(128);
+        }
+
         self.state = Some(state);
     }
 
@@ -69,12 +87,23 @@ impl Activity {
     where
         S: Into<String>,
     {
-        let large_text = large_text.into() + "\0";
+        let mut large_text = large_text.into();
+
         if large_text.is_empty() {
             self.large_text = None;
-        } else {
-            self.large_text = Some(large_text);
+            return;
         }
+
+        if large_text.len() == 1 {
+            large_text += "\0";
+        }
+
+        if large_text.len() > 128 {
+            log::warn!("Large text is too long, truncating to 128 characters");
+            large_text.truncate(128);
+        }
+
+        self.large_text = Some(large_text);
     }
 
     pub fn set_small_image<S>(&mut self, small_image: S)
@@ -93,12 +122,23 @@ impl Activity {
     where
         S: Into<String>,
     {
-        let small_text = small_text.into() + "\0";
+        let mut small_text = small_text.into();
+
         if small_text.is_empty() {
             self.small_text = None;
-        } else {
-            self.small_text = Some(small_text);
+            return;
         }
+
+        if small_text.len() == 1 {
+            small_text += "\0";
+        }
+
+        if small_text.len() > 128 {
+            log::warn!("Small text is too long, truncating to 128 characters");
+            small_text.truncate(128);
+        }
+
+        self.small_text = Some(small_text);
     }
 
     pub fn set_start_time(&mut self, start_time: Duration) {
