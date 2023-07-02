@@ -403,11 +403,9 @@ fn get_timestamps(context: &Context) -> Option<Timestamps> {
     };
     log::debug!("Start duration: {:?}", start_dur);
 
-    // Set the start timestamp.
-    timestamps = timestamps.start(start_dur.as_secs() as i64);
-
-    // If we're not supposed to display elapsed times, then we're done.
     if CONFIG.time.as_elapsed {
+        // Set the start timestamp.
+        timestamps = timestamps.start(start_dur.as_secs() as i64);
         return Some(timestamps);
     }
 
