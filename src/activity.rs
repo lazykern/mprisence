@@ -1,6 +1,8 @@
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use discord_rich_presence::activity;
+
+use crate::{context::Context, CONFIG};
 
 #[derive(Debug, Clone, Default)]
 pub struct Activity {
@@ -105,6 +107,74 @@ impl Activity {
 
     pub fn set_end_time(&mut self, end_time: Duration) {
         self.end_time = Some(end_time);
+    }
+
+    pub fn set_timestamps_from_context(&mut self, context: &Context) {
+        // Get the current time.
+        let now = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(t) => t,
+            Err(e) => {
+                log::error!("Error getting current time: {:?}", e);
+                return;
+            }
+        };
+
+        // Get the current track's position.
+        let position = match context.player() {
+            Some(p) => p.get_position(),
+            None => {
+                log::warn!("No player in context, returning timestamps as none");
+                return;
+            }
+        };
+
+        let position_dur = match position {
+            Ok(p) => p,
+            Err(e) => {
+                log::warn!("Error getting position: {:?}", e);
+                return;
+            }
+        };
+        log::debug!("Position: {:?}", position_dur);
+
+        // Subtract the position from the current time. This will give us the amount
+        // of time that has elapsed since the start of the track.
+        let start_dur = match now > position_dur {
+            true => now - position_dur,
+            false => now,
+        };
+        log::debug!("Start duration: {:?}", start_dur);
+
+        if CONFIG.time.as_elapsed {
+            // Set the start timestamp.
+            self.set_start_time(start_dur);
+        }
+
+        // Get the current track's metadata.
+        let m = match context.metadata() {
+            Some(m) => m,
+            None => {
+                log::warn!("No metadata in context, returning timestamps as none");
+                return;
+            }
+        };
+
+        // Get the current track's length.
+        let length = match m.length() {
+            Some(l) => l,
+            None => {
+                log::warn!("No length in metadata, returning timestamps as none");
+                return;
+            }
+        };
+
+        // Add the start time to the track length. This gives us the time that the
+        // track will end at.
+        let end_dur = start_dur + length;
+        log::debug!("End duration: {:?}", end_dur);
+
+        // Set the end timestamp.
+        self.set_end_time(end_dur);
     }
 
     pub fn to_discord_activity(&self) -> activity::Activity<'_> {
