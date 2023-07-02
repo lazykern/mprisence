@@ -212,13 +212,28 @@ impl Mprisence {
             log::warn!("State is empty, not setting activity state")
         }
 
-        let pic_url = match context.metadata() {
+        let mut pic_url = match context.metadata() {
             Some(metadata) => self.image_url_finder.from_metadata(metadata).await,
             None => {
                 log::warn!("No audio metadata, not setting album art");
                 None
             }
         };
+
+        if pic_url.is_none() {
+            if identity == "cmus" {
+                let audio_path = get_cmus_audio_path();
+                match audio_path {
+                    Some(audio_path) => {
+                        log::info!("CMUS: Found audio path: {}", audio_path);
+                        pic_url = self.image_url_finder.from_audio_path(audio_path).await;
+                    }
+                    None => {
+                        log::warn!("CMUS: No audio path, not setting album art");
+                    }
+                }
+            }
+        }
 
         let large_image: String;
         let small_image: String;
@@ -419,4 +434,29 @@ fn set_timestamps(activity: &mut Activity, context: &Context) {
 
     // Set the end timestamp.
     activity.set_end_time(end_dur);
+}
+
+fn get_cmus_audio_path() -> Option<String> {
+    // Try running cmus-remote to get the file path
+    // cmus-remote -Q | grep ^file | cut -c 6-
+
+    log::info!("Getting audio path from cmus-remote");
+    let cmus_remote_output = match std::process::Command::new("cmus-remote").arg("-Q").output() {
+        Ok(output) => {
+            let output = String::from_utf8(output.stdout).unwrap();
+            output
+        }
+        Err(e) => {
+            log::error!("Error getting cmus-remote output: {:?}", e);
+            String::new()
+        }
+    };
+
+    // Get the file path from the output
+    let file_path = cmus_remote_output
+        .lines()
+        .find(|line| line.starts_with("file "))
+        .map(|line| line[5..].to_owned());
+
+    file_path
 }
