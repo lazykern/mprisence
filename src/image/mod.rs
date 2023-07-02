@@ -26,13 +26,25 @@ impl ImageURLFinder {
     }
 
     pub async fn from_metadata(&mut self, metadata: &Metadata) -> Option<String> {
-        if let Some(meta_art_url) = metadata.art_url() {
-            if let Ok(parsed_url) = Url::parse(meta_art_url) {
-                if parsed_url.scheme() == "http" || parsed_url.scheme() == "https" {
-                    return Some(meta_art_url.to_string());
+        let meta_art_path = match metadata.art_url() {
+            Some(meta_art_url) => {
+                if let Ok(parsed_url) = Url::parse(meta_art_url) {
+                    match parsed_url.scheme() {
+                        "http" | "https" => {
+                            return Some(meta_art_url.to_string());
+                        }
+                        "file" => match parsed_url.to_file_path() {
+                            Ok(file_path) => Some(file_path),
+                            Err(_) => None,
+                        },
+                        _ => None,
+                    }
+                } else {
+                    None
                 }
             }
-        }
+            _ => None,
+        };
 
         let parsed_url = match metadata.url() {
             Some(url) => match Url::parse(url) {
@@ -53,16 +65,35 @@ impl ImageURLFinder {
             Err(_) => return None,
         };
 
-        self.from_path(file_path).await
+        if let Some(art_url) = self.from_audio_path(file_path).await {
+            Some(art_url)
+        } else {
+            match meta_art_path {
+                Some(meta_art_path) => self.from_image_path(meta_art_path).await,
+                None => None,
+            }
+        }
     }
 
-    pub async fn from_path<P>(&mut self, path: P) -> Option<String>
+    pub async fn from_audio_path<P>(&mut self, path: P) -> Option<String>
     where
         P: AsRef<Path>,
     {
         let bytes = match find_picture(&path) {
             Some(picture) => picture,
             None => return None,
+        };
+
+        self.from_bytes(bytes).await
+    }
+
+    pub async fn from_image_path<P>(&mut self, path: P) -> Option<String>
+    where
+        P: AsRef<Path>,
+    {
+        let bytes = match std::fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(_) => return None,
         };
 
         self.from_bytes(bytes).await
