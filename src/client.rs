@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use discord_rich_presence::{activity::*, DiscordIpc, DiscordIpcClient};
 
 use crate::{config::PlayerConfig, error::Error, CONFIG};
@@ -166,4 +168,20 @@ impl Client {
         }
         Ok(())
     }
+}
+
+impl Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut binding = f.debug_struct("Client");
+        let s = binding
+            .field("identity", &self.identity)
+            .field("unique_name", &self.unique_name)
+            .field("app_id", &self.app_id)
+            .field("icon", &self.icon)
+            .field("has_icon", &self.has_icon)
+            .field("client_is_some", &self.client.is_some());
+
+        s.finish()
+    }
+
 }
