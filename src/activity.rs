@@ -161,26 +161,13 @@ impl Eq for Activity {}
 
 impl PartialEq for Activity {
     fn eq(&self, other: &Self) -> bool {
-        let mut flag = self.details == other.details
+        self.details == other.details
             && self.state == other.state
             && self.large_image == other.large_image
             && self.large_text == other.large_text
             && self.small_image == other.small_image
-            && self.small_text == other.small_text;
-
-        // compare time by seconds
-        if let Some(start_time) = self.start_time {
-            if let Some(other_start_time) = other.start_time {
-                flag = flag && start_time.as_secs() == other_start_time.as_secs();
-            }
-        }
-
-        if let Some(end_time) = self.end_time {
-            if let Some(other_end_time) = other.end_time {
-                flag = flag && end_time.as_secs() == other_end_time.as_secs();
-            }
-        }
-
-        flag
+            && self.small_text == other.small_text
+            && self.start_time.map(|t| t.as_secs()) == other.start_time.map(|t| t.as_secs())
+            && self.end_time.map(|t| t.as_secs()) == other.end_time.map(|t| t.as_secs())
     }
 }
