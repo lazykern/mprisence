@@ -1,7 +1,8 @@
 use std::fmt::Debug;
 
-use discord_rich_presence::{activity::*, DiscordIpc, DiscordIpcClient};
+use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
 
+use crate::Activity;
 use crate::{config::PlayerConfig, error::Error, CONFIG};
 
 pub struct Client {
@@ -11,6 +12,7 @@ pub struct Client {
     app_id: String,
     icon: String,
     client: Option<DiscordIpcClient>,
+    activity: Option<Activity>,
 }
 
 impl Client {
@@ -58,6 +60,7 @@ impl Client {
             icon,
             has_icon,
             client: None,
+            activity: None,
         }
     }
 
@@ -79,6 +82,7 @@ impl Client {
 
     pub fn connect(&mut self) -> Result<(), Error> {
         if self.client.is_some() {
+            log::warn!("Client already connected");
             return Ok(());
         }
 
@@ -101,6 +105,8 @@ impl Client {
         }
 
         self.client = Some(client);
+
+        log::info!("Connected to Discord");
 
         Ok(())
     }
@@ -140,8 +146,13 @@ impl Client {
     }
 
     pub fn set_activity(&mut self, activity: Activity) -> Result<(), Error> {
+        if activity == self.activity.clone().unwrap_or_default() {
+            log::debug!("Activity is the same, skipping update");
+            return Ok(());
+        }
+
         match &mut self.client {
-            Some(client) => match client.set_activity(activity) {
+            Some(client) => match client.set_activity(activity.to_discord_activity()) {
                 Ok(_) => {}
                 Err(_) => {
                     return Err(Error::DiscordError(
@@ -151,10 +162,20 @@ impl Client {
             },
             None => {}
         }
+
+        self.activity = Some(activity.clone());
+
+        log::debug!("Updated activity: {:?}", activity);
+
         Ok(())
     }
 
     pub fn clear(&mut self) -> Result<(), Error> {
+        if self.activity.is_none() {
+            log::debug!("Activity is already cleared, skipping update");
+            return Ok(());
+        }
+
         match &mut self.client {
             Some(client) => match client.clear_activity() {
                 Ok(_) => {}
@@ -166,6 +187,9 @@ impl Client {
             },
             None => {}
         }
+
+        self.activity = None;
+        log::debug!("Cleared activity");
         Ok(())
     }
 }
@@ -183,5 +207,4 @@ impl Debug for Client {
 
         s.finish()
     }
-
 }

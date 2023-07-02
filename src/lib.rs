@@ -1,3 +1,4 @@
+pub mod activity;
 pub mod client;
 pub mod config;
 pub mod consts;
@@ -10,7 +11,6 @@ use consts::{
     DEFAULT_DETAIL_TEMPLATE, DEFAULT_LARGE_TEXT_NO_ALBUM_IMAGE_TEMPLATE,
     DEFAULT_LARGE_TEXT_TEMPLATE, DEFAULT_SMALL_TEXT_TEMPLATE, DEFAULT_STATE_TEMPLATE,
 };
-use discord_rich_presence::activity::{Activity, Assets, Timestamps};
 use handlebars::Handlebars;
 
 use image::provider::Provider;
@@ -20,6 +20,7 @@ use mpris::{PlaybackStatus, Player, PlayerFinder};
 use std::collections::BTreeMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::activity::Activity;
 use crate::config::Config;
 use crate::context::Context;
 use crate::error::Error;
@@ -199,19 +200,18 @@ impl Mprisence {
 
         if !detail.is_empty() {
             log::debug!("Setting activity detail to {}", detail);
-            activity = activity.details(&detail);
+            activity.set_details(detail);
         } else {
             log::warn!("Detail is empty, not setting activity detail")
         }
 
         if !state.is_empty() {
             log::debug!("Setting activity state to {}", state);
-            activity = activity.state(&state);
+            activity.set_state(state);
         } else {
             log::warn!("State is empty, not setting activity state")
         }
 
-        let mut assets = Assets::new();
         let pic_url = match context.metadata() {
             Some(metadata) => self.image_url_finder.from_metadata(metadata).await,
             None => {
@@ -232,7 +232,7 @@ impl Mprisence {
             large_image = pic_url.unwrap_or_default();
             log::debug!("Large image: {}", large_image);
             if !large_image.is_empty() {
-                assets = assets.large_image(&large_image);
+                activity.set_large_image(&large_image);
 
                 large_text = match reg.render_template(&CONFIG.template.large_text, &data) {
                     Ok(large_text) => large_text,
@@ -244,13 +244,13 @@ impl Mprisence {
                 };
                 log::debug!("Large text: {}", large_text);
 
-                assets = assets.large_text(&large_text);
+                activity.set_large_text(&large_text);
 
                 small_image = client.icon().to_string();
                 log::debug!("Small image: {}", small_image);
                 if !small_image.is_empty() {
                     if CONFIG.show_icon && client.has_icon {
-                        assets = assets.small_image(&small_image);
+                        activity.set_small_image(&small_image);
                     }
                 } else {
                     log::warn!("Small image is empty, not setting small image and small text");
@@ -267,7 +267,7 @@ impl Mprisence {
 
                 log::debug!("Small text: {}", small_text);
 
-                assets = assets.small_text(&small_text);
+                activity.set_small_text(&small_text);
             } else {
                 log::warn!("Large image is empty, not setting large image and large text");
             }
@@ -278,7 +278,7 @@ impl Mprisence {
             log::debug!("Large image: {}", large_image);
 
             if !large_image.is_empty() {
-                assets = assets.large_image(&large_image);
+                activity.set_large_image(&large_image);
 
                 large_text =
                     match reg.render_template(&CONFIG.template.large_text_no_album_image, &data) {
@@ -292,22 +292,15 @@ impl Mprisence {
 
                 log::debug!("Large text: {}", large_text);
 
-                assets = assets.large_text(&large_text);
+                activity.set_large_text(&large_text);
             } else {
                 log::warn!("Large image is empty, not setting large image and large text");
             }
         }
 
-        activity = activity.assets(assets);
-
         match playback_status {
             PlaybackStatus::Playing => {
-                if let Some(timestamps) = get_timestamps(&context) {
-                    activity = activity.timestamps(timestamps);
-                } else {
-                    log::warn!("No timestamps, not setting timestamps");
-                }
-
+                set_timestamps(&mut activity, context);
                 client.set_activity(activity)?;
             }
             PlaybackStatus::Paused => {
@@ -365,15 +358,13 @@ fn get_players() -> Vec<Player> {
     players
 }
 
-fn get_timestamps(context: &Context) -> Option<Timestamps> {
-    let mut timestamps = Timestamps::new();
-
+fn set_timestamps(activity: &mut Activity, context: &Context) {
     // Get the current time.
     let now = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(t) => t,
         Err(e) => {
             log::error!("Error getting current time: {:?}", e);
-            return None;
+            return;
         }
     };
 
@@ -382,7 +373,7 @@ fn get_timestamps(context: &Context) -> Option<Timestamps> {
         Some(p) => p.get_position(),
         None => {
             log::warn!("No player in context, returning timestamps as none");
-            return None;
+            return;
         }
     };
 
@@ -390,7 +381,7 @@ fn get_timestamps(context: &Context) -> Option<Timestamps> {
         Ok(p) => p,
         Err(e) => {
             log::warn!("Error getting position: {:?}", e);
-            return None;
+            return;
         }
     };
     log::debug!("Position: {:?}", position_dur);
@@ -405,8 +396,7 @@ fn get_timestamps(context: &Context) -> Option<Timestamps> {
 
     if CONFIG.time.as_elapsed {
         // Set the start timestamp.
-        timestamps = timestamps.start(start_dur.as_secs() as i64);
-        return Some(timestamps);
+        activity.set_start_time(start_dur);
     }
 
     // Get the current track's metadata.
@@ -414,7 +404,7 @@ fn get_timestamps(context: &Context) -> Option<Timestamps> {
         Some(m) => m,
         None => {
             log::warn!("No metadata in context, returning timestamps as none");
-            return None;
+            return;
         }
     };
 
@@ -423,7 +413,7 @@ fn get_timestamps(context: &Context) -> Option<Timestamps> {
         Some(l) => l,
         None => {
             log::warn!("No length in metadata, returning timestamps as none");
-            return None;
+            return;
         }
     };
 
@@ -433,7 +423,5 @@ fn get_timestamps(context: &Context) -> Option<Timestamps> {
     log::debug!("End duration: {:?}", end_dur);
 
     // Set the end timestamp.
-    timestamps = timestamps.end(end_dur.as_secs() as i64);
-
-    Some(timestamps)
+    activity.set_end_time(end_dur);
 }
