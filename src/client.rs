@@ -145,11 +145,13 @@ impl Client {
         Ok(())
     }
 
-    pub fn set_activity(&mut self, activity: Activity) -> Result<(), Error> {
-        if activity == self.activity.clone().unwrap_or_default() {
+    pub fn set_activity(&mut self, activity: &Activity) -> Result<(), Error> {
+        if activity == &self.activity.clone().unwrap_or_default() {
             log::debug!("Activity is the same, skipping update");
             return Ok(());
         }
+
+        self.clear().unwrap_or_default();
 
         match &mut self.client {
             Some(client) => match client.set_activity(activity.to_discord_activity()) {
@@ -157,7 +159,7 @@ impl Client {
                 Err(_) => {
                     return Err(Error::DiscordError(
                         "Failed to update Discord activity".to_string(),
-                    ))
+                    ));
                 }
             },
             None => {}

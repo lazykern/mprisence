@@ -68,8 +68,8 @@ impl Mprisence {
                     log::error!("Error updating rich presence: {:?}", error);
                 }
             }
-            log::info!("Waiting 1 second");
-            std::thread::sleep(Duration::from_secs(1));
+            log::info!("Waiting 2 second");
+            std::thread::sleep(Duration::from_secs(2));
         }
     }
 
@@ -298,16 +298,11 @@ impl Mprisence {
             }
         }
 
-        match playback_status {
-            PlaybackStatus::Playing => {
-                set_timestamps(&mut activity, context);
-                client.set_activity(activity)?;
-            }
-            PlaybackStatus::Paused => {
-                client.set_activity(activity)?;
-            }
-            _ => {}
+        if playback_status == PlaybackStatus::Playing {
+            set_timestamps(&mut activity, context);
         }
+
+        client.set_activity(&activity)?;
 
         Ok(())
     }
