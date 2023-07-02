@@ -138,6 +138,7 @@ impl Mprisence {
             Some(player) => player,
             None => return Err(Error::UpdateError("No player in context".to_owned())),
         };
+
         log::debug!("Player: {:?}", player);
 
         let identity = player.identity().to_lowercase().replace(" ", "_");
@@ -148,6 +149,7 @@ impl Mprisence {
         let playback_status = player
             .get_playback_status()
             .unwrap_or(PlaybackStatus::Stopped);
+        let position = player.get_position().unwrap_or(Duration::from_secs(0));
 
         log::debug!("Getting client from client map");
         let c = Client::new(&identity, &unique_name);
@@ -158,6 +160,7 @@ impl Mprisence {
                 self.client_map.get_mut(&unique_name).unwrap()
             }
         };
+
         if playback_status == PlaybackStatus::Stopped {
             client.close()?;
             return Ok(());
@@ -166,7 +169,9 @@ impl Mprisence {
         client.connect()?;
         log::debug!("Client after connecting: {:?}", client);
 
-        if playback_status == PlaybackStatus::Paused && CONFIG.clear_on_pause {
+        if (playback_status == PlaybackStatus::Paused && CONFIG.clear_on_pause)
+            && (playback_status == PlaybackStatus::Playing && position.as_millis() == 0)
+        {
             log::info!("Clearing activity");
             client.clear()?;
             return Ok(());
