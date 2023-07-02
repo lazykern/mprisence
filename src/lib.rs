@@ -6,18 +6,20 @@ pub mod error;
 pub mod image;
 
 use client::Client;
-use consts::DEFAULT_DETAIL;
+use consts::{
+    DEFAULT_DETAIL_TEMPLATE, DEFAULT_LARGE_TEXT_NO_ALBUM_IMAGE_TEMPLATE,
+    DEFAULT_LARGE_TEXT_TEMPLATE, DEFAULT_SMALL_TEXT_TEMPLATE, DEFAULT_STATE_TEMPLATE,
+};
 use discord_rich_presence::activity::{Activity, Assets, Timestamps};
 use handlebars::Handlebars;
 
-use lazy_static::lazy_static;
-use mpris::{PlaybackStatus, Player, PlayerFinder};
 use image::provider::Provider;
 use image::ImageURLFinder;
+use lazy_static::lazy_static;
+use mpris::{PlaybackStatus, Player, PlayerFinder};
 use std::collections::BTreeMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::config::default::DEFAULT_STATE;
 use crate::config::Config;
 use crate::context::Context;
 use crate::error::Error;
@@ -139,11 +141,11 @@ impl Mprisence {
         let reg = Handlebars::new();
         let detail = match reg.render_template(&CONFIG.template.detail, &data) {
             Ok(detail) => detail,
-            Err(_) => reg.render_template(DEFAULT_DETAIL, &data).unwrap(),
+            Err(_) => reg.render_template(DEFAULT_DETAIL_TEMPLATE, &data).unwrap(),
         };
         let state = match reg.render_template(&CONFIG.template.state, &data) {
             Ok(state) => state,
-            Err(_) => reg.render_template(DEFAULT_STATE, &data).unwrap(),
+            Err(_) => reg.render_template(DEFAULT_STATE_TEMPLATE, &data).unwrap(),
         };
 
         if !detail.is_empty() {
@@ -172,6 +174,40 @@ impl Mprisence {
             && large_image != small_image
         {
             assets = assets.small_image(&small_image);
+        }
+
+        let large_text: String;
+        let small_text: String;
+        if !large_image.is_empty() {
+            if large_image != small_image {
+                large_text = match reg.render_template(&CONFIG.template.large_text, &data) {
+                    Ok(large_text) => large_text,
+                    Err(_) => reg
+                        .render_template(&DEFAULT_LARGE_TEXT_TEMPLATE, &data)
+                        .unwrap(),
+                };
+            } else {
+                large_text =
+                    match reg.render_template(&CONFIG.template.large_text_no_album_image, &data) {
+                        Ok(large_text) => large_text,
+                        Err(_) => reg
+                            .render_template(&DEFAULT_LARGE_TEXT_NO_ALBUM_IMAGE_TEMPLATE, &data)
+                            .unwrap(),
+                    };
+            }
+
+            assets = assets.large_text(&large_text);
+        }
+
+        if !small_image.is_empty() {
+            small_text = match reg.render_template(&CONFIG.template.small_text, &data) {
+                Ok(small_text) => small_text,
+                Err(_) => reg
+                    .render_template(&DEFAULT_SMALL_TEXT_TEMPLATE, &data)
+                    .unwrap(),
+            };
+
+            assets = assets.small_text(&small_text);
         }
 
         activity = activity.assets(assets);

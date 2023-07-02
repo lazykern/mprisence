@@ -16,13 +16,24 @@ pub fn default_icon() -> String {
     DEFAULT_ICON.to_string()
 }
 
-pub fn default_detail() -> String {
-    DEFAULT_DETAIL.to_string()
+pub fn default_detail_template() -> String {
+    DEFAULT_DETAIL_TEMPLATE.to_string()
 }
-pub const DEFAULT_STATE: &str = "{{{album}}}";
 
-pub fn default_state() -> String {
-    DEFAULT_STATE.to_string()
+pub fn default_state_template() -> String {
+    DEFAULT_STATE_TEMPLATE.to_string()
+}
+
+pub fn default_large_text_template() -> String {
+    DEFAULT_LARGE_TEXT_TEMPLATE.to_string()
+}
+
+pub fn default_small_text_template() -> String {
+    DEFAULT_SMALL_TEXT_TEMPLATE.to_string()
+}
+
+pub fn default_large_text_no_album_image_template() -> String {
+    DEFAULT_LARGE_TEXT_NO_ALBUM_IMAGE_TEMPLATE.to_string()
 }
 
 pub fn default_i8max() -> i8 {
