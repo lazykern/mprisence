@@ -246,28 +246,26 @@ impl Mprisence {
 
                 activity.set_large_text(&large_text);
 
-                small_image = client.icon().to_string();
-                log::debug!("Small image: {}", small_image);
-                if !small_image.is_empty() {
-                    if CONFIG.show_icon && client.has_icon {
+                if CONFIG.show_icon {
+                    small_image = client.icon().to_string();
+                    log::debug!("Small image: {}", small_image);
+                    if !small_image.is_empty() {
                         activity.set_small_image(&small_image);
+
+                        small_text = match reg.render_template(&CONFIG.template.small_text, &data) {
+                            Ok(small_text) => small_text,
+                            Err(_) => {
+                                log::warn!("Error rendering small text template, using default");
+                                reg.render_template(&DEFAULT_SMALL_TEXT_TEMPLATE, &data)
+                                    .unwrap()
+                            }
+                        };
+                        log::debug!("Small text: {}", small_text);
+                        activity.set_small_text(&small_text);
+                    } else {
+                        log::warn!("Small image is empty, not setting small image and small text");
                     }
-                } else {
-                    log::warn!("Small image is empty, not setting small image and small text");
                 }
-
-                small_text = match reg.render_template(&CONFIG.template.small_text, &data) {
-                    Ok(small_text) => small_text,
-                    Err(_) => {
-                        log::warn!("Error rendering small text template, using default");
-                        reg.render_template(&DEFAULT_SMALL_TEXT_TEMPLATE, &data)
-                            .unwrap()
-                    }
-                };
-
-                log::debug!("Small text: {}", small_text);
-
-                activity.set_small_text(&small_text);
             } else {
                 log::warn!("Large image is empty, not setting large image and large text");
             }
