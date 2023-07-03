@@ -46,7 +46,7 @@ The application **must be restarted** after the configuration file is updated
 
 ## Cover art support
 
-In order to enable album cover support, user must set the [ImageBB API key](https://api.imgbb.com/) in the [configuration file (see section below)](#configuration) by providing the key as below
+In order to enable album cover support, user must set the [ImageBB API key](https://api.imgbb.com/) in the [configuration file](#configuration) by providing the key as below
 
 ```toml
 [image.provider.imgbb]
