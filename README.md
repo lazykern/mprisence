@@ -13,7 +13,7 @@ A Discord Rich Presence client for MPRIS-compatible media players with album/son
 ### With [cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html)
 
 ```bash
-  cargo install --git https://github.com/phusitsom/mprisence.git
+cargo install --git https://github.com/phusitsom/mprisence.git
 ```
 
 To enable **cover art support**, [see below](#cover-art-support).
