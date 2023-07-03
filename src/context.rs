@@ -4,7 +4,7 @@ use lofty::{AudioFile, ItemKey, Picture, TaggedFileExt};
 use mpris::Player;
 use url::Url;
 
-use crate::error::Error;
+use crate::{error::Error, player::cmus};
 
 pub struct Context {
     player: Option<Player>,
@@ -29,8 +29,17 @@ impl Context {
 
         context.merge(&Context::from_metadata(metadata));
 
+        if context.player().unwrap().identity().to_lowercase() == "cmus" {
+            if let Some(audio_path) = cmus::get_audio_path() {
+                if let Ok(cmus_context) = Context::from_path(audio_path) {
+                    context.merge(&cmus_context);
+                }
+            }
+        }
+
         context
     }
+
     pub fn from_metadata(metadata: mpris::Metadata) -> Self {
         let mut context = Context {
             player: None,
