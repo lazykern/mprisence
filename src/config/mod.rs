@@ -10,8 +10,13 @@ use crate::config::default::*;
 use crate::consts::*;
 
 use dirs::config_local_dir;
+use figment::{
+    providers::{Format, Toml},
+    Figment,
+};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
@@ -50,15 +55,35 @@ impl Default for Config {
 
 impl Config {
     pub fn load() -> Self {
-        toml::from_str(
-            &std::fs::read_to_string(
-                config_local_dir()
-                    .unwrap()
-                    .join(APP_NAME)
-                    .join("config.toml"),
-            )
-            .unwrap(),
-        )
-        .unwrap()
+        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let default_config_path = project_root.join("config").join("default.toml");
+
+        let fig = Figment::new().merge(Toml::file(default_config_path));
+
+        let config: Self = if let Some(config_path) = get_config_path() {
+            let fig_m = fig.clone().merge(Toml::file(config_path));
+            match fig_m.extract() {
+                Ok(config) => config,
+                Err(e) => {
+                    log::error!("Error loading config, using default: {}", e);
+                    fig.extract().unwrap_or_default()
+                }
+            }
+        } else {
+            fig.extract().unwrap_or_default()
+        };
+
+        config
     }
+}
+
+fn get_config_path() -> Option<PathBuf> {
+    if let Some(config_path) = config_local_dir().map(|dir| dir.join(APP_NAME).join("config.toml"))
+    {
+        match config_path.exists() {
+            true => return Some(config_path),
+            false => return None,
+        }
+    }
+    None
 }

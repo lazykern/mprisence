@@ -13,8 +13,8 @@ large_text_no_album_image = "{{{album_name}}} playing on {{{player}}}"
 [image]
 file_names = ["cover"]
 
-[image.provider.imgbb]
-api_key = "fb8d214fa7042d34406ef5b9611e4356"
+# [image.provider.imgbb]
+# api_key = "<YOUR API KEY>"
 
 [player.default]
 icon = "https://raw.githubusercontent.com/phusitsom/mprisence/main/assets/icon.png"
