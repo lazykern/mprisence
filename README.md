@@ -2,9 +2,11 @@
 
 A Discord Rich Presence client for MPRIS-compatible media players with album/song cover art support
 
-| Playing                                       | Paused + Show player icon                                   |
-| --------------------------------------------- | ----------------------------------------------------------- |
-| ![Playing on cmus](assets/readme/playing.png) | ![Paused on lollypop + icon](assets/readme/paused-icon.png) |
+|           | Playing                                 | Paused                                                          |
+| --------- | --------------------------------------- | --------------------------------------------------------------- |
+| No icon   | ![](assets/readme/playing-noicon.png)   | ![Paused on lollypop + icon](assets/readme/paused-noicon.png)   |
+| Show icon | ![](assets/readme/playing-showicon.png) | ![Paused on lollypop + icon](assets/readme/paused-showicon.png) |
+| No cover  | ![](assets/readme/playing-nocover.png)  | ![Paused on lollypop + icon](assets/readme/paused-nocover.png)  |
 
 ## Installation
 
@@ -31,10 +33,12 @@ The rich presence can be configured to the user's preference by providing the co
 See [documentation](https://github.com/phusitsom/mprisence/wiki/Configuration/) for more advanced configuration.
 
 To download example config file:
+
 ```bash
 CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/mprisence/config.toml"
 [ ! -f "$CONFIG_PATH" ] && curl -o "$CONFIG_PATH" --create-dirs "https://raw.githubusercontent.com/phusitsom/mprisence/main/config/example.toml"
 ```
+
 ### Note
 
 The application **must be restarted** after the configuration file is updated
