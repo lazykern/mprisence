@@ -77,6 +77,7 @@ as_elapsed = false
 file_names = ["cover"]
 
 [image.provider]
+## Image provider (currently only supported for imgbb)
 provider = "imgbb"
 
 [image.provider.imgbb]
@@ -84,6 +85,8 @@ provider = "imgbb"
 api_key = "<YOUR API KEY>"
 
 [player.default]
+## You can change the discord app id and icon for default player 
+## (fall back config for those player which is not configured)
 # app_id = "1121632048155742288"
 # icon = "https://raw.githubusercontent.com/phusitsom/mprisence/main/assets/icon.png"
 
@@ -92,4 +95,10 @@ api_key = "<YOUR API KEY>"
 icon = "https://i.ibb.co/3zDHM1z/cmus.png"
 
 # [player.microsoft_edge]
+## Show a player (Microsoft Edge is ignored by default)
+## Also, allow_streaming must be set true to show rich presence for browsers
 # ignore = false
+
+# [player.brave]
+## Ignore a player
+# ignore = true
