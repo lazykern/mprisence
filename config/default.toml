@@ -8,15 +8,19 @@ detail = "{{{title}}}"
 state = '{{{status_icon}}} {{{artists}}} '
 large_text = "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}"
 small_text = "Playing on {{{player}}}"
-large_text_no_album_image = "{{{album_name}}} playing on {{{player}}}"
+large_text_no_album_image = "{{#if album_name includeZero=true}}{{{album_name}}} | {{/if}}Playing on {{player}}"
 
 [image]
-file_names = ["cover"]
+file_names = ["cover", "folder", "front", "album", "art"]
+
+[image.provider]
+provider = "imgbb"
 
 # [image.provider.imgbb]
 # api_key = "<YOUR API KEY>"
 
 [player.default]
+add_id = "1121632048155742288"
 icon = "https://raw.githubusercontent.com/phusitsom/mprisence/main/assets/icon.png"
 
 [player.audacious]
