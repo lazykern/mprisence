@@ -342,7 +342,7 @@ impl Mprisence {
             }
         }
 
-        if playback_status == PlaybackStatus::Playing {
+        if playback_status == PlaybackStatus::Playing && CONFIG.time.show {
             activity.set_timestamps_from_context(context);
         }
 
