@@ -1,0 +1,32 @@
+show_icon = false
+show_default_player_icon = false
+# allow_streaming = true
+clear_on_pause = false
+
+[template]
+detail = "{{{title}}}"
+state = '{{{status_icon}}} {{{artists}}}'
+large_text = "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}"
+small_text = "Playing on {{{player}}}"
+large_text_no_album_image = "{{{album_name}}} playing on {{{player}}}"
+
+[time]
+show = true
+as_elapsed = false
+
+[image]
+file_names = ["cover"]
+
+# [image.provider.imgbb]
+# api_key = "<YOUR API KEY>"
+
+[player.default]
+# app_id = "1125274206771359826"
+# icon = "https://raw.githubusercontent.com/phusitsom/mprisence/main/assets/icon.png"
+
+[player.cmus]
+# Thanks to https://github.com/cmus/cmus/issues/965 for the icon
+icon = "https://i.ibb.co/3zDHM1z/cmus.png"
+
+# [player.microsoft_edge]
+# ignore = false
