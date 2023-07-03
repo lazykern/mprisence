@@ -14,6 +14,8 @@ A Discord Rich Presence client for MPRIS-compatible media players with album/son
   cargo install --git https://github.com/phusitsom/mprisence.git
 ```
 
+To enable **cover art support**, [see below](#cover-art-support)
+
 ## Usage
 
 To start mprisence, simply run this command:
@@ -21,16 +23,6 @@ To start mprisence, simply run this command:
 ```bash
 mprisence
 ```
-
-## Cover art support
-
-In order to enable album cover support, user must set the [ImageBB API key](https://api.imgbb.com/) in the [configuration file (see section below)](#configuration) by providing the key as below
-
-```toml
-[image.provider.imgbb]
-api_key = "<YOUR API KEY>"
-```
-
 
 ## Configuration
 
@@ -51,3 +43,12 @@ The application **must be restarted** after the configuration file is updated
 
 - [Example config file](config/example.toml)
 - [Default config file](config/default.toml)
+
+## Cover art support
+
+In order to enable album cover support, user must set the [ImageBB API key](https://api.imgbb.com/) in the [configuration file (see section below)](#configuration) by providing the key as below
+
+```toml
+[image.provider.imgbb]
+api_key = "<YOUR API KEY>"
+```
