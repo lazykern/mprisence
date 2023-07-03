@@ -30,10 +30,7 @@ mprisence
 
 The rich presence can be configured to the user's preference by providing the configuration file at `~/.config/mprisence/config.toml` or `$XDG_CONFIG_HOME/mprisence/config.toml`.
 
-See [documentation](https://github.com/phusitsom/mprisence/wiki/Configuration/) for more advanced configuration.
-
-- [Example config file](config/example.toml)
-- [Default config file](config/default.toml)
+See [Example config file](config/example.toml) for more detail on configuration.
 
 To download example config file:
 
@@ -41,6 +38,9 @@ To download example config file:
 CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/mprisence/config.toml"
 [ ! -f "$CONFIG_PATH" ] && curl -o "$CONFIG_PATH" --create-dirs "https://raw.githubusercontent.com/phusitsom/mprisence/main/config/example.toml"
 ```
+
+See also: 
+- [Default config file](config/default.toml)
 
 ### Cover art support
 
