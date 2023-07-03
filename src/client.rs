@@ -82,7 +82,7 @@ impl Client {
 
     pub fn connect(&mut self) -> Result<(), Error> {
         if self.client.is_some() {
-            log::warn!("Client already connected");
+            log::info!("Client already connected");
             return Ok(());
         }
 
