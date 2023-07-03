@@ -222,16 +222,10 @@ impl Context {
 
         if let Some(tag) = &self.tag {
             if let Some(album_artist) = tag.get_string(&ItemKey::AlbumArtist) {
-                if btree_map.contains_key("album_artists") {
-                    btree_map.remove("album_artists");
-                }
                 btree_map.insert("album_artists".to_string(), album_artist.to_string());
             }
 
             if let Some(album_title) = tag.get_string(&ItemKey::AlbumTitle) {
-                if btree_map.contains_key("album_name") {
-                    btree_map.remove("album_name");
-                }
                 btree_map.insert("album_name".to_string(), album_title.to_string());
             }
 
@@ -324,23 +318,14 @@ impl Context {
             }
 
             if let Some(track_artist) = tag.get_string(&ItemKey::TrackArtist) {
-                if btree_map.contains_key("artists") {
-                    btree_map.remove("artists");
-                }
                 btree_map.insert("artists".to_string(), track_artist.to_string());
             }
 
             if let Some(track_number) = tag.get_string(&ItemKey::TrackNumber) {
-                if btree_map.contains_key("track_number") {
-                    btree_map.remove("track_number");
-                }
                 btree_map.insert("track_number".to_string(), track_number.to_string());
             }
 
             if let Some(track_title) = tag.get_string(&ItemKey::TrackTitle) {
-                if btree_map.contains_key("title") {
-                    btree_map.remove("title");
-                }
                 btree_map.insert("title".to_string(), track_title.to_string());
             }
 
