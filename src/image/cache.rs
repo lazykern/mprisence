@@ -29,7 +29,10 @@ impl Cache {
         if file_path.exists() {
             match fs::read_to_string(file_path) {
                 Ok(url) => Some(url),
-                Err(_) => None,
+                Err(e) => {
+                    log::error!("Failed to read cache file: {}", e);
+                    None
+                }
             }
         } else {
             None

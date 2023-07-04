@@ -10,10 +10,8 @@ A Discord Rich Presence client for MPRIS-compatible media players with album/son
 
 ## Installation
 
-### With [cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html)
-
 ```bash
-cargo install --git https://github.com/phusitsom/mprisence.git
+curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/install.sh | sh
 ```
 
 To enable **cover art support**, [see below](#cover-art-support).
@@ -35,8 +33,7 @@ See [Example config file](config/example.toml) for more detail on configuration.
 To download example config file:
 
 ```bash
-CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/mprisence/config.toml"
-[ ! -f "$CONFIG_PATH" ] && curl -o "$CONFIG_PATH" --create-dirs "https://raw.githubusercontent.com/phusitsom/mprisence/main/config/example.toml"
+curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/example-config.sh | sh
 ```
 
 See also:
@@ -58,4 +55,14 @@ The application **must be restarted** after the configuration file is updated
 
 ## Autostarting
 
-See [documentation](https://github.com/phusitsom/mprisence/wiki/Configuration) for autostarting.
+For most Linux distributions, you can use [systemd](https://wiki.archlinux.org/title/Systemd) to autostart mprisence.
+
+```bash
+systemctl --user enable --now mprisence.service
+```
+
+If the configuration file is updated, you must restart the service
+
+```bash
+systemctl --user restart mprisence.service
+```

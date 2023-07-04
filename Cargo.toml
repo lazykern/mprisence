@@ -1,7 +1,13 @@
 [package]
 name = "mprisence"
-version = "0.1.0"
+description = "A Discord Rich Presence client for MPRIS-compatible media players with support for album art."
+version = "0.1.0-beta.0"
 edition = "2021"
+authors = ["Phusit Somboonyingsuk"]
+readme = "README.md"
+homepage = "https://github.com/phusitsom/mprisence"
+repository = "https://github.com/phusitsom/mprisence"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

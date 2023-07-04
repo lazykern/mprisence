@@ -64,9 +64,7 @@ impl Mprisence {
         log::info!("Starting mprisence discord rich presence");
         loop {
             match self.update().await {
-                Ok(_) => {
-                    log::info!("Updated rich presence")
-                }
+                Ok(_) => {}
                 Err(error) => {
                     log::error!("Error updating rich presence: {:?}", error);
                 }
@@ -96,7 +94,7 @@ impl Mprisence {
     }
 
     fn clean_client_map(&mut self, players: &Vec<Player>) {
-        log::info!("Cleaning client map");
+        log::debug!("Cleaning client map");
 
         // Find the clients that have disconnected
         let client_to_remove = self

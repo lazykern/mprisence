@@ -88,20 +88,12 @@ impl Client {
 
         let mut client = match DiscordIpcClient::new(self.app_id()) {
             Ok(client) => client,
-            Err(_) => {
-                return Err(Error::DiscordError(
-                    "Failed to connect to Discord".to_string(),
-                ))
-            }
+            Err(e) => return Err(Error::DiscordError(e)),
         };
 
         match client.connect() {
             Ok(_) => {}
-            Err(_) => {
-                return Err(Error::DiscordError(
-                    "Failed to connect to Discord".to_string(),
-                ))
-            }
+            Err(e) => return Err(Error::DiscordError(e)),
         }
 
         self.client = Some(client);
@@ -117,11 +109,7 @@ impl Client {
                 Ok(_) => {
                     self.client = None;
                 }
-                Err(_) => {
-                    return Err(Error::DiscordError(
-                        "Failed to reconnect to Discord".to_string(),
-                    ))
-                }
+                Err(e) => return Err(Error::DiscordError(e)),
             },
             None => {}
         }
@@ -134,11 +122,7 @@ impl Client {
                 Ok(_) => {
                     self.client = None;
                 }
-                Err(_) => {
-                    return Err(Error::DiscordError(
-                        "Failed to close Discord connection".to_string(),
-                    ))
-                }
+                Err(e) => return Err(Error::DiscordError(e)),
             },
             None => {}
         }
@@ -156,10 +140,8 @@ impl Client {
         match &mut self.client {
             Some(client) => match client.set_activity(activity.to_discord_activity()) {
                 Ok(_) => {}
-                Err(_) => {
-                    return Err(Error::DiscordError(
-                        "Failed to update Discord activity".to_string(),
-                    ));
+                Err(e) => {
+                    return Err(Error::DiscordError(e));
                 }
             },
             None => {}
@@ -181,11 +163,7 @@ impl Client {
         match &mut self.client {
             Some(client) => match client.clear_activity() {
                 Ok(_) => {}
-                Err(_) => {
-                    return Err(Error::DiscordError(
-                        "Failed to clear Discord activity".to_string(),
-                    ))
-                }
+                Err(e) => return Err(Error::DiscordError(e)),
             },
             None => {}
         }

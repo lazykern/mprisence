@@ -55,10 +55,9 @@ impl Default for Config {
 
 impl Config {
     pub fn load() -> Self {
-        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let default_config_path = project_root.join("config").join("default.toml");
+        let default_config_str = include_str!("../../config/default.toml");
 
-        let fig = Figment::new().merge(Toml::file(default_config_path));
+        let fig = Figment::new().merge(Toml::string(default_config_str));
 
         let config: Self = if let Some(config_path) = get_config_path() {
             let fig_m = fig.clone().merge(Toml::file(config_path));
