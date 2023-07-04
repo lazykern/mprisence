@@ -145,6 +145,26 @@ impl Context {
         None
     }
 
+    pub fn is_streaming(&self) -> bool {
+        if let Some(metadata) = &self.metadata {
+            if let Some(url) = metadata.url() {
+                if let Ok(url) = Url::parse(url) {
+                    return url.scheme() == "http" || url.scheme() == "https";
+                }
+            }
+        }
+
+        false
+    }
+
+    pub fn identity(&self) -> String {
+        if let Some(player) = &self.player {
+            return player.identity().to_string();
+        }
+
+        "unknown".to_string()
+    }
+
     pub fn data(&self) -> BTreeMap<String, String> {
         let mut btree_map: BTreeMap<String, String> = BTreeMap::new();
 
