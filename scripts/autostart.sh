@@ -21,7 +21,7 @@ else
 		else
 			echo "mprisence symlink does not exist"
 			echo "Creating mprisence symlink"
-			if sudo ln -s "$HOME/.cargo/bin/mprisence" /usr/local/bin/mprisence; then
+			if sudo ln -s "$(which mprisence)" /usr/local/bin/mprisence; then
 				echo "mprisence symlink created"
 			else
 				echo "mprisence symlink could not be created"
