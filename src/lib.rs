@@ -10,12 +10,12 @@ pub mod player;
 
 use client::Client;
 use consts::{
-    DEFAULT_DETAIL_TEMPLATE, DEFAULT_LARGE_TEXT_NO_ALBUM_IMAGE_TEMPLATE,
+    DEFAULT_DETAIL_TEMPLATE, DEFAULT_LARGE_TEXT_NO_COVER_TEMPLATE,
     DEFAULT_LARGE_TEXT_TEMPLATE, DEFAULT_SMALL_TEXT_TEMPLATE, DEFAULT_STATE_TEMPLATE,
 };
 
 use image::provider::Provider;
-use image::ImageURLFinder;
+use image::CoverURLFinder;
 use lazy_static::lazy_static;
 use mpris::{PlaybackStatus, Player};
 use std::collections::BTreeMap;
@@ -31,7 +31,7 @@ lazy_static! {
 }
 
 pub struct Mprisence {
-    image_url_finder: ImageURLFinder,
+    cover_url_finder: CoverURLFinder,
     client_map: BTreeMap<String, Client>,
     handlebars: handlebars::Handlebars<'static>,
 }
@@ -54,7 +54,7 @@ impl Mprisence {
         };
 
         Mprisence {
-            image_url_finder: ImageURLFinder::new(provider),
+            cover_url_finder: CoverURLFinder::new(provider),
             client_map: BTreeMap::new(),
             handlebars: hbs::new_hbs(),
         }
@@ -229,22 +229,22 @@ impl Mprisence {
             log::warn!("State is empty, not setting activity state")
         }
 
-        let mut pic_url = match context.metadata() {
-            Some(metadata) => self.image_url_finder.from_metadata(metadata).await,
+        let mut cover_url = match context.metadata() {
+            Some(metadata) => self.cover_url_finder.from_metadata(metadata).await,
             None => {
                 log::info!("No audio metadata found, could not get album image from metadata");
                 None
             }
         };
 
-        if pic_url.is_none() {
+        if cover_url.is_none() {
             if identity == "cmus" {
                 let audio_path = player::cmus::get_audio_path();
 
                 match audio_path {
                     Some(audio_path) => {
                         log::info!("CMUS: Found audio path: {}", audio_path);
-                        pic_url = self.image_url_finder.from_audio_path(audio_path).await;
+                        cover_url = self.cover_url_finder.from_audio_path(audio_path).await;
                     }
                     None => {
                         log::warn!("CMUS: No audio path, not setting album image");
@@ -258,11 +258,10 @@ impl Mprisence {
         let large_text: String;
         let small_text: String;
 
-        // If we have a pic_url, then we have a song with an album image
-        if pic_url.is_some() {
+        if cover_url.is_some() {
             log::info!("Album image found, setting album art");
 
-            large_image = pic_url.unwrap_or_default();
+            large_image = cover_url.unwrap_or_default();
             log::debug!("Large image: {}", large_image);
             if !large_image.is_empty() {
                 activity.set_large_image(&large_image);
@@ -323,13 +322,13 @@ impl Mprisence {
 
                 large_text = match self
                     .handlebars
-                    .render_template(&CONFIG.template.large_text_no_album_image, &data)
+                    .render_template(&CONFIG.template.large_text_no_cover, &data)
                 {
                     Ok(large_text) => large_text,
                     Err(_) => {
                         log::warn!("Error rendering large text template, using default");
                         self.handlebars
-                            .render_template(&DEFAULT_LARGE_TEXT_NO_ALBUM_IMAGE_TEMPLATE, &data)
+                            .render_template(&DEFAULT_LARGE_TEXT_NO_COVER_TEMPLATE, &data)
                             .unwrap()
                     }
                 };

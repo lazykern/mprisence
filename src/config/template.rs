@@ -11,8 +11,8 @@ pub struct TemplateConfig {
     pub large_text: String,
     #[serde(default = "default_small_text_template")]
     pub small_text: String,
-    #[serde(default = "default_large_text_no_album_image_template")]
-    pub large_text_no_album_image: String,
+    #[serde(default = "default_large_text_no_cover_template")]
+    pub large_text_no_cover: String,
 }
 
 impl Default for TemplateConfig {
@@ -22,7 +22,7 @@ impl Default for TemplateConfig {
             state: default_state_template(),
             large_text: default_large_text_template(),
             small_text: default_small_text_template(),
-            large_text_no_album_image: default_large_text_no_album_image_template(),
+            large_text_no_cover: default_large_text_no_cover_template(),
         }
     }
 }

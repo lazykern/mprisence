@@ -9,7 +9,7 @@ pub const DEFAULT_STATE_TEMPLATE: &str = "{{{status_icon}}} {{{artists}}} ";
 pub const DEFAULT_LARGE_TEXT_TEMPLATE: &str =
     "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}";
 pub const DEFAULT_SMALL_TEXT_TEMPLATE: &str = "Playing on {{player}}";
-pub const DEFAULT_LARGE_TEXT_NO_ALBUM_IMAGE_TEMPLATE: &str =
+pub const DEFAULT_LARGE_TEXT_NO_COVER_TEMPLATE: &str =
     "{{#if album_name includeZero=true}}{{{album_name}}} | {{/if}}Playing on {{player}}";
 
 pub const DEFAULT_IMAGE_FILE_NAMES: [&str; 5] = ["cover", "folder", "front", "album", "art"];
