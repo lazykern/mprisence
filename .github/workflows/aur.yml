@@ -3,6 +3,8 @@ name: AUR
 on:
   push:
     branches: ["main"]
+    paths: 
+      - "PKGBUILD"
 
 env:
   CARGO_TERM_COLOR: always
