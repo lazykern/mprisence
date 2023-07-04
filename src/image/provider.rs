@@ -16,7 +16,7 @@ impl Provider {
     where
         T: AsRef<[u8]>,
     {
-        let art_url: String;
+        let cover_url: String;
 
         match self {
             Provider::ImgBB(provider) => {
@@ -39,7 +39,7 @@ impl Provider {
                     }
                 };
 
-                art_url = match thumb.url {
+                cover_url = match thumb.url {
                     Some(url) => url,
                     None => {
                         return Err(Error::ProviderError(
@@ -50,14 +50,14 @@ impl Provider {
             }
         }
 
-        Ok(art_url)
+        Ok(cover_url)
     }
 
     pub async fn upload_file<T>(&self, path: T) -> Result<String, Error>
     where
         T: AsRef<std::path::Path>,
     {
-        let art_url: String;
+        let cover_url: String;
 
         match self {
             Provider::ImgBB(provider) => {
@@ -80,7 +80,7 @@ impl Provider {
                     }
                 };
 
-                art_url = match thumb.url {
+                cover_url = match thumb.url {
                     Some(url) => url,
                     None => {
                         return Err(Error::ProviderError(
@@ -91,14 +91,14 @@ impl Provider {
             }
         }
 
-        Ok(art_url)
+        Ok(cover_url)
     }
 
     pub async fn upload_base64<T>(&self, base64: T) -> Result<String, Error>
     where
         T: AsRef<str>,
     {
-        let art_url: String;
+        let cover_url: String;
 
         match self {
             Provider::ImgBB(provider) => {
@@ -121,7 +121,7 @@ impl Provider {
                     }
                 };
 
-                art_url = match thumb.url {
+                cover_url = match thumb.url {
                     Some(url) => url,
                     None => {
                         return Err(Error::ProviderError(
@@ -132,6 +132,6 @@ impl Provider {
             }
         }
 
-        Ok(art_url)
+        Ok(cover_url)
     }
 }

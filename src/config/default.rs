@@ -32,8 +32,8 @@ pub fn default_small_text_template() -> String {
     DEFAULT_SMALL_TEXT_TEMPLATE.to_string()
 }
 
-pub fn default_large_text_no_album_image_template() -> String {
-    DEFAULT_LARGE_TEXT_NO_ALBUM_IMAGE_TEMPLATE.to_string()
+pub fn default_large_text_no_cover_template() -> String {
+    DEFAULT_LARGE_TEXT_NO_COVER_TEMPLATE.to_string()
 }
 
 pub fn default_i8max() -> i8 {
