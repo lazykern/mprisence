@@ -117,7 +117,7 @@ cargo install --git https://github.com/phusitsom/mprisence --branch main
 echo "Do you want to set up a systemd service (autostart) for mprisence? (Y/n)"
 read -r install_service
 if [ "$install_service" != "n" ]; then
-	sh <(curl "https://github.com/phusitsom/mprisence/scritps/autostart.sh")
+	bash <(curl "https://github.com/phusitsom/mprisence/scripts/autostart.sh")
 fi
 
 echo "mprisence has been installed"

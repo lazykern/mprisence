@@ -11,7 +11,7 @@ A Discord Rich Presence client for MPRIS-compatible media players with album/son
 ## Installation
 
 ```bash
-sh <(curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/install.sh)
+bash <(curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/install.sh)
 ```
 
 To enable **cover art support**, [see below](#cover-art-support).
@@ -33,7 +33,7 @@ See [Example config file](config/example.toml) for more detail on configuration.
 To download example config file:
 
 ```bash
-sh <(curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/example-config.sh)
+bash <(curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/example-config.sh)
 ```
 
 See also:
