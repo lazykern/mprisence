@@ -123,7 +123,7 @@ fi
 echo "Do you want to set up a systemd service (autostart) for mprisence? (Y/n)"
 read -r install_service
 if [ "$install_service" != "n" ]; then
-	bash <(curl "https://github.com/phusitsom/mprisence/scripts/autostart.sh")
+	bash <(curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/autostart.sh)
 fi
 
 echo "mprisence has been installed"
