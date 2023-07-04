@@ -1,10 +1,10 @@
 # mprisence
 
-|           | Playing                                 | Paused                                                          |
-| --------- | --------------------------------------- | --------------------------------------------------------------- |
-| No icon   | ![](assets/readme/playing-noicon.png)   | ![Paused on lollypop + icon](assets/readme/paused-noicon.png)   |
-| Show icon | ![](assets/readme/playing-showicon.png) | ![Paused on lollypop + icon](assets/readme/paused-showicon.png) |
-| No cover  | ![](assets/readme/playing-nocover.png)  | ![Paused on lollypop + icon](assets/readme/paused-nocover.png)  |
+|           | Playing                                                   | Paused                                                  |
+| --------- | --------------------------------------------------------- | ------------------------------------------------------- |
+| No icon   | ![Playing, No icon](assets/readme/playing-noicon.png)     | ![Paused, No icon](assets/readme/paused-noicon.png)     |
+| Show icon | ![Playing, Show icon](assets/readme/playing-showicon.png) | ![Paused, Show icon](assets/readme/paused-showicon.png) |
+| No cover  | ![Playing, No cover](assets/readme/playing-nocover.png)   | ![Paused, No cover](assets/readme/paused-nocover.png)   |
 
 A Discord Rich Presence client for MPRIS-compatible media players with album/song cover art support
 
@@ -39,7 +39,8 @@ CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/mprisence/config.toml"
 [ ! -f "$CONFIG_PATH" ] && curl -o "$CONFIG_PATH" --create-dirs "https://raw.githubusercontent.com/phusitsom/mprisence/main/config/example.toml"
 ```
 
-See also: 
+See also:
+
 - [Default config file](config/default.toml)
 
 ### Cover art support
