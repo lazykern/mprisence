@@ -75,7 +75,7 @@ impl Context {
     {
         let tagged_file = match lofty::read_from_path(path) {
             Ok(properties) => properties,
-            Err(_) => return Err(Error::ContextError("Could not read file".to_string())),
+            Err(e) => return Err(Error::LoftyError(e)),
         };
 
         let tag = match tagged_file.primary_tag() {

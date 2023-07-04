@@ -2,8 +2,7 @@
 pub enum Error {
     UpdateError(String),
     ProviderError(String),
-    ContextError(String),
-    DiscordError(String),
+    DiscordError(Box<dyn std::error::Error>),
     RenderError(handlebars::RenderError),
     TemplateError(handlebars::TemplateError),
     LoftyError(lofty::LoftyError),
