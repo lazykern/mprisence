@@ -57,7 +57,16 @@ The application **must be restarted** after the configuration file is updated
 
 For most Linux distributions, you can use [systemd](https://wiki.archlinux.org/title/Systemd) to autostart mprisence.
 
+Use my script
+
 ```bash
+bash <(curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/autostart.sh)
+```
+
+Manuallly
+
+```bash
+sudo ln -s $(which mprisence) /usr/local/bin/mprisence
 systemctl --user enable --now mprisence.service
 ```
 
