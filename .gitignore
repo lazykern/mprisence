@@ -18,3 +18,10 @@ Cargo.lock
 
 # temp folder
 /temp
+
+# Package build
+pkg/
+.SRCINFO
+*.pkg.tar.xz
+*.pkg.tar.zst
+*.tar.gz
