@@ -10,11 +10,29 @@ A Discord Rich Presence client for MPRIS-compatible media players with album/son
 
 ## Installation
 
+### Arch
+
+You can install mprisence from [AUR](https://aur.archlinux.org/packages/mprisence/)
+
+```bash
+yay -S mprisence # or any other AUR helpers
+```
+
+### Other
+
+You can install mprisence from source by
+
+Using my script
+
 ```bash
 bash <(curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/install.sh)
 ```
 
-To enable **cover art support**, [see below](#cover-art-support).
+Manually (See [autostarting](#autostarting))
+
+```bash
+cargo install --git "https://github.com/phusitsom/mprisence.git"
+```
 
 ## Usage
 
@@ -23,6 +41,8 @@ To start mprisence, simply run this command:
 ```bash
 mprisence
 ```
+
+To enable **cover art support**, [see below](#cover-art-support).
 
 ## Configuration
 
@@ -57,13 +77,13 @@ The application **must be restarted** after the configuration file is updated
 
 For most Linux distributions, you can use [systemd](https://wiki.archlinux.org/title/Systemd) to autostart mprisence.
 
-Use my script
+Using my script
 
 ```bash
 bash <(curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/autostart.sh)
 ```
 
-Manuallly
+Manually
 
 ```bash
 sudo ln -s $(which mprisence) /usr/local/bin/mprisence
