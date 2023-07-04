@@ -35,7 +35,10 @@ impl ImageURLFinder {
                         }
                         "file" => match parsed_url.to_file_path() {
                             Ok(file_path) => Some(file_path),
-                            Err(_) => None,
+                            Err(e) => {
+                                log::error!("Failed to parse URL: {:?}", e);
+                                None
+                            }
                         },
                         _ => None,
                     }
@@ -49,7 +52,8 @@ impl ImageURLFinder {
         let parsed_url = match metadata.url() {
             Some(url) => match Url::parse(url) {
                 Ok(url) => url,
-                Err(_) => {
+                Err(e) => {
+                    log::error!("Failed to parse URL: {}", e);
                     return None;
                 }
             },
@@ -62,7 +66,10 @@ impl ImageURLFinder {
 
         let file_path = match parsed_url.to_file_path() {
             Ok(file_path) => file_path,
-            Err(_) => return None,
+            Err(e) => {
+                log::error!("Failed to parse URL: {:?}", e);
+                return None;
+            }
         };
 
         if let Some(art_url) = self.from_audio_path(file_path).await {
@@ -93,7 +100,10 @@ impl ImageURLFinder {
     {
         let bytes = match std::fs::read(path) {
             Ok(bytes) => bytes,
-            Err(_) => return None,
+            Err(e) => {
+                log::error!("Failed to read image file: {}", e);
+                return None;
+            }
         };
 
         self.from_bytes(bytes).await
@@ -149,7 +159,8 @@ where
 {
     let parsed_file = match lofty::read_from_path(path) {
         Ok(parsed_file) => parsed_file,
-        Err(_) => {
+        Err(e) => {
+            log::error!("Failed to parse file: {}", e);
             return None;
         }
     };
