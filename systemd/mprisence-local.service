@@ -3,7 +3,7 @@ Description=A Discord Rich Presence client for MPRIS-compatible media players wi
 
 [Service]
 type=simple
-ExecStart=/usr/bin/mprisence
+ExecStart=/usr/local/bin/mprisence
 Restart=on-failure
 RestartSec=3
 
