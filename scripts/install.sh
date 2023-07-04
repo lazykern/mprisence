@@ -118,12 +118,20 @@ if [ -f "$HOME/.config/systemd/user/mprisence.service" ]; then
 	echo "mprisence.service exists"
 	echo "Restarting mprisence.service"
 	systemctl --user restart mprisence.service
-fi
-
-echo "Do you want to set up a systemd service (autostart) for mprisence? (Y/n)"
-read -r install_service
-if [ "$install_service" != "n" ]; then
-	bash <(curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/autostart.sh)
+else
+	echo "Do you want to set up a systemd service (autostart) for mprisence? (Y/n)"
+	read -r setup_service
+	if [ "$setup_service" != "n" ]; then
+		bash <(curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/autostart.sh)
+	fi
 fi
 
 echo "mprisence has been installed"
+
+if [ ! -f "$HOME/.config/mprisence/config.toml" ]; then
+	echo "Do you want to set up a config file for mprisence? (Y/n)"
+	read -r setup_config
+	if [ "$setup_config" != "n" ]; then
+		bash <(curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/example-config.sh)
+	fi
+fi

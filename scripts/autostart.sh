@@ -19,12 +19,14 @@ if [ -f "$HOME/.config/systemd/user/mprisence.service" ]; then
 		else
 			echo "mprisence symlink could not be created"
 			echo "Please create the symlink manually"
+			echo "sudo ln -s $(which mprisence) /usr/local/bin/mprisence"
 			exit
 		fi
 	fi
 
 	mkdir -p "$HOME/.config/systemd/user"
 	curl https://raw.githubusercontent.com/phusitsom/mprisence/main/systemd/mprisence-local.service >"$HOME/.config/systemd/user/mprisence.service"
+
 	systemctl --user daemon-reload
 	systemctl --user enable mprisence.service
 	systemctl --user start mprisence.service

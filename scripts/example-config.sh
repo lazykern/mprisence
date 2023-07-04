@@ -6,6 +6,8 @@ CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/mprisence/config.toml"
 create_config() {
 	curl "$CONFIG_URL" >"$CONFIG_PATH"
 	echo "mprisence config created at $CONFIG_PATH"
+	echo "Make sure to set the ImgBB API key in the config file"
+	echo "You can get an API key at https://api.imgbb.com/"
 }
 
 if [ -f "$CONFIG_PATH" ]; then
