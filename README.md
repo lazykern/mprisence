@@ -22,13 +22,13 @@ yay -S mprisence # or any other AUR helpers
 
 You can install mprisence from source by
 
-Using my script
+#### Using my script
 
 ```bash
 curl -s https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/install.sh | bash -s
 ```
 
-Manually (See [autostarting](#autostarting))
+#### Manually (See [autostarting](#autostarting))
 
 ```bash
 cargo install --git "https://github.com/phusitsom/mprisence.git"
@@ -42,7 +42,9 @@ To start mprisence, simply run this command:
 mprisence
 ```
 
-To enable **cover art support**, [see below](#cover-art-support).
+See also:
+- [Enable **cover art support**](#cover-art-support).
+- [Autostarting](#autostarting).
 
 ## Configuration
 
@@ -77,13 +79,21 @@ The application **must be restarted** after the configuration file is updated
 
 For most Linux distributions, you can use [systemd](https://wiki.archlinux.org/title/Systemd) to autostart mprisence.
 
-Using my script
+### Installed from AUR
+
+```
+systemctl --user enable --now mprisence.service
+```
+
+### Installed from source
+
+#### Using my script
 
 ```bash
 curl -s https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/autostart.sh | bash -s
 ```
 
-Manually
+#### Manually
 
 ```bash
 sudo ln -s $(which mprisence) /usr/local/bin/mprisence
