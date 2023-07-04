@@ -71,7 +71,7 @@ detail = "{{{title}}}"
 state = '{{{status_icon}}} {{{artists}}}'
 large_text = "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}"
 small_text = "Playing on {{{player}}}"
-large_text_no_album_image = "{{{album_name}}} playing on {{{player}}}"
+large_text_no_cover = "{{{album_name}}} playing on {{{player}}}"
 
 [time]
 ## Show time in activity (remaining)

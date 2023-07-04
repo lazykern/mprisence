@@ -12,14 +12,14 @@ use self::{cache::Cache, provider::Provider};
 pub mod cache;
 pub mod provider;
 
-pub struct ImageURLFinder {
+pub struct CoverURLFinder {
     cache: Cache,
     provider: Option<Provider>,
 }
 
-impl ImageURLFinder {
+impl CoverURLFinder {
     pub fn new(provider: Option<Provider>) -> Self {
-        ImageURLFinder {
+        CoverURLFinder {
             cache: Cache::new(),
             provider,
         }
@@ -72,8 +72,8 @@ impl ImageURLFinder {
             }
         };
 
-        if let Some(art_url) = self.from_audio_path(file_path).await {
-            Some(art_url)
+        if let Some(cover_url) = self.from_audio_path(file_path).await {
+            Some(cover_url)
         } else {
             match meta_art_path {
                 Some(meta_art_path) => self.from_image_path(meta_art_path).await,
