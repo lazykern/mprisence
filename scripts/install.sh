@@ -114,6 +114,12 @@ echo "Installing mprisence..."
 
 cargo install --git https://github.com/phusitsom/mprisence --branch main
 
+if [ -f "$HOME/.config/systemd/user/mprisence.service" ]; then
+	echo "mprisence.service exists"
+	echo "Restarting mprisence.service"
+	systemctl --user restart mprisence.service
+fi
+
 echo "Do you want to set up a systemd service (autostart) for mprisence? (Y/n)"
 read -r install_service
 if [ "$install_service" != "n" ]; then

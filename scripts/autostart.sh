@@ -7,8 +7,6 @@
 # 		and placing it in $HOME/.config/systemd/user/mprisence.service
 if [ -f "$HOME/.config/systemd/user/mprisence.service" ]; then
 	echo "mprisence.service exists"
-	echo "Restarting mprisence.service"
-	systemctl --user restart mprisence.service
 else
 	echo "mprisence.service does not exist"
 	echo "Create and start mprisence.service? (Y/n)"
