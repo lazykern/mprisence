@@ -10,25 +10,20 @@ pub mod player;
 
 use client::Client;
 use consts::{
-    DEFAULT_DETAIL_TEMPLATE, DEFAULT_LARGE_TEXT_NO_COVER_TEMPLATE,
-    DEFAULT_LARGE_TEXT_TEMPLATE, DEFAULT_SMALL_TEXT_TEMPLATE, DEFAULT_STATE_TEMPLATE,
+    DEFAULT_DETAIL_TEMPLATE, DEFAULT_LARGE_TEXT_NO_COVER_TEMPLATE, DEFAULT_LARGE_TEXT_TEMPLATE,
+    DEFAULT_SMALL_TEXT_TEMPLATE, DEFAULT_STATE_TEMPLATE,
 };
 
 use image::provider::Provider;
 use image::CoverURLFinder;
-use lazy_static::lazy_static;
 use mpris::{PlaybackStatus, Player};
 use std::collections::BTreeMap;
 use std::time::Duration;
 
 use crate::activity::Activity;
-use crate::config::Config;
+use crate::config::CONFIG;
 use crate::context::Context;
 use crate::error::Error;
-
-lazy_static! {
-    pub static ref CONFIG: Config = Config::load();
-}
 
 pub struct Mprisence {
     cover_url_finder: CoverURLFinder,

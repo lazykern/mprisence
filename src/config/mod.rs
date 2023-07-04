@@ -18,6 +18,10 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+lazy_static::lazy_static! {
+    pub static ref CONFIG: Config = Config::load();
+}
+
 #[derive(Deserialize, Debug)]
 pub struct Config {
     #[serde(default = "default_false")]
