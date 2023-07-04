@@ -1,10 +1,17 @@
 #!/bin/bash
+
+if ! command -v mprisence >/dev/null; then
+	echo "mprisence is not installed"
+	echo "exiting..."
+	exit
+fi
+
 if [ -f "/usr/local/bin/mprisence" ]; then
 	echo "mprisence symlink exists"
 else
 	echo "mprisence symlink does not exist"
 	echo "Creating mprisence symlink"
-	if sudo ln -s "$(which mprisence)" /usr/local/bin/mprisence; then
+	if sudo ln -s "$(which mprisence)" "/usr/local/bin/mprisence"; then
 		echo "mprisence symlink created"
 	else
 		echo "mprisence symlink could not be created"

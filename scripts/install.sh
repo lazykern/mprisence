@@ -122,7 +122,7 @@ else
 	echo "Do you want to set up a systemd service (autostart) for mprisence? (Y/n)"
 	read -r setup_service
 	if [ "$setup_service" != "n" ]; then
-		bash <(curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/autostart.sh)
+		curl -s https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/autostart.sh | bash -s
 	fi
 fi
 
@@ -132,6 +132,6 @@ if [ ! -f "$HOME/.config/mprisence/config.toml" ]; then
 	echo "Do you want to set up a config file for mprisence? (Y/n)"
 	read -r setup_config
 	if [ "$setup_config" != "n" ]; then
-		bash <(curl https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/example-config.sh)
+		curl -s https://raw.githubusercontent.com/phusitsom/mprisence/main/scripts/example-config.sh | bash -s
 	fi
 fi
