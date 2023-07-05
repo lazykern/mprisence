@@ -71,7 +71,8 @@ impl Mprisence {
     async fn update_by_context(&mut self, context: &Context) -> Result<(), Error> {
         let identity = context.identity();
         let unique_name = context.unique_name();
-        let player_config = PlayerConfig::get_or_default(&identity);
+        let config_identity = context.config_identity();
+        let player_config = PlayerConfig::get_or_default(&config_identity);
 
         if context.is_ignored() {
             log::info!("Ignoring player {:?}", identity);

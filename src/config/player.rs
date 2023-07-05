@@ -64,14 +64,17 @@ impl PlayerConfig {
     }
 
     pub fn allow_streaming_or_default(&self) -> bool {
-        match &self.allow_streaming {
-            Some(allow_streaming) => *allow_streaming,
+        match self.allow_streaming {
+            Some(allow_streaming) => allow_streaming,
             None => DEFAULT_PLAYER_CONFIG.allow_streaming.unwrap(),
         }
     }
 
     pub fn get_or_default(identity: &str) -> &PlayerConfig {
-        match CONFIG.player.get(identity) {
+        match CONFIG
+            .player
+            .get(identity.to_lowercase().replace(" ", "_").as_str())
+        {
             Some(config) => config,
             None => &DEFAULT_PLAYER_CONFIG,
         }
