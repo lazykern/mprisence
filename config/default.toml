@@ -71,6 +71,12 @@ allow_streaming = true
 [player.clementine]
 app_id = "1125075725473562735"
 icon = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRYiUYLmMQwsDaNqu6eg5I4aB1vyy_uptN34eouN7XxA5eFZTAV8RISZHCsn_M6-iQc-Pw&usqp=CAU"
+allow_streaming = true
+
+[player.strawberry]
+app_id = "1126197744512536647"
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Strawberry-icon-1000px.png/800px-Strawberry-icon-1000px.png"
+allow_streaming = true
 
 
 [player.amberol]
