@@ -25,6 +25,8 @@ pub struct PlayerConfig {
     pub icon: Option<String>,
     #[serde(default = "default_false")]
     pub ignore: bool,
+    show_icon: Option<bool>,
+    allow_streaming: Option<bool>,
 }
 
 impl Default for PlayerConfig {
@@ -33,6 +35,8 @@ impl Default for PlayerConfig {
             app_id: Some(default_app_id()),
             icon: Some(default_icon()),
             ignore: default_false(),
+            show_icon: Some(default_false()),
+            allow_streaming: Some(default_false()),
         }
     }
 }
@@ -52,8 +56,25 @@ impl PlayerConfig {
         }
     }
 
-    pub fn get_or_default(identity: &str) -> &Self {
-        match CONFIG.player.get(identity) {
+    pub fn show_icon_or_default(&self) -> bool {
+        match &self.show_icon {
+            Some(show_icon) => *show_icon,
+            None => DEFAULT_PLAYER_CONFIG.show_icon.unwrap(),
+        }
+    }
+
+    pub fn allow_streaming_or_default(&self) -> bool {
+        match self.allow_streaming {
+            Some(allow_streaming) => allow_streaming,
+            None => DEFAULT_PLAYER_CONFIG.allow_streaming.unwrap(),
+        }
+    }
+
+    pub fn get_or_default(identity: &str) -> &PlayerConfig {
+        match CONFIG
+            .player
+            .get(identity.to_lowercase().replace(" ", "_").as_str())
+        {
             Some(config) => config,
             None => &DEFAULT_PLAYER_CONFIG,
         }

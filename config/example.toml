@@ -1,12 +1,3 @@
-## Show the player icon as small image
-show_icon = false
-
-## Allow default player icon to be shown as small image
-show_default_player_icon = false
-
-## Allow streaming media to be shown
-# allow_streaming = true
-
 ## Clear activity when player is paused
 clear_on_pause = false
 
@@ -79,33 +70,29 @@ show = true
 ## Show time as elapsed
 as_elapsed = false
 
-[image]
+# [image]
 ## Album cover image file names (no extension) to look for 
-file_names = ["cover"]
-
-[image.provider]
-## Image provider (currently only supported for imgbb)
-provider = "imgbb"
+# file_names = ["cover", "folder", "front", "album", "art"]
 
 [image.provider.imgbb]
 ## Api key for imgbb, get the key from https://api.imgbb.com/
 api_key = "<YOUR API KEY>"
 
 [player.default]
-## You can change the discord app id and icon for default player 
-## (fall back config for those player which is not configured)
-# app_id = "1121632048155742288"
-# icon = "https://raw.githubusercontent.com/phusitsom/mprisence/main/assets/icon.png"
+## Discord application id
+# app_id = "1125274206771359826"
+## Show the player icon as small image by default
+show_icon = false
+## Allow streaming media to be shown
+allow_streaming = false
+
 
 [player.cmus]
 ## Thanks to https://github.com/cmus/cmus/issues/965 for the icon
 icon = "https://i.ibb.co/3zDHM1z/cmus.png"
+show_icon = false
 
 # [player.microsoft_edge]
-## Show a player (Microsoft Edge is ignored by default)
-## Also, allow_streaming must be set true to show rich presence for browsers
 # ignore = false
-
-# [player.brave]
-## Ignore a player
-# ignore = true
+# allow_streaming = true
+# show_icon = true
