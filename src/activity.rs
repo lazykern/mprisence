@@ -36,12 +36,16 @@ impl Activity {
     {
         let mut details = details.into();
 
+        log::debug!("Got details {:?}", details);
+
         if details.is_empty() {
+            log::warn!("Details is empty, setting to None");
             self.details = None;
             return;
         }
 
         if details.len() == 1 {
+            log::debug!("Details is only one character, adding null byte");
             details += "\0";
         }
 
@@ -50,6 +54,8 @@ impl Activity {
             details.truncate(128);
         }
 
+        log::debug!("Setting details to {:?}", details);
+
         self.details = Some(details);
     }
 
@@ -57,16 +63,27 @@ impl Activity {
     where
         S: Into<String>,
     {
-        let mut state = state.into() + "\0";
+        let mut state = state.into();
+
+        log::debug!("Got state {:?}", state);
+
         if state.is_empty() {
+            log::warn!("State is empty, setting to None");
             self.state = None;
             return;
+        }
+
+        if state.len() == 1 {
+            log::debug!("State is only one character, adding null byte");
+            state += "\0";
         }
 
         if state.len() > 128 {
             log::warn!("State is too long, truncating to 128 characters");
             state.truncate(128);
         }
+
+        log::debug!("Setting state to {:?}", state);
 
         self.state = Some(state);
     }
@@ -76,9 +93,16 @@ impl Activity {
         S: Into<String>,
     {
         let large_image = large_image.into();
+
+        log::debug!("Got large image {:?}", large_image);
+
         if large_image.is_empty() {
+            log::warn!("Large image is empty, setting to None");
+
             self.large_image = None;
         } else {
+            log::debug!("Setting large image to {:?}", large_image);
+
             self.large_image = Some(large_image);
         }
     }
@@ -89,12 +113,16 @@ impl Activity {
     {
         let mut large_text = large_text.into();
 
+        log::debug!("Got large text {:?}", large_text);
+
         if large_text.is_empty() {
+            log::warn!("Large text is empty, setting to None");
             self.large_text = None;
             return;
         }
 
         if large_text.len() == 1 {
+            log::debug!("Large text is only one character, adding null byte");
             large_text += "\0";
         }
 
@@ -111,9 +139,12 @@ impl Activity {
         S: Into<String>,
     {
         let small_image = small_image.into();
+        log::debug!("Got small image {:?}", small_image);
         if small_image.is_empty() {
+            log::warn!("Small image is empty, setting to None");
             self.small_image = None;
         } else {
+            log::debug!("Setting small image to {:?}", small_image);
             self.small_image = Some(small_image);
         }
     }
@@ -123,13 +154,16 @@ impl Activity {
         S: Into<String>,
     {
         let mut small_text = small_text.into();
+        log::debug!("Got small text {:?}", small_text);
 
         if small_text.is_empty() {
+            log::warn!("Small text is empty, setting to None");
             self.small_text = None;
             return;
         }
 
         if small_text.len() == 1 {
+            log::debug!("Small text is only one character, adding null byte");
             small_text += "\0";
         }
 
@@ -138,19 +172,23 @@ impl Activity {
             small_text.truncate(128);
         }
 
+        log::debug!("Setting small text to {:?}", small_text);
         self.small_text = Some(small_text);
     }
 
     pub fn set_start_time(&mut self, start_time: Duration) {
+        log::debug!("Setting start time to {:?}", start_time);
         self.start_time = Some(start_time);
     }
 
     pub fn set_end_time(&mut self, end_time: Duration) {
+        log::debug!("Setting end time to {:?}", end_time);
         self.end_time = Some(end_time);
     }
 
     pub fn set_timestamps_from_context(&mut self, context: &Context) {
         // Get the current time.
+        log::debug!("Getting current time");
         let now = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(t) => t,
             Err(e) => {
@@ -188,6 +226,7 @@ impl Activity {
         if CONFIG.time.as_elapsed {
             // Set the start timestamp.
             self.set_start_time(start_dur);
+            return;
         }
 
         // Get the current track's metadata.

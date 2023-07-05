@@ -2,15 +2,14 @@ use std::fmt::Debug;
 
 use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
 
+use crate::context::Context;
 use crate::Activity;
-use crate::{config::PlayerConfig, error::Error, CONFIG};
+use crate::{config::PlayerConfig, error::Error};
 
 pub struct Client {
-    pub has_icon: bool,
     identity: String,
     unique_name: String,
     app_id: String,
-    icon: String,
     client: Option<DiscordIpcClient>,
     activity: Option<Activity>,
 }
@@ -22,46 +21,24 @@ impl Client {
     {
         let identity = identity.into();
         let unique_name = unique_name.into();
-
-        let fallback_player_config = PlayerConfig::default();
-        let mut app_id = fallback_player_config.app_id.as_ref().unwrap();
-        let mut icon = fallback_player_config.icon.as_ref().unwrap();
-        let mut has_icon = false;
-
-        match CONFIG.player.get("default") {
-            Some(player_config) => {
-                app_id = player_config.app_id.as_ref().unwrap_or(app_id);
-                icon = player_config.icon.as_ref().unwrap_or(icon);
-            }
-            None => {}
-        }
-
-        match CONFIG
-            .player
-            .get(&identity.to_lowercase().replace(" ", "_"))
-        {
-            Some(player_config) => {
-                app_id = player_config.app_id.as_ref().unwrap_or(app_id);
-                if let Some(i) = player_config.icon.as_ref() {
-                    icon = i;
-                    has_icon = true;
-                }
-            }
-            None => {}
-        };
-
-        let app_id = app_id.to_string();
-        let icon = icon.to_string();
+        let app_id = PlayerConfig::get_or_default(&identity)
+            .app_id_or_default()
+            .to_string();
 
         Client {
             identity,
             unique_name,
             app_id,
-            icon,
-            has_icon,
             client: None,
             activity: None,
         }
+    }
+
+    pub fn from_context(context: &Context) -> Self {
+        let identity = context.identity();
+        let unique_name = context.unique_name();
+
+        Self::new(identity, unique_name)
     }
 
     pub fn identity(&self) -> &str {
@@ -76,8 +53,8 @@ impl Client {
         &self.app_id
     }
 
-    pub fn icon(&self) -> &str {
-        &self.icon
+    pub fn is_connected(&self) -> bool {
+        self.client.is_some()
     }
 
     pub fn connect(&mut self) -> Result<(), Error> {
@@ -130,6 +107,11 @@ impl Client {
     }
 
     pub fn set_activity(&mut self, activity: &Activity) -> Result<(), Error> {
+        if self.client.is_none() {
+            log::warn!("Client is not connected, skipping update");
+            return Ok(());
+        }
+
         if activity == &self.activity.clone().unwrap_or_default() {
             log::debug!("Activity is the same, skipping update");
             return Ok(());
@@ -181,8 +163,6 @@ impl Debug for Client {
             .field("identity", &self.identity)
             .field("unique_name", &self.unique_name)
             .field("app_id", &self.app_id)
-            .field("icon", &self.icon)
-            .field("has_icon", &self.has_icon)
             .field("client_is_some", &self.client.is_some());
 
         s.finish()
