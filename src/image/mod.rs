@@ -76,26 +76,29 @@ impl CoverURLFinder {
             None => return None,
         };
 
-        if parsed_url.scheme() == "http" || parsed_url.scheme() == "https" {
-            return None;
+        let mut cover_url = None;
+
+        if parsed_url.scheme() == "file" {
+            let file_path = match parsed_url.to_file_path() {
+                Ok(file_path) => file_path,
+                Err(_) => {
+                    log::error!("Failed to get file path from URL",);
+                    return None;
+                }
+            };
+            cover_url = self.from_audio_path(file_path).await;
         }
 
-        let file_path = match parsed_url.to_file_path() {
-            Ok(file_path) => file_path,
-            Err(e) => {
-                log::error!("Failed to parse URL: {:?}", e);
-                return None;
-            }
-        };
-
-        if let Some(cover_url) = self.from_audio_path(file_path).await {
-            Some(cover_url)
-        } else {
+        if cover_url.is_none() {
             match meta_art_path {
-                Some(meta_art_path) => self.from_image_path(meta_art_path).await,
-                None => None,
+                Some(meta_art_path) => {
+                    cover_url = self.from_image_path(meta_art_path).await;
+                }
+                None => {}
             }
         }
+
+        cover_url
     }
 
     pub async fn from_audio_path<P>(&self, path: P) -> Option<String>
