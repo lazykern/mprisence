@@ -1,7 +1,7 @@
 # Maintainer: Phusit Somboonyingsuk
 
 pkgname=mprisence
-pkgver=0.2.1
+pkgver=0.2.2
 pkgrel=1
 pkgdesc="A Discord Rich Presence client for MPRIS-compatible media players with support for album art."
 url="https://github.com/phusitsom/mprisence"
