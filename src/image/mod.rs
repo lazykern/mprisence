@@ -12,20 +12,36 @@ use self::{cache::Cache, provider::Provider};
 pub mod cache;
 pub mod provider;
 
+lazy_static::lazy_static! {
+    pub static ref COVER_URL_FINDER: CoverURLFinder = CoverURLFinder::new();
+}
+
 pub struct CoverURLFinder {
     cache: Cache,
     provider: Option<Provider>,
 }
 
 impl CoverURLFinder {
-    pub fn new(provider: Option<Provider>) -> Self {
+    pub fn new() -> Self {
+        let provider = match CONFIG.image.provider.provider.to_lowercase().as_str() {
+            "imgbb" => Some(Provider::new_imgbb(
+                &CONFIG
+                    .image
+                    .provider
+                    .imgbb
+                    .api_key
+                    .clone()
+                    .unwrap_or_default(),
+            )),
+            _ => None,
+        };
         CoverURLFinder {
             cache: Cache::new(),
             provider,
         }
     }
 
-    pub async fn from_metadata(&mut self, metadata: &Metadata) -> Option<String> {
+    pub async fn from_metadata(&self, metadata: &Metadata) -> Option<String> {
         let meta_art_path = match metadata.art_url() {
             Some(meta_art_url) => {
                 if let Ok(parsed_url) = Url::parse(meta_art_url) {
@@ -82,7 +98,7 @@ impl CoverURLFinder {
         }
     }
 
-    pub async fn from_audio_path<P>(&mut self, path: P) -> Option<String>
+    pub async fn from_audio_path<P>(&self, path: P) -> Option<String>
     where
         P: AsRef<Path>,
     {
@@ -94,7 +110,7 @@ impl CoverURLFinder {
         self.from_bytes(bytes).await
     }
 
-    pub async fn from_image_path<P>(&mut self, path: P) -> Option<String>
+    pub async fn from_image_path<P>(&self, path: P) -> Option<String>
     where
         P: AsRef<Path>,
     {

@@ -1,16 +1,17 @@
 use std::{collections::BTreeMap, path::Path, time::Duration};
 
-use lofty::{AudioFile, ItemKey, Picture, TaggedFileExt};
-use mpris::Player;
+use lofty::{AudioFile, ItemKey, TaggedFileExt};
+use mpris::{PlaybackStatus, Player};
 use url::Url;
 
-use crate::{error::Error, player::cmus};
+use crate::{config::PlayerConfig, error::Error, image::COVER_URL_FINDER, player::cmus};
 
 pub struct Context {
     player: Option<Player>,
     metadata: Option<mpris::Metadata>,
     properties: Option<lofty::FileProperties>,
     tag: Option<lofty::Tag>,
+    path: Option<String>,
 }
 
 impl Context {
@@ -20,6 +21,7 @@ impl Context {
             metadata: None,
             properties: None,
             tag: None,
+            path: None,
         };
 
         let metadata = match context.player.as_ref().unwrap().get_metadata() {
@@ -29,7 +31,7 @@ impl Context {
 
         context.merge(&Context::from_metadata(metadata));
 
-        if context.player().unwrap().identity().to_lowercase() == "cmus" {
+        if context.config_identity() == "cmus" {
             if let Some(audio_path) = cmus::get_audio_path() {
                 if let Ok(cmus_context) = Context::from_path(audio_path) {
                     context.merge(&cmus_context);
@@ -46,6 +48,7 @@ impl Context {
             metadata: Some(metadata.clone()),
             properties: None,
             tag: None,
+            path: None,
         };
 
         let path = match metadata.url() {
@@ -73,6 +76,7 @@ impl Context {
     where
         T: AsRef<Path>,
     {
+        let path = path.as_ref();
         let tagged_file = match lofty::read_from_path(path) {
             Ok(properties) => properties,
             Err(e) => return Err(Error::LoftyError(e)),
@@ -85,14 +89,17 @@ impl Context {
 
         let properties = Some(tagged_file.properties().clone());
 
-        let metadata = Context {
+        let path = Some(path.to_string_lossy().to_string());
+
+        let context = Context {
             player: None,
             metadata: None,
             properties,
             tag,
+            path,
         };
 
-        Ok(metadata)
+        Ok(context)
     }
 
     fn merge(&mut self, other: &Self) {
@@ -106,6 +113,10 @@ impl Context {
 
         if self.tag.is_none() {
             self.tag = other.tag.clone();
+        }
+
+        if self.path.is_none() {
+            self.path = other.path.clone();
         }
     }
 
@@ -141,8 +152,71 @@ impl Context {
         self.tag.as_ref()
     }
 
-    pub fn picture(&self) -> Option<Picture> {
-        None
+    pub fn identity(&self) -> String {
+        if let Some(player) = &self.player {
+            return player.identity().to_string();
+        }
+
+        "Unknown".to_string()
+    }
+
+    pub fn config_identity(&self) -> String {
+        if let Some(player) = &self.player {
+            return player.identity().to_lowercase().replace(" ", "_");
+        }
+
+        "default".to_string()
+    }
+
+    pub fn unique_name(&self) -> String {
+        if let Some(player) = &self.player {
+            return player.unique_name().to_string();
+        }
+
+        "Unknown".to_string()
+    }
+
+    pub fn playback_status(&self) -> PlaybackStatus {
+        if let Some(player) = &self.player {
+            return player
+                .get_playback_status()
+                .unwrap_or(PlaybackStatus::Stopped);
+        }
+
+        PlaybackStatus::Stopped
+    }
+
+    pub async fn cover_url(&self) -> Option<String> {
+        let cover_url = match self.metadata {
+            Some(ref metadata) => COVER_URL_FINDER.from_metadata(metadata).await,
+            None => None,
+        };
+
+        if cover_url.is_none() {
+            if let Some(ref path) = self.path {
+                if let Some(cover_url) = COVER_URL_FINDER.from_audio_path(path).await {
+                    return Some(cover_url);
+                }
+            }
+        }
+
+        cover_url
+    }
+
+    pub fn is_streaming(&self) -> bool {
+        if let Some(metadata) = &self.metadata {
+            if let Some(url) = metadata.url() {
+                if let Ok(url) = Url::parse(url) {
+                    return url.scheme() == "http" || url.scheme() == "https";
+                }
+            }
+        }
+
+        false
+    }
+
+    pub fn is_ignored(&self) -> bool {
+        PlayerConfig::get_or_default(&self.config_identity()).ignore
     }
 
     pub fn data(&self) -> BTreeMap<String, String> {

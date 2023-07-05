@@ -14,11 +14,12 @@ pub fn get_audio_path() -> Option<String> {
         }
     };
 
-    // Get the file path from the output
     let file_path = cmus_remote_output
         .lines()
         .find(|line| line.starts_with("file "))
         .map(|line| line[5..].to_owned());
+
+    log::info!("Got audio path: {:?}", file_path);
 
     file_path
 }

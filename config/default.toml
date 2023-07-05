@@ -10,6 +10,10 @@ large_text = "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{titl
 small_text = "Playing on {{{player}}}"
 large_text_no_cover = "{{#if album_name includeZero=true}}{{{album_name}}} | {{/if}}Playing on {{player}}"
 
+[time]
+show = true
+as_elapsed = false
+
 [image]
 file_names = ["cover", "folder", "front", "album", "art"]
 
