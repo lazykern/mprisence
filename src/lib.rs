@@ -79,11 +79,6 @@ impl Mprisence {
             return Ok(());
         }
 
-        if context.is_streaming() && !player_config.allow_streaming_or_default() {
-            log::info!("Ignoring streaming player {:?}", identity);
-            return Ok(());
-        }
-
         let c = Client::from_context(context);
         let client = match self.client_map.get_mut(&unique_name) {
             Some(client) => client,
@@ -97,6 +92,12 @@ impl Mprisence {
             || (context.playback_status() == PlaybackStatus::Paused && CONFIG.clear_on_pause)
         {
             log::info!("Clearing rich presence for {:?}", identity);
+            client.clear()?;
+            return Ok(());
+        }
+
+        if context.is_streaming() && !player_config.allow_streaming_or_default() {
+            log::info!("Ignoring streaming player {:?}", identity);
             client.clear()?;
             return Ok(());
         }
