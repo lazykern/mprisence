@@ -93,7 +93,9 @@ impl Mprisence {
             }
         };
 
-        if context.playback_status() == PlaybackStatus::Stopped {
+        if context.playback_status() == PlaybackStatus::Stopped
+            || (context.playback_status() == PlaybackStatus::Paused && CONFIG.clear_on_pause)
+        {
             log::info!("Clearing rich presence for {:?}", identity);
             client.clear()?;
             return Ok(());
