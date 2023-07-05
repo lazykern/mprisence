@@ -71,6 +71,7 @@ allow_streaming = true
 [player.clementine]
 app_id = "1125075725473562735"
 icon = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRYiUYLmMQwsDaNqu6eg5I4aB1vyy_uptN34eouN7XxA5eFZTAV8RISZHCsn_M6-iQc-Pw&usqp=CAU"
+allow_streaming = true
 
 [player.strawberry]
 app_id = "1126197744512536647"
