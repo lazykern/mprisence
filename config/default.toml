@@ -57,6 +57,12 @@ app_id = "1125075797942734928"
 icon = "https://upload.wikimedia.org/wikipedia/commons/7/73/Mpv_logo_%28official%29.png"
 allow_streaming = true
 
+[player.mpd]
+app_id = "1126153268486213672"
+icon = "https://www.musicpd.org/logo.png"
+allow_streaming = true
+
+
 [player.clementine]
 app_id = "1125075725473562735"
 icon = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRYiUYLmMQwsDaNqu6eg5I4aB1vyy_uptN34eouN7XxA5eFZTAV8RISZHCsn_M6-iQc-Pw&usqp=CAU"
