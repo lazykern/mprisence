@@ -10,7 +10,7 @@ pub mod player;
 
 use client::Client;
 
-use config::{PlayerConfig, DEFAULT_PLAYER_CONFIG};
+use config::PlayerConfig;
 use hbs::HANDLEBARS;
 use mpris::{PlaybackStatus, Player};
 use std::collections::BTreeMap;
@@ -56,6 +56,7 @@ impl Mprisence {
 
         for player in players {
             let context = Context::from_player(player);
+
             match self.update_by_context(&context).await {
                 Ok(_) => {}
                 Err(error) => {
@@ -70,13 +71,14 @@ impl Mprisence {
     async fn update_by_context(&mut self, context: &Context) -> Result<(), Error> {
         let identity = context.identity();
         let unique_name = context.unique_name();
+        let player_config = PlayerConfig::get_or_default(&identity);
 
         if context.is_ignored() {
             log::info!("Ignoring player {:?}", identity);
             return Ok(());
         }
 
-        if context.is_streaming() && !CONFIG.allow_streaming {
+        if context.is_streaming() && !player_config.allow_streaming_or_default() {
             log::info!("Ignoring streaming player {:?}", identity);
             return Ok(());
         }
@@ -96,6 +98,7 @@ impl Mprisence {
             return Ok(());
         }
 
+        log::info!("Connecting to discord for {:?}", identity);
         if !client.is_connected() {
             client.connect()?;
         }
@@ -159,13 +162,8 @@ async fn get_activity(context: &Context) -> Activity {
 
         activity.set_large_text(render_large_text(&data));
 
-        if CONFIG.show_icon {
-            if player_config.icon.is_some()
-                || (CONFIG.show_default_player_icon
-                    && player_config.icon_or_default() == DEFAULT_PLAYER_CONFIG.icon_or_default())
-            {
-                activity.set_small_image(player_config.icon_or_default());
-            }
+        if player_config.show_icon_or_default() {
+            activity.set_small_image(player_config.icon_or_default());
 
             activity.set_small_text(render_small_text(&data));
         }
