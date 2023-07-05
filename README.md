@@ -15,7 +15,7 @@ A Discord Rich Presence client for MPRIS-compatible media players with album/son
 You can install mprisence from [AUR](https://aur.archlinux.org/packages/mprisence/)
 
 ```bash
-yay -S mprisence # or any other AUR helpers
+paru -S mprisence # or any other AUR helpers
 ```
 
 ### Other
@@ -43,6 +43,7 @@ mprisence
 ```
 
 See also:
+
 - [Enable **cover art support**](#cover-art-support).
 - [Autostarting](#autostarting).
 
