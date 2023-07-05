@@ -165,7 +165,6 @@ async fn get_activity(context: &Context) -> Activity {
 
         if player_config.show_icon_or_default() {
             activity.set_small_image(player_config.icon_or_default());
-
             activity.set_small_text(render_small_text(&data));
         }
     } else {

@@ -80,3 +80,26 @@ impl PlayerConfig {
         }
     }
 }
+
+impl PlayerConfig {
+    pub fn app_id_or_default(&self) -> &str {
+        match &self.app_id {
+            Some(app_id) => app_id,
+            None => &DEFAULT_PLAYER_CONFIG.app_id.as_ref().unwrap(),
+        }
+    }
+
+    pub fn icon_or_default(&self) -> &str {
+        match &self.icon {
+            Some(icon) => icon,
+            None => &DEFAULT_PLAYER_CONFIG.icon.as_ref().unwrap(),
+        }
+    }
+
+    pub fn get_or_default(identity: &str) -> &Self {
+        match CONFIG.player.get(identity) {
+            Some(config) => config,
+            None => &DEFAULT_PLAYER_CONFIG,
+        }
+    }
+}
