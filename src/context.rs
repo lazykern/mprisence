@@ -4,7 +4,7 @@ use lofty::{AudioFile, ItemKey, TaggedFileExt};
 use mpris::{PlaybackStatus, Player};
 use url::Url;
 
-use crate::{config::PlayerConfig, error::Error, image::COVER_URL_FINDER, player::cmus};
+use crate::{config::PlayerConfig, cover::PROVIDER, error::Error, player::cmus};
 
 pub struct Context {
     player: Option<Player>,
@@ -120,36 +120,24 @@ impl Context {
         }
     }
 
-    pub fn has_player(&self) -> bool {
-        self.player.is_some()
-    }
-
     pub fn player(&self) -> Option<&Player> {
         self.player.as_ref()
-    }
-
-    pub fn has_metadata(&self) -> bool {
-        self.metadata.is_some()
     }
 
     pub fn metadata(&self) -> Option<&mpris::Metadata> {
         self.metadata.as_ref()
     }
 
-    pub fn has_properties(&self) -> bool {
-        self.properties.is_some()
-    }
-
     pub fn properties(&self) -> Option<&lofty::FileProperties> {
         self.properties.as_ref()
     }
 
-    pub fn has_tag(&self) -> bool {
-        self.tag.is_some()
-    }
-
     pub fn tag(&self) -> Option<&lofty::Tag> {
         self.tag.as_ref()
+    }
+
+    pub fn path(&self) -> Option<&str> {
+        self.path.as_deref()
     }
 
     pub fn identity(&self) -> String {
@@ -187,20 +175,7 @@ impl Context {
     }
 
     pub async fn cover_url(&self) -> Option<String> {
-        let cover_url = match self.metadata {
-            Some(ref metadata) => COVER_URL_FINDER.from_metadata(metadata).await,
-            None => None,
-        };
-
-        if cover_url.is_none() {
-            if let Some(ref path) = self.path {
-                if let Some(cover_url) = COVER_URL_FINDER.from_audio_path(path).await {
-                    return Some(cover_url);
-                }
-            }
-        }
-
-        cover_url
+        PROVIDER.get_cover_url(self).await
     }
 
     pub fn is_streaming(&self) -> bool {

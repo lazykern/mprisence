@@ -3,9 +3,9 @@ pub mod client;
 pub mod config;
 pub mod consts;
 pub mod context;
+pub mod cover;
 pub mod error;
 pub mod hbs;
-pub mod image;
 pub mod player;
 
 use client::Client;
