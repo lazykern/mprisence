@@ -118,8 +118,10 @@ impl MusicBrainzProvider {
             let a_title = a.title.to_lowercase();
             let b_title = b.title.to_lowercase();
 
-            let a_title_sim = strsim::jaro_winkler(&a_title, &album.unwrap_or_default());
-            let b_title_sim = strsim::jaro_winkler(&b_title, &album.unwrap_or_default());
+            let album = album.unwrap_or_default().to_lowercase();
+
+            let a_title_sim = strsim::jaro_winkler(&a_title, &album);
+            let b_title_sim = strsim::jaro_winkler(&b_title, &album);
 
             if a_title_sim > b_title_sim {
                 return std::cmp::Ordering::Less;
