@@ -20,8 +20,21 @@ impl MusicBrainzProvider {
 
     pub async fn get_cover_url(&self, context: &Context) -> Option<String> {
         let title = context.title();
+        //Split artist names by comma and & and trim
+        let artists = context.artists().map(|artists| {
+            let mut splitted_artists = HashSet::new();
+
+            for artist in artists.iter() {
+                splitted_artists.extend(artist.split(',').map(|s| s.trim()));
+                splitted_artists.extend(artist.split('&').map(|s| s.trim()));
+                splitted_artists.extend(artist.split(" and ").map(|s| s.trim()));
+                splitted_artists.extend(artist.split(" feat. ").map(|s| s.trim()));
+                splitted_artists.extend(artist.split(" vs ").map(|s| s.trim()));
+            }
+
+            splitted_artists.into_iter().collect::<Vec<_>>()
+        });
         let album = context.album_name();
-        let artists = context.artists();
         let album_artists = context.album_artists();
 
         let mut all_artists: Option<Vec<&str>> = match (&artists, &album_artists) {
@@ -62,10 +75,17 @@ impl MusicBrainzProvider {
 
         if let (Some(title), Some(artists)) = (title, artists) {
             for artist in artists {
-                let recordings =
-                    Self::search_recording(&Query::new().recording(title).artist(artist).build())
-                        .await
-                        .ok()?;
+                let recordings = match Self::search_recording(
+                    &Query::new().recording(title).artist(artist).build(),
+                )
+                .await
+                {
+                    Ok(recordings) => recordings,
+                    Err(e) => {
+                        log::warn!("Error while searching for recordings: {}", e);
+                        continue;
+                    }
+                };
                 for recording in recordings.recordings {
                     for release in recording.releases {
                         let mut release = release.clone();
@@ -79,9 +99,15 @@ impl MusicBrainzProvider {
         if let (Some(album), Some(all_artists)) = (album, all_artists.as_ref()) {
             for artist in all_artists {
                 let releases =
-                    Self::search_release(&Query::new().release(album).artist(artist).build())
+                    match Self::search_release(&Query::new().release(album).artist(artist).build())
                         .await
-                        .ok()?;
+                    {
+                        Ok(releases) => releases,
+                        Err(e) => {
+                            log::warn!("Error while searching for releases: {}", e);
+                            continue;
+                        }
+                    };
                 for release in releases.releases {
                     similar_releases.push(release);
                 }
@@ -89,13 +115,19 @@ impl MusicBrainzProvider {
         }
 
         if let Some(album) = album {
-            let releases = Self::search_release(&Query::new().release(album).build())
-                .await
-                .ok()?;
+            let releases = match Self::search_release(&Query::new().release(album).build()).await {
+                Ok(releases) => releases,
+                Err(e) => {
+                    log::warn!("Error while searching for releases: {}", e);
+                    return None;
+                }
+            };
             for release in releases.releases {
                 similar_releases.push(release);
             }
         }
+
+        log::debug!("Found {} similar releases", similar_releases.len());
 
         similar_releases.retain(|release| {
             let release_title_lower = release.title.to_lowercase();
@@ -104,9 +136,13 @@ impl MusicBrainzProvider {
             if let Some(album) = album {
                 let album_lower = album.to_lowercase();
                 if !(album_lower.contains(&release_title_lower)
-                    || release_title_lower.contains(&album_lower)
                     || strsim::jaro_winkler(&album_lower, &release_title_lower) > 0.8)
                 {
+                    log::debug!(
+                        "Release title '{}' does not match album name '{}'",
+                        release_title_lower,
+                        album_lower
+                    );
                     keep = false;
                 }
             }
@@ -158,7 +194,7 @@ impl MusicBrainzProvider {
         let release_id = match similar_releases.first() {
             Some(release) => release.id.clone(),
             None => {
-                println!("no release found");
+                log::info!("No release found");
                 return None;
             }
         };
@@ -185,6 +221,7 @@ impl MusicBrainzProvider {
             "https://musicbrainz.org/ws/2/recording/?query={}&fmt=json&limit=5",
             query
         );
+        log::info!("searching for recording: {}", url);
         let res = REQWEST_CLIENT.get(&url).send().await?;
         let response = res.json::<RecordingReponse>().await?;
         Ok(response)
@@ -194,6 +231,7 @@ impl MusicBrainzProvider {
             "https://musicbrainz.org/ws/2/release/?query={}&fmt=json&limit=5",
             query
         );
+        log::info!("searching for release: {}", url);
         let res = REQWEST_CLIENT.get(&url).send().await?;
         let response = res.json::<ReleaseResponse>().await?;
         Ok(response)
@@ -257,17 +295,11 @@ impl Query {
 
 #[derive(Debug, Deserialize)]
 pub struct ReleaseResponse {
-    pub created: String,
-    pub count: u32,
-    pub offset: u32,
     pub releases: Vec<Release>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct RecordingReponse {
-    pub created: String,
-    pub count: u32,
-    pub offset: u32,
     pub recordings: Vec<Recording>,
 }
 
@@ -277,6 +309,7 @@ pub struct Recording {
     pub title: String,
     #[serde(rename = "artist-credit", default)]
     pub artist_credit: Vec<ArtistCredit>,
+    #[serde(default)]
     pub releases: Vec<Release>,
 }
 
