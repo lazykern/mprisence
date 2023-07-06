@@ -28,7 +28,7 @@ impl Cache {
         }
     }
 
-    pub fn get_image_url<T>(&self, key: T) -> Option<String>
+    pub fn get<T>(&self, key: T) -> Option<String>
     where
         T: AsRef<str>,
     {
@@ -52,7 +52,7 @@ impl Cache {
         }
     }
 
-    pub fn set_image_url<T>(&self, key: T, url: T)
+    pub fn set<T>(&self, key: T, url: T)
     where
         T: AsRef<str>,
     {

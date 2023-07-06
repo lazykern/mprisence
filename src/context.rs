@@ -140,6 +140,58 @@ impl Context {
         self.path.as_deref()
     }
 
+    pub fn title(&self) -> Option<&str> {
+        if let Some(metadata) = &self.metadata {
+            if let Some(title) = metadata.title() {
+                return Some(title);
+            }
+        }
+
+        if let Some(tag) = &self.tag {
+            if let Some(title) = tag.get_string(&ItemKey::TrackTitle) {
+                return Some(title);
+            }
+        }
+
+        None
+    }
+
+    pub fn artists(&self) -> Option<Vec<&str>> {
+        if let Some(metadata) = &self.metadata {
+            if let Some(artists) = metadata.artists() {
+                return Some(artists);
+            }
+        }
+
+        None
+    }
+
+    pub fn album_name(&self) -> Option<&str> {
+        if let Some(metadata) = &self.metadata {
+            if let Some(album_name) = metadata.album_name() {
+                return Some(album_name);
+            }
+        }
+
+        if let Some(tag) = &self.tag {
+            if let Some(album_name) = tag.get_string(&ItemKey::AlbumTitle) {
+                return Some(album_name);
+            }
+        }
+
+        None
+    }
+
+    pub fn album_artists(&self) -> Option<Vec<&str>> {
+        if let Some(metadata) = &self.metadata {
+            if let Some(album_artists) = metadata.album_artists() {
+                return Some(album_artists);
+            }
+        }
+
+        None
+    }
+
     pub fn identity(&self) -> String {
         if let Some(player) = &self.player {
             return player.identity().to_string();

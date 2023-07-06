@@ -31,7 +31,7 @@ impl Provider {
                 None => Self::Unknown,
             },
             "musicbrainz" => Self::MusicBrainz {
-                client: MusicBrainzProvider {},
+                client: MusicBrainzProvider::new(),
             },
             _ => Self::Unknown,
         }

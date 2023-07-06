@@ -137,12 +137,12 @@ impl ImgBBProvider {
 
         let cache_key = sha256::digest(bytes);
 
-        if let Some(url) = self.cache.get_image_url(&cache_key) {
+        if let Some(url) = self.cache.get(&cache_key) {
             return Some(url);
         }
 
         if let Ok(url) = self.upload_bytes(bytes).await {
-            self.cache.set_image_url(&cache_key, &url);
+            self.cache.set(&cache_key, &url);
             return Some(url);
         }
 
