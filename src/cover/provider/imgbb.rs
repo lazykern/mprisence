@@ -29,17 +29,17 @@ impl ImgBBProvider {
 
     pub async fn get_cover_url(&self, context: &Context) -> Option<String> {
         let cover_url = match context.metadata() {
-            Some(ref metadata) => self.from_metadata(*metadata).await,
+            Some(metadata) => self.from_metadata(metadata).await,
             None => None,
         };
 
         if cover_url.is_none() {
-            if let Some(ref path) = context.path() {
+            if let Some(path) = context.path() {
                 return self.from_audio_path(path).await;
             }
         }
 
-        None
+        cover_url
     }
 
     pub async fn from_metadata(&self, metadata: &Metadata) -> Option<String> {
