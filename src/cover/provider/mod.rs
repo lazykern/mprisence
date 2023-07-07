@@ -17,7 +17,7 @@ pub enum Provider {
 }
 
 impl Provider {
-    pub fn new<T>(name: T) -> Self
+    pub fn from_name<T>(name: T) -> Self
     where
         T: AsRef<str>,
     {

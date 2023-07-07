@@ -5,7 +5,7 @@ use crate::consts::*;
 use super::{
     cover::provider::{CoverProviderConfig, ImgBBConfig},
     time::TimeConfig,
-    CoverConfig, PlayerConfig, TemplateConfig,
+    CoverConfig, PlayerConfig, TemplateConfig, StringOrStringVec,
 };
 
 pub fn default_app_id() -> String {
@@ -55,8 +55,8 @@ pub fn default_cover_file_names() -> Vec<String> {
         .collect()
 }
 
-pub fn default_cover_provider() -> String {
-    DEFAULT_IMAGE_PROVIDER.to_string()
+pub fn default_cover_provider() -> StringOrStringVec {
+    StringOrStringVec::String(DEFAULT_COVER_PROVIDER.to_string())
 }
 
 pub fn default_cover_config() -> CoverConfig {

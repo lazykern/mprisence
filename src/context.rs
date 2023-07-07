@@ -4,7 +4,7 @@ use lofty::{AudioFile, ItemKey, TaggedFileExt};
 use mpris::{PlaybackStatus, Player};
 use url::Url;
 
-use crate::{config::PlayerConfig, cover::PROVIDER, error::Error, player::cmus};
+use crate::{config::PlayerConfig, cover::PROVIDERS, error::Error, player::cmus};
 
 pub struct Context {
     player: Option<Player>,
@@ -249,7 +249,13 @@ impl Context {
     }
 
     pub async fn cover_url(&self) -> Option<String> {
-        PROVIDER.get_cover_url(self).await
+        for provider in PROVIDERS.iter() {
+            let cover_url = provider.get_cover_url(self).await;
+            if cover_url.is_some() {
+                return cover_url;
+            }
+        }
+        None
     }
 
     pub fn is_streaming(&self) -> bool {

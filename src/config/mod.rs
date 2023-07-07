@@ -26,7 +26,7 @@ lazy_static::lazy_static! {
 pub struct Config {
     #[serde(default = "default_true")]
     pub clear_on_pause: bool,
-    #[serde(default = "default_cover_config", alias = "image")]
+    #[serde(default = "default_cover_config")]
     pub cover: CoverConfig,
     #[serde(default = "default_player_hashmap_config")]
     pub player: HashMap<String, PlayerConfig>,
@@ -80,4 +80,11 @@ fn get_config_path() -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum StringOrStringVec {
+    String(String),
+    Vec(Vec<String>)
 }

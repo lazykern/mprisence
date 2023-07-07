@@ -1,11 +1,11 @@
-use crate::config::default::*;
-use serde::Deserialize;
+use crate::config::{default::*, StringOrStringVec};
+use serde::{self,Deserialize};
 
 #[derive(Deserialize, Debug)]
 pub struct CoverProviderConfig {
     #[serde(default = "default_cover_provider")]
-    pub provider: String,
-    #[serde(default = "default_imagebb_config")]
+    pub provider: StringOrStringVec,
+    #[serde(default = "default_imgbb_config")]
     pub imgbb: ImgBBConfig,
 }
 

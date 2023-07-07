@@ -3,12 +3,25 @@ pub mod provider;
 
 pub use provider::Provider;
 
-use crate::config::CONFIG;
+use crate::config::{CONFIG, StringOrStringVec};
 
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
 lazy_static::lazy_static! {
-    pub static ref PROVIDER: Provider = Provider::new(CONFIG.cover.provider.provider.as_str());
+    pub static ref PROVIDERS: Vec<Provider> = {
+        let mut providers = Vec::new();
+        match CONFIG.cover.provider.provider {
+            StringOrStringVec::String(ref provider) => {
+                    providers.push(Provider::from_name(provider));
+            }
+            StringOrStringVec::Vec(ref _providers) => {
+                for provider in _providers {
+                    providers.push(Provider::from_name(provider));
+                }
+            }
+        }
+        providers
+    };
     pub static ref REQWEST_CLIENT: reqwest::Client = {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
