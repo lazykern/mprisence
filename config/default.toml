@@ -15,7 +15,7 @@ as_elapsed = false
 file_names = ["cover", "folder", "front", "album", "art"]
 
 [cover.provider]
-provider = "imgbb"
+provider = ["musicbrainz", "imgbb"]
 
 # [cover.provider.imgbb]
 # api_key = "<YOUR API KEY>"
