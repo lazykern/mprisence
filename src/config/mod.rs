@@ -1,10 +1,10 @@
 pub mod default;
-pub mod image;
+pub mod cover;
 pub mod player;
 pub mod template;
 pub mod time;
 
-pub use crate::config::{image::*, player::*, template::*, time::*};
+pub use crate::config::{cover::*, player::*, template::*, time::*};
 
 use crate::config::default::*;
 use crate::consts::*;
@@ -26,8 +26,8 @@ lazy_static::lazy_static! {
 pub struct Config {
     #[serde(default = "default_true")]
     pub clear_on_pause: bool,
-    #[serde(default = "default_image_config")]
-    pub image: ImageConfig,
+    #[serde(default = "default_cover_config")]
+    pub cover: CoverConfig,
     #[serde(default = "default_player_hashmap_config")]
     pub player: HashMap<String, PlayerConfig>,
     #[serde(default = "default_template_config")]
@@ -40,7 +40,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             clear_on_pause: default_true(),
-            image: ImageConfig::default(),
+            cover: CoverConfig::default(),
             player: HashMap::new(),
             template: TemplateConfig::default(),
             time: TimeConfig::default(),
@@ -80,4 +80,11 @@ fn get_config_path() -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum StringOrStringVec {
+    String(String),
+    Vec(Vec<String>)
 }

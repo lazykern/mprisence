@@ -62,19 +62,21 @@ detail = "{{{title}}}"
 state = '{{{status_icon}}} {{{artists}}}'
 large_text = "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}"
 small_text = "Playing on {{{player}}}"
-large_text_no_cover = "{{{album_name}}} playing on {{{player}}}"
-
 [time]
 ## Show time in activity (remaining)
 show = true
 ## Show time as elapsed
 as_elapsed = false
 
-# [image]
-## Album cover image file names (no extension) to look for 
+# [cover]
+## Album cover cover file names (no extension) to look for 
 # file_names = ["cover", "folder", "front", "album", "art"]
 
-[image.provider.imgbb]
+[cover.provider]
+## Cover art providers: "musicbrainz", "imgbb"
+provider = ["musicbrainz", "imgbb"]
+
+[cover.provider.imgbb]
 ## Api key for imgbb, get the key from https://api.imgbb.com/
 api_key = "<YOUR API KEY>"
 

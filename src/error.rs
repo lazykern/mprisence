@@ -8,6 +8,7 @@ pub enum Error {
     LoftyError(lofty::LoftyError),
     DBusError(mpris::DBusError),
     ImgBBError(imgbb::Error),
+    ReqwestError(reqwest::Error),
 }
 
 impl From<handlebars::RenderError> for Error {
@@ -37,5 +38,11 @@ impl From<mpris::DBusError> for Error {
 impl From<imgbb::Error> for Error {
     fn from(error: imgbb::Error) -> Self {
         Error::ImgBBError(error)
+    }
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(error: reqwest::Error) -> Self {
+        Error::ReqwestError(error)
     }
 }

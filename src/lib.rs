@@ -3,9 +3,9 @@ pub mod client;
 pub mod config;
 pub mod consts;
 pub mod context;
+pub mod cover;
 pub mod error;
 pub mod hbs;
-pub mod image;
 pub mod player;
 
 use client::Client;
@@ -107,7 +107,44 @@ impl Mprisence {
             client.connect()?;
         }
 
-        let activity = get_activity(context).await;
+        let mut activity = Activity::new();
+
+        let config_identity = context.config_identity();
+
+        let player_config = PlayerConfig::get_or_default(&config_identity);
+
+        let data = context.data();
+
+        activity.set_details(render_details(&data));
+        activity.set_state(render_state(&data));
+
+        if context.playback_status() == PlaybackStatus::Playing && CONFIG.time.show {
+            activity.set_timestamps_from_context(context);
+        }
+
+        activity.set_large_text(render_large_text(&data));
+        activity.set_small_text(render_small_text(&data));
+
+
+        if let Some(current_activity) = client.activity() {
+            if current_activity == &activity {
+                log::info!("Activity is the same, skipping update");
+                return Ok(());
+            }
+        }
+
+        if let Some(cover_url) = context.cover_url().await {
+            activity.set_large_image(cover_url);
+
+
+            if player_config.show_icon_or_default() {
+                activity.set_small_image(player_config.icon_or_default());
+            }
+        } else {
+            log::info!("No cover found");
+
+            activity.set_large_image(player_config.icon_or_default());
+        }
 
         client.set_activity(&activity)?;
 
@@ -147,42 +184,6 @@ impl Mprisence {
             }
         }
     }
-}
-
-async fn get_activity(context: &Context) -> Activity {
-    let mut activity = Activity::new();
-
-    let config_identity = context.config_identity();
-
-    let player_config = PlayerConfig::get_or_default(&config_identity);
-
-    let data = context.data();
-
-    activity.set_details(render_details(&data));
-    activity.set_state(render_state(&data));
-
-    if let Some(cover_url) = context.cover_url().await {
-        activity.set_large_image(cover_url);
-
-        activity.set_large_text(render_large_text(&data));
-
-        if player_config.show_icon_or_default() {
-            activity.set_small_image(player_config.icon_or_default());
-            activity.set_small_text(render_small_text(&data));
-        }
-    } else {
-        log::info!("No cover found");
-
-        activity.set_large_image(player_config.icon_or_default());
-
-        activity.set_large_text(render_large_text_no_cover(&data));
-    }
-
-    if context.playback_status() == PlaybackStatus::Playing && CONFIG.time.show {
-        activity.set_timestamps_from_context(context);
-    }
-
-    activity
 }
 
 fn render_details(data: &BTreeMap<String, String>) -> String {
@@ -234,21 +235,6 @@ fn render_small_text(data: &BTreeMap<String, String>) -> String {
             );
             HANDLEBARS
                 .render_template(consts::DEFAULT_SMALL_TEXT_TEMPLATE, &data)
-                .unwrap()
-        }
-    }
-}
-
-fn render_large_text_no_cover(data: &BTreeMap<String, String>) -> String {
-    match HANDLEBARS.render_template(&CONFIG.template.large_text_no_cover, &data) {
-        Ok(large_text_no_cover) => large_text_no_cover,
-        Err(e) => {
-            log::warn!(
-                "Error rendering large text no cover template, using default: {:?}",
-                e
-            );
-            HANDLEBARS
-                .render_template(consts::DEFAULT_LARGE_TEXT_NO_COVER_TEMPLATE, &data)
                 .unwrap()
         }
     }

@@ -1,44 +1,45 @@
 use std::path::Path;
 
+use imgbb::ImgBB;
 use lofty::TaggedFileExt;
 use mpris::Metadata;
 use url::Url;
 use walkdir::WalkDir;
 
-use crate::{consts::DEFAULT_IMAGE_FILE_NAMES, CONFIG};
+use crate::{
+    config::CONFIG, consts::DEFAULT_IMAGE_FILE_NAMES, context::Context, cover::cache::Cache, Error,
+};
 
-use self::{cache::Cache, provider::Provider};
-
-pub mod cache;
-pub mod provider;
-
-lazy_static::lazy_static! {
-    pub static ref COVER_URL_FINDER: CoverURLFinder = CoverURLFinder::new();
-}
-
-pub struct CoverURLFinder {
+#[derive(Debug)]
+pub struct ImgBBProvider {
+    client: imgbb::ImgBB,
     cache: Cache,
-    provider: Option<Provider>,
 }
 
-impl CoverURLFinder {
-    pub fn new() -> Self {
-        let provider = match CONFIG.image.provider.provider.to_lowercase().as_str() {
-            "imgbb" => Some(Provider::new_imgbb(
-                &CONFIG
-                    .image
-                    .provider
-                    .imgbb
-                    .api_key
-                    .clone()
-                    .unwrap_or_default(),
-            )),
-            _ => None,
-        };
-        CoverURLFinder {
-            cache: Cache::new(),
-            provider,
+impl ImgBBProvider {
+    pub fn new<T>(api_key: T) -> Self
+    where
+        T: Into<String>,
+    {
+        Self {
+            client: ImgBB::new(api_key),
+            cache: Cache::new("imgbb"),
         }
+    }
+
+    pub async fn get_cover_url(&self, context: &Context) -> Option<String> {
+        let cover_url = match context.metadata() {
+            Some(metadata) => self.from_metadata(metadata).await,
+            None => None,
+        };
+
+        if cover_url.is_none() {
+            if let Some(path) = context.path() {
+                return self.from_audio_path(path).await;
+            }
+        }
+
+        cover_url
     }
 
     pub async fn from_metadata(&self, metadata: &Metadata) -> Option<String> {
@@ -132,20 +133,131 @@ impl CoverURLFinder {
     where
         T: AsRef<[u8]>,
     {
-        let bytes_hash = sha256::digest(bytes.as_ref());
+        let bytes = bytes.as_ref();
 
-        if let Some(url) = self.cache.get_image_url(&bytes_hash) {
+        let cache_key = sha256::digest(bytes);
+
+        if let Some(url) = self.cache.get(&cache_key) {
             return Some(url);
         }
 
-        if let Some(provider) = &self.provider {
-            if let Ok(url) = provider.upload_bytes(bytes).await {
-                self.cache.set_image_url(&bytes_hash, &url);
-                return Some(url);
-            }
+        if let Ok(url) = self.upload_bytes(bytes).await {
+            self.cache.set(&cache_key, &url);
+            return Some(url);
         }
 
         None
+    }
+
+    pub async fn upload_bytes<T>(&self, bytes: T) -> Result<String, Error>
+    where
+        T: AsRef<[u8]>,
+    {
+        let cover_url: String;
+
+        let res = self.client.upload_bytes(bytes).await?;
+        let data = match res.data {
+            Some(data) => data,
+            None => {
+                return Err(Error::ProviderError(
+                    "No data field returned from ImgBB".to_string(),
+                ))
+            }
+        };
+
+        let thumb = match data.thumb {
+            Some(thumb) => thumb,
+            None => {
+                return Err(Error::ProviderError(
+                    "No thumb field returned from ImgBB".to_string(),
+                ))
+            }
+        };
+
+        cover_url = match thumb.url {
+            Some(url) => url,
+            None => {
+                return Err(Error::ProviderError(
+                    "No url field returned from ImgBB".to_string(),
+                ))
+            }
+        };
+
+        Ok(cover_url)
+    }
+
+    pub async fn upload_file<T>(&self, path: T) -> Result<String, Error>
+    where
+        T: AsRef<std::path::Path>,
+    {
+        let cover_url: String;
+
+        let res = self.client.upload_file(path).await?;
+        let data = match res.data {
+            Some(data) => data,
+            None => {
+                return Err(Error::ProviderError(
+                    "No data field returned from ImgBB".to_string(),
+                ))
+            }
+        };
+
+        let thumb = match data.thumb {
+            Some(thumb) => thumb,
+            None => {
+                return Err(Error::ProviderError(
+                    "No thumb field returned from ImgBB".to_string(),
+                ))
+            }
+        };
+
+        cover_url = match thumb.url {
+            Some(url) => url,
+            None => {
+                return Err(Error::ProviderError(
+                    "No url field returned from ImgBB".to_string(),
+                ))
+            }
+        };
+
+        Ok(cover_url)
+    }
+
+    pub async fn upload_base64<T>(&self, base64: T) -> Result<String, Error>
+    where
+        T: AsRef<str>,
+    {
+        let cover_url: String;
+
+        let res = self.client.upload_base64(base64).await?;
+        let data = match res.data {
+            Some(data) => data,
+            None => {
+                return Err(Error::ProviderError(
+                    "No data field returned from ImgBB".to_string(),
+                ))
+            }
+        };
+
+        let thumb = match data.thumb {
+            Some(thumb) => thumb,
+            None => {
+                return Err(Error::ProviderError(
+                    "No thumb field returned from ImgBB".to_string(),
+                ))
+            }
+        };
+
+        cover_url = match thumb.url {
+            Some(url) => url,
+            None => {
+                return Err(Error::ProviderError(
+                    "No url field returned from ImgBB".to_string(),
+                ))
+            }
+        };
+
+        Ok(cover_url)
     }
 }
 
@@ -161,7 +273,7 @@ where
                 .iter()
                 .map(|s| s.to_string())
                 .collect();
-            for name in &CONFIG.image.file_names {
+            for name in &CONFIG.cover.file_names {
                 if !file_names.contains(&name) {
                     file_names.push(name.to_string());
                 }

@@ -11,13 +11,13 @@ large_text_no_cover = "{{#if album_name includeZero=true}}{{{album_name}}} | {{/
 show = true
 as_elapsed = false
 
-[image]
+[cover]
 file_names = ["cover", "folder", "front", "album", "art"]
 
-[image.provider]
-provider = "imgbb"
+[cover.provider]
+provider = ["musicbrainz", "imgbb"]
 
-# [image.provider.imgbb]
+# [cover.provider.imgbb]
 # api_key = "<YOUR API KEY>"
 
 [player.default]

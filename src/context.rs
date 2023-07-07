@@ -4,7 +4,7 @@ use lofty::{AudioFile, ItemKey, TaggedFileExt};
 use mpris::{PlaybackStatus, Player};
 use url::Url;
 
-use crate::{config::PlayerConfig, error::Error, image::COVER_URL_FINDER, player::cmus};
+use crate::{config::PlayerConfig, cover::PROVIDERS, error::Error, player::cmus};
 
 pub struct Context {
     player: Option<Player>,
@@ -120,36 +120,98 @@ impl Context {
         }
     }
 
-    pub fn has_player(&self) -> bool {
-        self.player.is_some()
-    }
-
     pub fn player(&self) -> Option<&Player> {
         self.player.as_ref()
-    }
-
-    pub fn has_metadata(&self) -> bool {
-        self.metadata.is_some()
     }
 
     pub fn metadata(&self) -> Option<&mpris::Metadata> {
         self.metadata.as_ref()
     }
 
-    pub fn has_properties(&self) -> bool {
-        self.properties.is_some()
-    }
-
     pub fn properties(&self) -> Option<&lofty::FileProperties> {
         self.properties.as_ref()
     }
 
-    pub fn has_tag(&self) -> bool {
-        self.tag.is_some()
-    }
-
     pub fn tag(&self) -> Option<&lofty::Tag> {
         self.tag.as_ref()
+    }
+
+    pub fn path(&self) -> Option<&str> {
+        self.path.as_deref()
+    }
+
+    pub fn title(&self) -> Option<&str> {
+        if let Some(metadata) = &self.metadata {
+            if let Some(title) = metadata.title() {
+                return Some(title);
+            }
+        }
+
+        if let Some(tag) = &self.tag {
+            if let Some(title) = tag.get_string(&ItemKey::TrackTitle) {
+                return Some(title);
+            }
+        }
+
+        None
+    }
+
+    pub fn artists(&self) -> Option<Vec<&str>> {
+        if let Some(metadata) = &self.metadata {
+            if let Some(artists) = metadata.artists() {
+                return Some(artists);
+            }
+        }
+
+        if let Some(tag) = &self.tag {
+            let mut artists = Vec::new();
+            for artist in tag.get_strings(&ItemKey::TrackArtist) {
+                artists.push(artist);
+            }
+            match artists.len() {
+                0 => return None,
+                _ => return Some(artists),
+            }
+        }
+
+        None
+    }
+
+    pub fn album_name(&self) -> Option<&str> {
+        if let Some(metadata) = &self.metadata {
+            if let Some(album_name) = metadata.album_name() {
+                return Some(album_name);
+            }
+        }
+
+        if let Some(tag) = &self.tag {
+            if let Some(album_name) = tag.get_string(&ItemKey::AlbumTitle) {
+                return Some(album_name);
+            }
+        }
+
+        None
+    }
+
+    pub fn album_artists(&self) -> Option<Vec<&str>> {
+        if let Some(metadata) = &self.metadata {
+            if let Some(album_artists) = metadata.album_artists() {
+                return Some(album_artists);
+            }
+        }
+
+        if let Some(tag) = &self.tag {
+            let mut album_artists = Vec::new();
+            for album_artist in tag.get_strings(&ItemKey::AlbumArtist) {
+                album_artists.push(album_artist);
+            }
+            match album_artists.len() {
+                0 => return None,
+                _ => return Some(album_artists),
+            }
+        }
+
+        None
     }
 
     pub fn identity(&self) -> String {
@@ -187,20 +249,13 @@ impl Context {
     }
 
     pub async fn cover_url(&self) -> Option<String> {
-        let cover_url = match self.metadata {
-            Some(ref metadata) => COVER_URL_FINDER.from_metadata(metadata).await,
-            None => None,
-        };
-
-        if cover_url.is_none() {
-            if let Some(ref path) = self.path {
-                if let Some(cover_url) = COVER_URL_FINDER.from_audio_path(path).await {
-                    return Some(cover_url);
-                }
+        for provider in PROVIDERS.iter() {
+            let cover_url = provider.get_cover_url(self).await;
+            if cover_url.is_some() {
+                return cover_url;
             }
         }
-
-        cover_url
+        None
     }
 
     pub fn is_streaming(&self) -> bool {
@@ -444,5 +499,11 @@ impl Context {
         }
 
         btree_map
+    }
+}
+
+impl PartialEq for Context {
+    fn eq(&self, other: &Self) -> bool {
+        self.data() == other.data()
     }
 }

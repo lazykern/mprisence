@@ -14,4 +14,4 @@ pub const DEFAULT_LARGE_TEXT_NO_COVER_TEMPLATE: &str =
 
 pub const DEFAULT_IMAGE_FILE_NAMES: [&str; 5] = ["cover", "folder", "front", "album", "art"];
 
-pub const DEFAULT_IMAGE_PROVIDER: &str = "imgbb";
+pub const DEFAULT_COVER_PROVIDER: &str = "musicbrainz";

@@ -44,7 +44,7 @@ mprisence
 
 See also:
 
-- [Enable **cover art support**](#cover-art-support).
+- [**Cover Art**](#cover-art).
 - [Autostarting](#autostarting).
 
 ## Configuration
@@ -63,12 +63,25 @@ See also:
 
 - [Default config file](config/default.toml)
 
-### Cover art support
+### Cover Art
 
-In order to enable album cover support, user must set the [ImageBB API key](https://api.imgbb.com/) in the [configuration file](#configuration) by providing the key as below
+#### MusicBrainz
+
+The cover art will be fetched from [MusicBrainz](https://musicbrainz.org/) API. Note that the result is not guaranteed to always be available nor correct.
+To reduce the chance of missing cover art:
+
+- Make sure the tags of the music files are identical to the [MusicBrainz database](https://musicbrainz.org)
+- Use ImgBB as the cover art provider (See below)
+
+#### ImgBB
+
+Will upload the cover art from player metadata or audio tag to [ImgBB](https://imgbb.com/) and use the uploaded image as the cover art.
+
+User must set the [ImageBB API key](https://api.imgbb.com/) in the [configuration file](#configuration) by providing the key as below.
+And make sure to add `"imgbb"` to the `[cover.provider.provider]` in the [config file](#configuration).
 
 ```toml
-[image.provider.imgbb]
+[cover.provider.imgbb]
 api_key = "<YOUR API KEY>"
 ```
 
