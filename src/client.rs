@@ -34,6 +34,10 @@ impl Client {
         }
     }
 
+    pub fn activity(&self) -> Option<&Activity> {
+        self.activity.as_ref()
+    }
+
     pub fn from_context(context: &Context) -> Self {
         let identity = context.identity();
         let unique_name = context.unique_name();

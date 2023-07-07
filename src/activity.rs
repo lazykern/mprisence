@@ -311,9 +311,7 @@ impl PartialEq for Activity {
     fn eq(&self, other: &Self) -> bool {
         self.details == other.details
             && self.state == other.state
-            && self.large_image == other.large_image
             && self.large_text == other.large_text
-            && self.small_image == other.small_image
             && self.small_text == other.small_text
             && self.start_time.map(|t| t.as_secs()) == other.start_time.map(|t| t.as_secs())
             && self.end_time.map(|t| t.as_secs()) == other.end_time.map(|t| t.as_secs())
