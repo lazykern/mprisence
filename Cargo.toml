@@ -1,7 +1,7 @@
 [package]
 name = "mprisence"
 description = "A Discord Rich Presence client for MPRIS-compatible media players with support for album art."
-version = "0.2.3"
+version = "0.3.0"
 edition = "2021"
 authors = ["Phusit Somboonyingsuk"]
 readme = "README.md"
