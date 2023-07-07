@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use crate::consts::*;
 
 use super::{
-    image::provider::{ImageProviderConfig, ImgBBConfig},
+    cover::provider::{CoverProviderConfig, ImgBBConfig},
     time::TimeConfig,
-    ImageConfig, PlayerConfig, TemplateConfig,
+    CoverConfig, PlayerConfig, TemplateConfig,
 };
 
 pub fn default_app_id() -> String {
@@ -48,19 +48,19 @@ pub fn default_true() -> bool {
     true
 }
 
-pub fn default_image_file_names() -> Vec<String> {
+pub fn default_cover_file_names() -> Vec<String> {
     DEFAULT_IMAGE_FILE_NAMES
         .iter()
         .map(|s| s.to_string())
         .collect()
 }
 
-pub fn default_image_provider() -> String {
+pub fn default_cover_provider() -> String {
     DEFAULT_IMAGE_PROVIDER.to_string()
 }
 
-pub fn default_image_config() -> ImageConfig {
-    ImageConfig::default()
+pub fn default_cover_config() -> CoverConfig {
+    CoverConfig::default()
 }
 
 pub fn default_player_hashmap_config() -> HashMap<String, PlayerConfig> {
@@ -79,6 +79,6 @@ pub fn default_imagebb_config() -> ImgBBConfig {
     ImgBBConfig::default()
 }
 
-pub fn default_image_provider_config() -> ImageProviderConfig {
-    ImageProviderConfig::default()
+pub fn default_cover_provider_config() -> CoverProviderConfig {
+    CoverProviderConfig::default()
 }

@@ -68,7 +68,7 @@ See also:
 In order to enable album cover support, user must set the [ImageBB API key](https://api.imgbb.com/) in the [configuration file](#configuration) by providing the key as below
 
 ```toml
-[image.provider.imgbb]
+[cover.provider.imgbb]
 api_key = "<YOUR API KEY>"
 ```
 

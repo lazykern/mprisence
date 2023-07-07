@@ -24,7 +24,7 @@ impl Provider {
         let name = name.as_ref().to_lowercase();
 
         match name.as_str() {
-            "imgbb" => match CONFIG.image.provider.imgbb.api_key.as_ref() {
+            "imgbb" => match CONFIG.cover.provider.imgbb.api_key.as_ref() {
                 Some(api_key) => Self::ImgBB {
                     client: ImgBBProvider::new(api_key),
                 },

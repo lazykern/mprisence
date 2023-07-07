@@ -273,7 +273,7 @@ where
                 .iter()
                 .map(|s| s.to_string())
                 .collect();
-            for name in &CONFIG.image.file_names {
+            for name in &CONFIG.cover.file_names {
                 if !file_names.contains(&name) {
                     file_names.push(name.to_string());
                 }

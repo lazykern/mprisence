@@ -70,11 +70,11 @@ show = true
 ## Show time as elapsed
 as_elapsed = false
 
-# [image]
-## Album cover image file names (no extension) to look for 
+# [cover]
+## Album cover cover file names (no extension) to look for 
 # file_names = ["cover", "folder", "front", "album", "art"]
 
-[image.provider.imgbb]
+[cover.provider.imgbb]
 ## Api key for imgbb, get the key from https://api.imgbb.com/
 api_key = "<YOUR API KEY>"
 
