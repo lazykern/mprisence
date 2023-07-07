@@ -73,7 +73,7 @@ as_elapsed = false
 # file_names = ["cover", "folder", "front", "album", "art"]
 
 [cover.provider]
-## Cover art providers
+## Cover art providers: "musicbrainz", "imgbb"
 provider = ["musicbrainz", "imgbb"]
 
 [cover.provider.imgbb]
