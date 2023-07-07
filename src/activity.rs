@@ -44,12 +44,12 @@ impl Activity {
             return;
         }
 
-        if details.len() == 1 {
+        if details.chars().count() == 1 {
             log::debug!("Details is only one character, adding null byte");
             details += "\0";
         }
 
-        if details.len() > 128 {
+        if details.chars().count() > 128 {
             log::warn!("Details is too long, truncating to 128 characters");
             details.truncate(128);
         }
@@ -73,12 +73,12 @@ impl Activity {
             return;
         }
 
-        if state.len() == 1 {
+        if state.chars().count() == 1 {
             log::debug!("State is only one character, adding null byte");
             state += "\0";
         }
 
-        if state.len() > 128 {
+        if state.chars().count() > 128 {
             log::warn!("State is too long, truncating to 128 characters");
             state.truncate(128);
         }
@@ -121,12 +121,12 @@ impl Activity {
             return;
         }
 
-        if large_text.len() == 1 {
+        if large_text.chars().count() == 1 {
             log::debug!("Large text is only one character, adding null byte");
             large_text += "\0";
         }
 
-        if large_text.len() > 128 {
+        if large_text.chars().count() > 128 {
             log::warn!("Large text is too long, truncating to 128 characters");
             large_text.truncate(128);
         }
@@ -162,12 +162,12 @@ impl Activity {
             return;
         }
 
-        if small_text.len() == 1 {
+        if small_text.chars().count() == 1 {
             log::debug!("Small text is only one character, adding null byte");
             small_text += "\0";
         }
 
-        if small_text.len() > 128 {
+        if small_text.chars().count() > 128 {
             log::warn!("Small text is too long, truncating to 128 characters");
             small_text.truncate(128);
         }
