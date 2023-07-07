@@ -71,19 +71,23 @@ impl MusicBrainzProvider {
             return Some(url);
         }
 
-        let mut similar_releases: Vec<Release> = Vec::new();
+        let mut similar_releases: Vec<ReleaseSearch> = Vec::new();
 
-        if let (Some(title), Some(artists)) = (title, artists) {
+        if let (Some(title), Some(artists), Some(album)) = (title, artists, album) {
             for artist in artists {
                 let recordings = match Self::search_recording(
-                    &Query::new().recording(title).artist(artist).build(),
+                    &Query::new()
+                        .recording(title)
+                        .artist(artist)
+                        .release(album)
+                        .build(),
                 )
                 .await
                 {
                     Ok(recordings) => recordings,
                     Err(e) => {
                         log::warn!("Error while searching for recordings: {}", e);
-                        continue;
+                        return None;
                     }
                 };
                 for recording in recordings.recordings {
@@ -105,7 +109,7 @@ impl MusicBrainzProvider {
                         Ok(releases) => releases,
                         Err(e) => {
                             log::warn!("Error while searching for releases: {}", e);
-                            continue;
+                            return None;
                         }
                     };
                 for release in releases.releases {
@@ -131,23 +135,28 @@ impl MusicBrainzProvider {
 
         similar_releases.retain(|release| {
             let release_title_lower = release.title.to_lowercase();
-            let mut keep = true;
 
             if let Some(album) = album {
                 let album_lower = album.to_lowercase();
-                if !(album_lower.contains(&release_title_lower)
-                    || strsim::jaro_winkler(&album_lower, &release_title_lower) > 0.8)
-                {
-                    log::debug!(
-                        "Release title '{}' does not match album name '{}'",
-                        release_title_lower,
-                        album_lower
-                    );
-                    keep = false;
+                let jarowinkler = strsim::jaro_winkler(&album_lower, &release_title_lower);
+                if !(album_lower.contains(&release_title_lower) || jarowinkler > 0.9) {
+                    return false;
                 }
             }
 
-            keep
+            // retain if there is at least one artist that matches
+            for artist in all_artists.as_ref().unwrap_or(&Vec::new()) {
+                let artist_lower = artist.to_lowercase();
+                if release.artist_credit.iter().any(|ac| {
+                    ac.name.to_lowercase().contains(&artist_lower)
+                        || artist_lower.contains(&ac.name.to_lowercase())
+                        || { strsim::jaro_winkler(&artist_lower, &ac.name.to_lowercase()) > 0.8 }
+                }) {
+                    return true;
+                }
+            }
+
+            false
         });
 
         similar_releases.sort_by(|a, b| {
@@ -191,49 +200,60 @@ impl MusicBrainzProvider {
             std::cmp::Ordering::Equal
         });
 
-        let release_id = match similar_releases.first() {
-            Some(release) => release.id.clone(),
-            None => {
-                log::info!("No release found");
-                return None;
+        for release in similar_releases {
+            log::debug!("Checking release cover art existance: {}", release.title);
+
+            let release_id = release.id;
+
+            match Self::get_release(&release_id).await {
+                Ok(release) => {
+                    if !release.cover_art_archive.front {
+                        continue;
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Error while getting release: {}", e);
+                    continue;
+                }
             }
-        };
+            let cover_url = format!(
+                "https://coverartarchive.org/release/{}/front-250",
+                release_id
+            );
 
-        let cover_url = format!(
-            "https://coverartarchive.org/release/{}/front-250",
-            release_id
-        );
+            self.cache.set(&cache_key, &cover_url.clone());
 
-        let cover_res = REQWEST_CLIENT.get(&cover_url).send().await.ok()?;
-
-        if cover_res.error_for_status().err().is_some() {
-            log::info!("coverartarchive.org returned an error for {}", cover_url);
-            return None;
+            return Some(cover_url);
         }
-
-        self.cache.set(&cache_key, &cover_url.clone());
-
-        Some(cover_url)
+        None
     }
 
-    pub async fn search_recording(query: &str) -> Result<RecordingReponse, reqwest::Error> {
+    pub async fn search_recording(query: &str) -> Result<RecordingSearchReponse, reqwest::Error> {
         let url = format!(
             "https://musicbrainz.org/ws/2/recording/?query={}&fmt=json&limit=5",
             query
         );
         log::info!("searching for recording: {}", url);
         let res = REQWEST_CLIENT.get(&url).send().await?;
-        let response = res.json::<RecordingReponse>().await?;
+        let response = res.json::<RecordingSearchReponse>().await?;
         Ok(response)
     }
-    pub async fn search_release(query: &str) -> Result<ReleaseResponse, reqwest::Error> {
+    pub async fn search_release(query: &str) -> Result<ReleaseSearchResponse, reqwest::Error> {
         let url = format!(
             "https://musicbrainz.org/ws/2/release/?query={}&fmt=json&limit=5",
             query
         );
         log::info!("searching for release: {}", url);
         let res = REQWEST_CLIENT.get(&url).send().await?;
-        let response = res.json::<ReleaseResponse>().await?;
+        let response = res.json::<ReleaseSearchResponse>().await?;
+        Ok(response)
+    }
+
+    pub async fn get_release(id: &str) -> Result<Release, reqwest::Error> {
+        let url = format!("https://musicbrainz.org/ws/2/release/{}?fmt=json", id);
+        log::info!("getting release: {}", url);
+        let res = REQWEST_CLIENT.get(&url).send().await?;
+        let response = res.json::<Release>().await?;
         Ok(response)
     }
 }
@@ -294,23 +314,25 @@ impl Query {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ReleaseResponse {
-    pub releases: Vec<Release>,
+pub struct ReleaseSearchResponse {
+    #[serde(default)]
+    pub releases: Vec<ReleaseSearch>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct RecordingReponse {
-    pub recordings: Vec<Recording>,
+pub struct RecordingSearchReponse {
+    #[serde(default)]
+    pub recordings: Vec<RecordingSearch>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct Recording {
+pub struct RecordingSearch {
     pub id: String,
     pub title: String,
     #[serde(rename = "artist-credit", default)]
     pub artist_credit: Vec<ArtistCredit>,
     #[serde(default)]
-    pub releases: Vec<Release>,
+    pub releases: Vec<ReleaseSearch>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -319,9 +341,21 @@ pub struct ArtistCredit {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct Release {
+pub struct ReleaseSearch {
     pub id: String,
     pub title: String,
     #[serde(rename = "artist-credit", default)]
     pub artist_credit: Vec<ArtistCredit>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Release {
+    pub id: String,
+    #[serde(rename = "cover-art-archive")]
+    pub cover_art_archive: CoverArtArchive,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct CoverArtArchive {
+    pub front: bool,
 }
