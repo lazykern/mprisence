@@ -75,7 +75,7 @@ pub fn default_time_config() -> TimeConfig {
     TimeConfig::default()
 }
 
-pub fn default_imagebb_config() -> ImgBBConfig {
+pub fn default_imgbb_config() -> ImgBBConfig {
     ImgBBConfig::default()
 }
 
