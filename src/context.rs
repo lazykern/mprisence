@@ -163,6 +163,17 @@ impl Context {
             }
         }
 
+        if let Some(tag) = &self.tag {
+            let mut artists = Vec::new();
+            for artist in tag.get_strings(&ItemKey::TrackArtist) {
+                artists.push(artist);
+            }
+            match artists.len() {
+                0 => return None,
+                _ => return Some(artists),
+            }
+        }
+
         None
     }
 
@@ -186,6 +197,17 @@ impl Context {
         if let Some(metadata) = &self.metadata {
             if let Some(album_artists) = metadata.album_artists() {
                 return Some(album_artists);
+            }
+        }
+
+        if let Some(tag) = &self.tag {
+            let mut album_artists = Vec::new();
+            for album_artist in tag.get_strings(&ItemKey::AlbumArtist) {
+                album_artists.push(album_artist);
+            }
+            match album_artists.len() {
+                0 => return None,
+                _ => return Some(album_artists),
             }
         }
 
@@ -471,5 +493,11 @@ impl Context {
         }
 
         btree_map
+    }
+}
+
+impl PartialEq for Context {
+    fn eq(&self, other: &Self) -> bool {
+        self.data() == other.data()
     }
 }
