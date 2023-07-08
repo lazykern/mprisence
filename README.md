@@ -78,7 +78,7 @@ To reduce the chance of missing cover art:
 Will upload the cover art from player metadata or audio tag to [ImgBB](https://imgbb.com/) and use the uploaded image as the cover art.
 
 User must set the [ImageBB API key](https://api.imgbb.com/) in the [configuration file](#configuration) by providing the key as below.
-And make sure to add `"imgbb"` to the `[cover.provider.provider]` in the [config file](#configuration).
+And make sure to set `provider = ["imgbb"]` to the `[cover.provider]` in the [config file](#configuration).
 
 ```toml
 [cover.provider.imgbb]
