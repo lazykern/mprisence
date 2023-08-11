@@ -23,7 +23,7 @@ fi
 
 echo "Creating systemd service at $HOME/.config/systemd/user/mprisence.service"
 mkdir -p "$HOME/.config/systemd/user"
-curl https://raw.githubusercontent.com/phusitsom/mprisence/main/systemd/mprisence-local.service >"$HOME/.config/systemd/user/mprisence.service"
+curl https://raw.githubusercontent.com/pulllazy/mprisence/main/systemd/mprisence-local.service >"$HOME/.config/systemd/user/mprisence.service"
 
 echo "Enabling and starting systemd service"
 systemctl --user daemon-reload
