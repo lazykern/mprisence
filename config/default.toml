@@ -21,7 +21,7 @@ provider = ["musicbrainz", "imgbb"]
 
 [player.default]
 add_id = "1121632048155742288"
-icon = "https://raw.githubusercontent.com/pulllazy/mprisence/main/assets/icon.png"
+icon = "https://raw.githubusercontent.com/pullinglazy/mprisence/main/assets/icon.png"
 show_icon = false
 allow_streaming = false
 

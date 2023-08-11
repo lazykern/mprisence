@@ -5,8 +5,8 @@ version = "0.3.2"
 edition = "2021"
 authors = ["Phusit Somboonyingsuk"]
 readme = "README.md"
-homepage = "https://github.com/pulllazy/mprisence"
-repository = "https://github.com/pulllazy/mprisence"
+homepage = "https://github.com/pullinglazy/mprisence"
+repository = "https://github.com/pullinglazy/mprisence"
 license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
