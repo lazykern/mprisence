@@ -25,13 +25,13 @@ You can install mprisence from source by
 #### Using my script
 
 ```bash
-curl -s https://raw.githubusercontent.com/pullinglazy/mprisence/main/scripts/install.sh | bash -s
+curl -s https://raw.githubusercontent.com/lazykern/mprisence/main/scripts/install.sh | bash -s
 ```
 
 #### Manually (See [autostarting](#autostarting))
 
 ```bash
-cargo install --git "https://github.com/pullinglazy/mprisence.git"
+cargo install --git "https://github.com/lazykern/mprisence.git"
 ```
 
 ## Usage
@@ -56,7 +56,7 @@ See [Example config file](config/example.toml) for more detail on configuration.
 To download example config file:
 
 ```bash
-curl -s https://raw.githubusercontent.com/pullinglazy/mprisence/main/scripts/example-config.sh | bash -s
+curl -s https://raw.githubusercontent.com/lazykern/mprisence/main/scripts/example-config.sh | bash -s
 ```
 
 See also:
@@ -104,7 +104,7 @@ systemctl --user enable --now mprisence.service
 #### Using my script
 
 ```bash
-curl -s https://raw.githubusercontent.com/pullinglazy/mprisence/main/scripts/autostart.sh | bash -s
+curl -s https://raw.githubusercontent.com/lazykern/mprisence/main/scripts/autostart.sh | bash -s
 ```
 
 #### Manually
@@ -112,7 +112,7 @@ curl -s https://raw.githubusercontent.com/pullinglazy/mprisence/main/scripts/aut
 ```bash
 sudo ln -s $(which mprisence) /usr/local/bin/mprisence
 mkdir -p "$HOME/.config/systemd/user"
-curl https://raw.githubusercontent.com/pullinglazy/mprisence/main/systemd/mprisence-local.service >"$HOME/.config/systemd/user/mprisence.service"
+curl https://raw.githubusercontent.com/lazykern/mprisence/main/systemd/mprisence-local.service >"$HOME/.config/systemd/user/mprisence.service"
 systemctl --user daemon-reload
 systemctl --user enable --now mprisence.service
 ```

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CONFIG_URL=https://raw.githubusercontent.com/pullinglazy/mprisence/main/config/example.toml
+CONFIG_URL=https://raw.githubusercontent.com/lazykern/mprisence/main/config/example.toml
 CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/mprisence/config.toml"
 
 create_config() {

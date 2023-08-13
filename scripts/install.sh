@@ -112,7 +112,7 @@ fi
 
 echo "Installing mprisence..."
 
-cargo install --git https://github.com/pullinglazy/mprisence --branch main
+cargo install --git https://github.com/lazykern/mprisence --branch main
 
 if [ -f "$HOME/.config/systemd/user/mprisence.service" ]; then
 	echo "mprisence.service exists"
@@ -122,7 +122,7 @@ else
 	echo "Do you want to set up a systemd service (autostart) for mprisence? (Y/n)"
 	read -r setup_service
 	if [ "$setup_service" != "n" ]; then
-		curl -s https://raw.githubusercontent.com/pullinglazy/mprisence/main/scripts/autostart.sh | bash -s
+		curl -s https://raw.githubusercontent.com/lazykern/mprisence/main/scripts/autostart.sh | bash -s
 	fi
 fi
 
@@ -132,6 +132,6 @@ if [ ! -f "$HOME/.config/mprisence/config.toml" ]; then
 	echo "Do you want to set up a config file for mprisence? (Y/n)"
 	read -r setup_config
 	if [ "$setup_config" != "n" ]; then
-		curl -s https://raw.githubusercontent.com/pullinglazy/mprisence/main/scripts/example-config.sh | bash -s
+		curl -s https://raw.githubusercontent.com/lazykern/mprisence/main/scripts/example-config.sh | bash -s
 	fi
 fi
