@@ -20,7 +20,7 @@ paru -S mprisence # or any other AUR helpers
 
 ### Other
 
-You can install mprisence from source by
+You can install mprisence from the source by
 
 #### Using my script
 
@@ -51,9 +51,9 @@ See also:
 
 The rich presence can be configured to the user's preference by providing the configuration file at `~/.config/mprisence/config.toml` or `$XDG_CONFIG_HOME/mprisence/config.toml`.
 
-See [Example config file](config/example.toml) for more detail on configuration.
+See [Example config file](config/example.toml) for more details on configuration.
 
-To download example config file:
+To download the example config file:
 
 ```bash
 curl -s https://raw.githubusercontent.com/lazykern/mprisence/main/scripts/example-config.sh | bash -s
@@ -77,7 +77,7 @@ To reduce the chance of missing cover art:
 
 Will upload the cover art from player metadata or audio tag to [ImgBB](https://imgbb.com/) and use the uploaded image as the cover art.
 
-User must set the [ImageBB API key](https://api.imgbb.com/) in the [configuration file](#configuration) by providing the key as below.
+The user must set the [ImageBB API key](https://api.imgbb.com/) in the [configuration file](#configuration) by providing the key as below.
 And make sure to add `provider = ["imgbb"]` to `[cover.provider]` in the [config file](#configuration).
 
 ```toml
