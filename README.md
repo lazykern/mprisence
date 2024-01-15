@@ -65,15 +65,15 @@ See also:
 
 ### Cover Art
 
-#### MusicBrainz
+#### Fetching from MusicBrainz
 
 The cover art will be fetched from [MusicBrainz](https://musicbrainz.org/) API. Note that the result is not guaranteed to always be available nor correct.
 To reduce the chance of missing cover art:
 
 - Make sure the tags of the music files are identical to the [MusicBrainz database](https://musicbrainz.org)
-- Use ImgBB as the cover art provider (See below)
+- I recommend using [MusicBrainz Picard](https://picard.musicbrainz.org/) for music tagging
 
-#### ImgBB
+#### Using ImgBB
 
 Will upload the cover art from player metadata or audio tag to [ImgBB](https://imgbb.com/) and use the uploaded image as the cover art.
 
