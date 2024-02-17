@@ -14,20 +14,20 @@ license = "MIT"
 [dependencies]
 dirs = "5.0.1"
 discord-rich-presence = "0.2.3"
-env_logger = "0.10.0"
-figment = { version = "0.10.10", features = ["toml"] }
-handlebars = "4.3.7"
-handlebars_misc_helpers = { version = "0.13.0", features = ["string"] }
-imgbb = "1.0.0"
+env_logger = "0.11.2"
+figment = { version = "0.10.14", features = ["toml"] }
+handlebars = "5.1.0"
+handlebars_misc_helpers = { version = "0.15.0", features = ["string"] }
+imgbb = "1.2.1"
 lazy_static = "1.4.0"
-lofty = "0.14.0"
-log = "0.4.19"
+lofty = "0.18.2"
+log = "0.4.20"
 mpris = "2.0.1"
 reqwest = { version = "0.11.18", features = ["json"] }
 serde = { version = "1.0.164", features = ["derive"] }
-sha256 = "1.1.4"
-strsim = "0.10.0"
+sha256 = "1.5.0"
+strsim = "0.11.0"
 tokio = { version = "1.29.0", features = ["macros", "rt-multi-thread"] }
-toml = "0.7.5"
+toml = "0.8.10"
 url = "2.4.0"
 walkdir = "2.3.3"
