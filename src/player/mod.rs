@@ -13,13 +13,26 @@ pub fn get_players() -> Vec<Player> {
         }
     };
 
-    let players = match player_finder.find_all() {
-        Ok(players) => players,
+    let mut players = vec![];
+
+    match player_finder.iter_players() {
+        Ok(found_players) => {
+            for player in found_players {
+                match player {
+                    Ok(player) => {
+                        log::info!("Found player: {:?}", player);
+                        players.push(player);
+                    }
+                    Err(e) => {
+                        log::error!("Error iterating players: {:?}", e);
+                    }
+                }
+            }
+        },
         Err(e) => {
             log::error!("Error finding players: {:?}", e);
-            return vec![];
         }
-    };
+    } 
 
     players
 }
