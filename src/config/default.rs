@@ -36,6 +36,10 @@ pub fn default_large_text_no_cover_template() -> String {
     DEFAULT_LARGE_TEXT_NO_COVER_TEMPLATE.to_string()
 }
 
+pub fn default_interval() -> u64 {
+    2000
+}
+
 pub fn default_i8max() -> i8 {
     i8::MAX
 }

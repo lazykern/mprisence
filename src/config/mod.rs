@@ -26,6 +26,8 @@ lazy_static::lazy_static! {
 pub struct Config {
     #[serde(default = "default_true")]
     pub clear_on_pause: bool,
+    #[serde(default = "default_interval")]
+    pub interval: u64,
     #[serde(default = "default_cover_config")]
     pub cover: CoverConfig,
     #[serde(default = "default_player_hashmap_config")]
@@ -40,6 +42,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             clear_on_pause: default_true(),
+            interval: default_interval(),
             cover: CoverConfig::default(),
             player: HashMap::new(),
             template: TemplateConfig::default(),

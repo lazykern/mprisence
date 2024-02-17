@@ -43,8 +43,8 @@ impl Mprisence {
                     log::error!("Error updating rich presence: {:?}", error);
                 }
             }
-            log::info!("Waiting 2 second");
-            std::thread::sleep(Duration::from_secs(2));
+            log::info!("Waiting for {} milliseconds", CONFIG.interval);
+            std::thread::sleep(Duration::from_millis(CONFIG.interval));
         }
     }
 
