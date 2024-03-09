@@ -43,8 +43,8 @@ impl Mprisence {
                     log::error!("Error updating rich presence: {:?}", error);
                 }
             }
-            log::info!("Waiting 2 second");
-            std::thread::sleep(Duration::from_secs(2));
+            log::info!("Waiting for {} milliseconds", CONFIG.interval);
+            std::thread::sleep(Duration::from_millis(CONFIG.interval));
         }
     }
 
@@ -146,7 +146,11 @@ impl Mprisence {
             activity.set_large_image(player_config.icon_or_default());
         }
 
-        client.set_activity(&activity)?;
+        if client.set_activity(&activity).is_err() {
+            log::warn!("Error setting activity, trying to reconnect");
+            client.reconnect()?;
+            client.set_activity(&activity)?;
+        }
 
         Ok(())
     }

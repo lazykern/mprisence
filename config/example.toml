@@ -1,6 +1,9 @@
 ## Clear activity when player is paused
 clear_on_pause = false
 
+### Interval to update the activity (in milliseconds)
+interval = 2000
+
 [template]
 ## Variables provided for template
 

@@ -1,5 +1,6 @@
 pub const APP_NAME: &str = "mprisence";
 pub const DEFAULT_APP_ID: &str = "1121632048155742288";
+pub const DEFAULT_INTERVAL: u64 = 2000;
 
 pub const DEFAULT_ICON: &str =
     "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png";
