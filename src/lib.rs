@@ -146,7 +146,11 @@ impl Mprisence {
             activity.set_large_image(player_config.icon_or_default());
         }
 
-        client.set_activity(&activity)?;
+        if client.set_activity(&activity).is_err() {
+            log::warn!("Error setting activity, trying to reconnect");
+            client.reconnect()?;
+            client.set_activity(&activity)?;
+        }
 
         Ok(())
     }
