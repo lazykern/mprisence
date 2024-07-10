@@ -58,7 +58,7 @@ interval = 2000
 ## Additional helpers:
 ##  - eq
 ##    Example: {{#if (eq status "playing")}}Playing{{/if}}
-##  - String transformation helpers from 
+##  - String transformation helpers from
 ##    https://github.com/davidB/handlebars_misc_helpers#string-transformation
 
 detail = "{{{title}}}"
@@ -72,7 +72,7 @@ show = true
 as_elapsed = false
 
 # [cover]
-## Album cover cover file names (no extension) to look for 
+## Album cover cover file names (no extension) to look for
 # file_names = ["cover", "folder", "front", "album", "art"]
 
 [cover.provider]
@@ -85,12 +85,12 @@ api_key = "<YOUR API KEY>"
 
 [player.default]
 ## Discord application id
+ignore = true
 # app_id = "1125274206771359826"
 ## Show the player icon as small image by default
 show_icon = false
 ## Allow streaming media to be shown
 allow_streaming = false
-
 
 [player.cmus]
 ## Thanks to https://github.com/cmus/cmus/issues/965 for the icon
