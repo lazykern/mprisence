@@ -21,6 +21,7 @@ provider = ["musicbrainz", "imgbb"]
 # api_key = "<YOUR API KEY>"
 
 [player.default]
+ignore = true
 add_id = "1121632048155742288"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png"
 show_icon = false
