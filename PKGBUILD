@@ -14,6 +14,7 @@ sha256sums=('a607bdc9cfa753c4bf101f5492e3e151810ffd0a73adc9c69cbbaf80b44b7168'
 	'2efd06eb77e15171ec8727caece105c68fcf253f57d5af76d7964c69f16fbb7d'
 	'821c33fb624e652c443c800f4003db4d0ac9eee6c49fabfe3987746afb39856a')
 
+
 package() {
 	install -Dm755 mprisence -t "$pkgdir/usr/bin"
 	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
