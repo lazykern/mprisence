@@ -1,4 +1,4 @@
-name: AUR
+name: TEST
 
 on:
   pull_request:
