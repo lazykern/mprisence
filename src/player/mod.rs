@@ -28,11 +28,11 @@ pub fn get_players() -> Vec<Player> {
                     }
                 }
             }
-        },
+        }
         Err(e) => {
             log::error!("Error finding players: {:?}", e);
         }
-    } 
+    }
 
     players
 }

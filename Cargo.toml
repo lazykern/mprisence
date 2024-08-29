@@ -12,6 +12,7 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+clap = { version = "4.5.16", features = ["derive"] }
 dirs = "5.0.1"
 discord-rich-presence = "0.2.3"
 env_logger = "0.11.2"
