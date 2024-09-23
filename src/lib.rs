@@ -11,6 +11,7 @@ pub mod player;
 use client::Client;
 
 use config::PlayerConfig;
+use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
 use hbs::HANDLEBARS;
 use mpris::{PlaybackStatus, Player};
 use std::collections::BTreeMap;
@@ -36,7 +37,24 @@ impl Mprisence {
 
     pub async fn start(&mut self) {
         log::info!("Starting mprisence discord rich presence");
+
+        let mut is_ipc_error_logged = false;
+        let mut dummy_discord_client = DiscordIpcClient::new("0").unwrap();
+
         loop {
+            if dummy_discord_client.connect().is_err() {
+                log::info!("Trying to connect to discord ipc");
+                if !is_ipc_error_logged {
+                    log::error!(
+                        "Error connecting to discord ipc, is discord running? Retrying every 10 seconds"
+                    );
+                    is_ipc_error_logged = true;
+                }
+
+                std::thread::sleep(Duration::from_secs(10));
+                continue;
+            }
+
             match self.update().await {
                 Ok(_) => {}
                 Err(error) => {
@@ -45,6 +63,8 @@ impl Mprisence {
             }
             log::info!("Waiting for {} milliseconds", CONFIG.interval);
             std::thread::sleep(Duration::from_millis(CONFIG.interval));
+
+            is_ipc_error_logged = false;
         }
     }
 
@@ -125,7 +145,6 @@ impl Mprisence {
         activity.set_large_text(render_large_text(&data));
         activity.set_small_text(render_small_text(&data));
 
-
         if let Some(current_activity) = client.activity() {
             if current_activity == &activity {
                 log::info!("Activity is the same, skipping update");
@@ -135,7 +154,6 @@ impl Mprisence {
 
         if let Some(cover_url) = context.cover_url().await {
             activity.set_large_image(cover_url);
-
 
             if player_config.show_icon_or_default() {
                 activity.set_small_image(player_config.icon_or_default());
