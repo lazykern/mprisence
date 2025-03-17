@@ -2,7 +2,7 @@
 Description=A Discord Rich Presence client for MPRIS-compatible media players with support for album cover
 
 [Service]
-type=simple
+Type=simple
 ExecStart=/usr/bin/mprisence
 Restart=on-failure
 RestartSec=3
