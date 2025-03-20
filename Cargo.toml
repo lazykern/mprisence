@@ -1,0 +1,25 @@
+[package]
+name = "mprisence"
+version = "1.0.0"
+edition = "2021"
+authors = ["Phusit Somboonyingsuk"]
+readme = "README.md"
+homepage = "https://github.com/lazykern/mprisence"
+repository = "https://github.com/lazykern/mprisence"
+license = "MIT"
+
+[dependencies]
+blake3 = "1.7.0"
+clap = { version = "4.5.32", features = ["derive"] }
+dirs = "6.0.0"
+discord-presence = { version = "1.5.0", features = ["activity_type"] }
+env_logger = "0.11.7"
+figment = { version = "0.10.19", features = ["toml"] }
+handlebars = "6.3.2"
+handlebars_misc_helpers = { version = "0.17.0", features = ["string"], default-features = false }
+imgbb = "1.2.1"
+lofty = "0.22.2"
+log = "0.4.26"
+mpris = "2.0.1"
+musicbrainz_rs = "0.9.0"
+toml = "0.8.20"
