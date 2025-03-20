@@ -7,7 +7,7 @@ Main Features
   - [ ] Imgbb (local)
 
 User Configuration
-- [ ] Configuration file structure
+- [X] Configuration file structure
 - [ ] Player-specific configurations
 - [ ] Custom format strings for display
 - [ ] Update interval settings

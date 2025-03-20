@@ -1,0 +1,114 @@
+clear_on_pause = false
+interval = 2000
+
+[template]
+detail = "{{{title}}}"
+state = '{{{status_icon}}} {{{artists}}} '
+large_text = "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}"
+small_text = "Playing on {{{player}}}"
+
+[time]
+show = true
+as_elapsed = false
+
+[cover]
+file_names = ["cover", "folder", "front", "album", "art"]
+
+[cover.provider]
+provider = ["musicbrainz", "imgbb"]
+
+# [cover.provider.imgbb]
+# api_key = "<YOUR API KEY>"
+
+[player.default]
+ignore = true
+app_id = "1121632048155742288"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png"
+show_icon = false
+allow_streaming = false
+
+[player.audacious]
+app_id = "1125084572166656031"
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Audacious-2.4-logo.svg/1200px-Audacious-2.4-logo.svg.png"
+
+[player.elisa]
+app_id = "1125089232776601761"
+icon = "https://store-images.s-microsoft.com/image/apps.47778.14129707655588863.dafceb08-f3ca-4e43-974e-9776c934976c.b69f75ea-0df1-4e00-9289-d11d9ac5a0f0"
+
+[player.lollypop]
+app_id = "1124183825489068103"
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Lollypop_icon_2019.svg/640px-Lollypop_icon_2019.svg.png"
+allow_streaming = true
+
+[player.rhythmbox]
+app_id = "1124770552754733056"
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/Rhythmbox_logo_3.4.4.svg/1200px-Rhythmbox_logo_3.4.4.svg.png"
+allow_streaming = true
+
+[player.cmus]
+app_id = "1124777797722853476"
+
+[player.vlc_media_player]
+app_id = "1124968989538402334"
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/VLC_Icon.svg/1200px-VLC_Icon.svg.png"
+allow_streaming = true
+
+[player.mpv]
+app_id = "1125075797942734928"
+icon = "https://upload.wikimedia.org/wikipedia/commons/7/73/Mpv_logo_%28official%29.png"
+allow_streaming = true
+
+[player.mpd]
+app_id = "1126153268486213672"
+icon = "https://www.musicpd.org/logo.png"
+allow_streaming = true
+
+[player.music_player_daemon]
+app_id = "1126153268486213672"
+icon = "https://www.musicpd.org/logo.png"
+allow_streaming = true
+
+[player.musikcube]
+app_id = "1127548029294084147"
+icon = "https://dashboard.snapcraft.io/site_media/appmedia/2020/04/ic_launcher_square.png"
+allow_streaming = true
+
+[player.clementine]
+app_id = "1125075725473562735"
+icon = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRYiUYLmMQwsDaNqu6eg5I4aB1vyy_uptN34eouN7XxA5eFZTAV8RISZHCsn_M6-iQc-Pw&usqp=CAU"
+allow_streaming = true
+
+[player.strawberry]
+app_id = "1126197744512536647"
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Strawberry-icon-1000px.png/800px-Strawberry-icon-1000px.png"
+allow_streaming = true
+
+[player.amberol]
+app_id = "1125077658192056431"
+icon = "https://dashboard.snapcraft.io/site_media/appmedia/2022/09/io.bassi.Amberol.svg.png"
+
+[player.smplayer]
+app_id = "1125077752756834314"
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/SMPlayer_icon.svg/1200px-SMPlayer_icon.svg.png"
+
+# STREAMING
+[player.spotify]
+ignore = true
+
+[player.youtube_music]
+app_id = "1125082278339559505"
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/768px-Youtube_Music_icon.svg.png"
+allow_streaming = true
+
+# BROWSERS
+[player.microsoft_edge]
+ignore = true
+
+[player.chrome]
+ignore = true
+
+[player.mozilla_firefox]
+ignore = true
+
+[player.brave]
+ignore = true

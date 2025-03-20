@@ -1,0 +1,103 @@
+## Clear activity when player is paused
+clear_on_pause = true
+
+### Interval to update the activity (in milliseconds)
+interval = 2000
+
+[template]
+## Variables provided for template
+
+## PLAYER
+## player - Player name
+## status - Current status of the player (playing, paused, stopped)
+## status_icon - Icon for the current status (▶, ⏸, ⏹)
+## volume - Current volume of the player
+## position - Current position of the track in "MM:SS" format.
+## length - Duration of the track in "MM:SS" format.
+
+## TRACK (general)
+## title - Title of the track.
+## artists - Artists involved in the track.
+## album_name - Name of the album.
+## album_artists - Artists involved in the album.
+## track_number - Position of the track within the album.
+## track_total - Total number of tracks in the album.
+## disc_number - Track's position within a multi-disc album.
+## sample_rate - Sample rate of the track.
+## audio_bitrate - Bitrate of the track.
+## channels - Number of channels in the track.
+## bit_depth - Bit depth of the track.
+## overall_bitrate - Overall bitrate of the track.
+
+## TRACK (might not be available)
+## auto_rating - Automatic rating assigned to the track.
+## arranger - Person who arranged the track.
+## bpm - Beats per minute of the track.
+## catalog_number - Unique identifier for the track.
+## color - Color associated with the track.
+## composer - Person who composed the track.
+## conductor - Conductor of the track.
+## director - Director associated with the track.
+## disc_number - Track's position within a multi-disc album.
+## disc_total - Total number of discs in the album.
+## encoded_by - Person or entity who encoded the track.
+## genre - Genre of the track.
+## label - Record label associated with the track.
+## language - Language of the track.
+## lyricist - Person who wrote the lyrics for the track.
+## mix_dj - DJ responsible for the mix of the track.
+## mix_engineer - Engineer who mixed the track.
+## mood - Mood or emotional tone of the track.
+## perfomer - Performer of the track.
+## producer - Producer of the track.
+## publisher - Publisher associated with the track.
+## recording_date - Date when the track was recorded.
+## year - Year when the track was released.
+
+## The template will be rendered by handlebars
+## Additional helpers:
+##  - eq
+##    Example: {{#if (eq status "playing")}}Playing{{/if}}
+##  - String transformation helpers from
+##    https://github.com/davidB/handlebars_misc_helpers#string-transformation
+
+detail = "{{{title}}}"
+state = '{{{status_icon}}} {{{artists}}}'
+large_text = "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}"
+small_text = "Playing on {{{player}}}"
+[time]
+## Show time in activity (remaining)
+show = true
+## Show time as elapsed
+as_elapsed = false
+
+# [cover]
+## Album cover cover file names (no extension) to look for
+# file_names = ["cover", "folder", "front", "album", "art"]
+
+[cover.provider]
+## Cover art providers: "musicbrainz", "imgbb"
+provider = ["musicbrainz", "imgbb"]
+
+[cover.provider.imgbb]
+## Api key for imgbb, get the key from https://api.imgbb.com/
+api_key = "<YOUR API KEY>"
+
+[player.default]
+## Discord application id
+ignore = true
+# app_id = "1125274206771359826"
+## Show the player icon as small image by default
+show_icon = false
+## Allow streaming media to be shown
+allow_streaming = false
+
+[player.cmus]
+## Thanks to https://github.com/cmus/cmus/issues/965 for the icon
+icon = "https://i.ibb.co/3zDHM1z/cmus.png"
+show_icon = false
+
+# [player.microsoft_edge]
+# ignore = false
+# allow_streaming = true
+# show_icon = true

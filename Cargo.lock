@@ -1472,6 +1472,7 @@ dependencies = [
  "log",
  "mpris",
  "musicbrainz_rs",
+ "serde",
  "toml",
 ]
 
