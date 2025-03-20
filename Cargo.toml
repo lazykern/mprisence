@@ -23,4 +23,5 @@ log = "0.4.26"
 mpris = "2.0.1"
 musicbrainz_rs = "0.9.0"
 serde = { version = "1.0.219", features = ["derive"] }
+thiserror = "2.0.12"
 toml = "0.8.20"

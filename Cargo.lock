@@ -1473,6 +1473,7 @@ dependencies = [
  "mpris",
  "musicbrainz_rs",
  "serde",
+ "thiserror 2.0.12",
  "toml",
 ]
 
