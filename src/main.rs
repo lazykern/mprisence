@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match player_states.get(&id) {
                     Some(old_player_state) if old_player_state != &player_state => {
                         println!("Player {}:{} updated", id.player_bus_name, id.identity);
-
+                        
                         player_states.insert(id, player_state);
                     }
                     None => {
