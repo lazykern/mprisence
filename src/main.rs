@@ -10,7 +10,7 @@ use std::{
 
 // External dependencies
 use discord_rich_presence::{
-    activity::{Activity, ActivityType, Timestamps},
+    activity::{Activity, ActivityType, Assets, Timestamps},
     DiscordIpc, DiscordIpcClient,
 };
 use handlebars::Handlebars;
@@ -150,7 +150,7 @@ mod player {
         pub fn has_position_jump(&self, previous: &Self, polling_interval: Duration) -> bool {
             // Simple approach: detect significant jumps (more than twice the polling interval)
             // or when position decreases (seek backwards)
-            
+
             // If position decreased, it's a jump backward
             if self.position < previous.position {
                 debug!(
@@ -160,11 +160,11 @@ mod player {
                 );
                 return true;
             }
-            
+
             // If position increased more than expected, it's a forward jump
             let elapsed = self.position - previous.position;
             let expected_max = polling_interval.saturating_mul(2); // Double polling interval as threshold
-            
+
             if elapsed > expected_max {
                 debug!(
                     "Position jumped forward: {}s -> {}s",
@@ -173,7 +173,7 @@ mod player {
                 );
                 return true;
             }
-            
+
             false
         }
 
@@ -358,6 +358,11 @@ mod presence {
                 event::Event::ConfigChanged => {
                     // Config changed event could trigger template reload if needed
                     debug!("Received config changed event in presence manager");
+                    // We could reload templates here if needed
+                    let config = config::get();
+                    if let Err(e) = self.template_manager.reload(&config) {
+                        error!("Failed to reload templates: {}", e);
+                    }
                 }
             }
 
@@ -373,28 +378,57 @@ mod presence {
             let player_config = ctx.player_config(player_id.identity.as_str());
             let as_elapsed = ctx.time_config().as_elapsed;
 
-            let title = state.title();
-            let length = state.metadata.length().unwrap_or_default();
+            // Create template data
+            let template_data = template::TemplateManager::create_data(player_id, state);
 
+            // Render templates
+            let details = self
+                .template_manager
+                .render("detail", &template_data)
+                .map_err(|e| PresenceError::Update(format!("Template render error: {}", e)))?;
+
+            let state_text = self
+                .template_manager
+                .render("state", &template_data)
+                .map_err(|e| PresenceError::Update(format!("Template render error: {}", e)))?;
+
+            let large_text = self
+                .template_manager
+                .render("large_text", &template_data)
+                .map_err(|e| PresenceError::Update(format!("Template render error: {}", e)))?;
+
+            let small_text = self
+                .template_manager
+                .render("small_text", &template_data)
+                .map_err(|e| PresenceError::Update(format!("Template render error: {}", e)))?;
+
+            trace!("Preparing Discord activity update: {}", details);
+
+            // Build activity using rendered templates
             let activity = Self::build_activity(
-                title,
+                details,
+                state_text,
+                large_text,
+                small_text,
                 state.playback_status,
                 state.position,
-                length,
+                state.metadata.length().unwrap_or_default(),
                 as_elapsed,
             );
-            trace!("Preparing Discord activity update with details: {}", title);
 
             self.update_activity(player_id, activity, &player_config.app_id)
         }
 
         fn build_activity(
-            title: &str,
+            details: String,
+            state: String,
+            large_text: String,
+            small_text: String,
             playback_status: PlaybackStatus,
             position: Duration,
             length: Duration,
             show_elapsed: bool,
-        ) -> Activity {
+        ) -> Activity<'static> {
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards");
@@ -416,11 +450,24 @@ mod presence {
                 timestamps = timestamps.start(start_s as i64);
             }
 
+            // Leak these strings to get 'static references
+            let details_static = Box::leak(details.into_boxed_str());
+            let state_static = Box::leak(state.into_boxed_str());
+            let large_text_static = Box::leak(large_text.into_boxed_str());
+            let small_text_static = Box::leak(small_text.into_boxed_str());
+
+            // Create assets with large and small text
+            let assets = Assets::new()
+                .large_text(large_text_static)
+                .small_text(small_text_static);
+
             // Build activity with consistent builder pattern
             Activity::new()
                 .activity_type(ActivityType::Listening)
-                .details(title)
+                .details(details_static)
+                .state(state_static)
                 .timestamps(timestamps)
+                .assets(assets)
         }
 
         fn update_activity(
@@ -496,32 +543,127 @@ mod presence {
 // TEMPLATE MODULE - Simple templating functionality
 // ============================================================================
 mod template {
+    use rustc_hash::FxHashMap;
+
     use super::*;
+    use std::collections::BTreeMap;
 
     pub struct TemplateManager {
         handlebars: Handlebars<'static>,
     }
 
     impl TemplateManager {
-        pub fn new(detail_template: &str) -> Result<Self, TemplateError> {
+        pub fn new(config: &Arc<config::ConfigManager>) -> Result<Self, TemplateError> {
             info!("Initializing TemplateManager");
-            debug!("Registering detail template: {}", detail_template);
-
             let mut handlebars = Handlebars::new();
+            let template_config = config.template_config();
 
-            handlebars.register_template_string("detail", detail_template)?;
+            // Register all templates
+            handlebars.register_template_string("detail", &template_config.detail)?;
+            handlebars.register_template_string("state", &template_config.state)?;
+            handlebars.register_template_string("large_text", &template_config.large_text)?;
+            handlebars.register_template_string("small_text", &template_config.small_text)?;
 
             info!("Template registration successful");
             Ok(Self { handlebars })
         }
 
-        pub fn reload(&mut self, detail_template: &str) -> Result<(), TemplateError> {
-            debug!("Reloading template: {}", detail_template);
-            self.handlebars = Handlebars::new();
+        pub fn reload(&mut self, config: &Arc<config::ConfigManager>) -> Result<(), TemplateError> {
+            debug!("Reloading templates");
+            let template_config = config.template_config();
+
+            // Reregister all templates without recreating Handlebars instance
             self.handlebars
-                .register_template_string("detail", detail_template)?;
+                .register_template_string("detail", &template_config.detail)?;
+            self.handlebars
+                .register_template_string("state", &template_config.state)?;
+            self.handlebars
+                .register_template_string("large_text", &template_config.large_text)?;
+            self.handlebars
+                .register_template_string("small_text", &template_config.small_text)?;
 
             Ok(())
+        }
+
+        pub fn render(
+            &self,
+            template_name: &str,
+            data: &FxHashMap<String, String>,
+        ) -> Result<String, TemplateError> {
+            Ok(self.handlebars.render(template_name, data)?)
+        }
+
+        /// Helper to create template data from player state
+        pub fn create_data(
+            player_id: &player::PlayerId,
+            state: &player::PlayerState,
+        ) -> FxHashMap<String, String> {
+            let status_icon = match state.playback_status {
+                PlaybackStatus::Playing => "▶️",
+                PlaybackStatus::Paused => "⏸️",
+                PlaybackStatus::Stopped => "⏹️",
+            };
+
+            let mut data = FxHashMap::default();
+
+            // Player information
+            data.insert("player".to_string(), player_id.identity.clone());
+
+            // Playback information
+            data.insert("status".to_string(), format!("{:?}", state.playback_status));
+            data.insert("status_icon".to_string(), status_icon.to_string());
+            data.insert("volume".to_string(), state.volume.to_string());
+
+            let position = format!(
+                "{:02}:{:02}",
+                state.position.as_secs() / 60,
+                state.position.as_secs() % 60
+            );
+            data.insert("position".to_string(), position);
+
+            // Basic track metadata
+            if let Some(title) = state.metadata.title() {
+                data.insert("title".to_string(), title.to_string());
+            }
+
+            if let Some(artists) = state.metadata.artists() {
+                data.insert("artists".to_string(), artists.join(", "));
+            }
+
+            if let Some(album_name) = state.metadata.album_name() {
+                data.insert("album_name".to_string(), album_name.to_string());
+            }
+
+            if let Some(album_artists) = state.metadata.album_artists() {
+                data.insert("album_artists".to_string(), album_artists.join(", "));
+            }
+
+            // Track timing
+            if let Some(length) = state.metadata.length() {
+                let length = format!("{:02}:{:02}", length.as_secs() / 60, length.as_secs() % 60);
+                data.insert("length".to_string(), length);
+            }
+
+            // Track numbering
+            if let Some(track_number) = state.metadata.track_number() {
+                data.insert("track_number".to_string(), track_number.to_string());
+            }
+
+            if let Some(disc_number) = state.metadata.disc_number() {
+                data.insert("disc_number".to_string(), disc_number.to_string());
+            }
+
+            // Additional metadata fields
+            if let Some(auto_rating) = state.metadata.auto_rating() {
+                data.insert("auto_rating".to_string(), auto_rating.to_string());
+            }
+
+            // URL
+            if let Some(url) = state.metadata.url() {
+                data.insert("url".to_string(), url.to_string());
+            }
+
+            data
         }
     }
 }
@@ -563,8 +705,8 @@ mod service {
             let (event_tx, event_rx) = mpsc::channel(32);
 
             debug!("Creating template manager");
-            let detail_template = config::get().template_config().detail;
-            let template_manager = template::TemplateManager::new(&detail_template)?;
+            let config = config::get();
+            let template_manager = template::TemplateManager::new(&config)?;
 
             debug!("Creating player manager");
             let player_manager = player::PlayerManager::new(event_tx.clone())?;
@@ -642,8 +784,8 @@ mod service {
 
         async fn reload_components(&mut self) -> Result<(), ServiceRuntimeError> {
             debug!("Reloading service components");
-            let detail_template = config::get().template_config().detail;
-            let template_manager = template::TemplateManager::new(&detail_template)?;
+            let config = config::get();
+            let template_manager = template::TemplateManager::new(&config)?;
             self.presence_manager = presence::PresenceManager::new(template_manager);
             Ok(())
         }
