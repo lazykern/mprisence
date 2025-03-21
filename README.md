@@ -1,31 +1,37 @@
+# MPRISence
+
 ⚠️ **THIS IS A REMAKE BRANCH. PLEASE CONSIDER THIS BRANCH AS UNSTABLE** ⚠️
 
-Main Features
-- [ ] *Listening* Music Rich Presence
-- [ ] Cover Art
-  - [ ] MusicBrainz
-  - [ ] Imgbb (local)
+A Discord Rich Presence integration for MPRIS-compatible media players on Linux.
 
-User Configuration
-- [X] Configuration file structure
-- [ ] Player-specific configurations
+## Features
+
+### Core Functionality
+- [x] Discord Rich Presence integration
+- [x] MPRIS media player support
+- [x] Real-time player state tracking
+- [x] Multi-player support
+
+### Configuration
+- [x] Configuration file structure
+- [x] Player-specific configurations
 - [ ] Custom format strings for display
-- [ ] Update interval settings
+- [x] Update interval settings
 - [ ] Default fallback presence
 
-Commands & Control
+### Commands & Control
 - [ ] Player listing functionality
 - [ ] Manual player selection
 - [ ] Status command
-- [ ] Start/stop/restart commands
+- [ ] Service control (start/stop/restart)
 
-Documentation
-- [ ] Installation instructions
-- [ ] Configuration guide
+### Documentation
+- [ ] Installation guide
+- [ ] Configuration reference
 - [ ] Troubleshooting guide
-- [ ] Development documentation
+- [ ] Development setup
 
-Build System
-- [ ] Makefile for compilation
-- [ ] Package definitions (AUR, etc.)
-- [ ] Dependency management
+### Build & Distribution
+- [ ] Build automation
+- [ ] Package distribution (AUR)
+- [ ] Release workflow
