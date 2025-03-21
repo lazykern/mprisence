@@ -1,15 +1,13 @@
 use clap::Parser;
 use log::{debug, error, info, warn};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{hash_map::Entry, HashMap, VecDeque},
     fmt::Display,
     sync::Arc,
     thread::sleep,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-// External dependencies
-use bumpalo;
 use discord_rich_presence::{
     activity::{Activity, ActivityType, Assets, Timestamps},
     DiscordIpc, DiscordIpcClient,
@@ -17,14 +15,12 @@ use discord_rich_presence::{
 use handlebars::Handlebars;
 use mpris::{Metadata, PlaybackStatus, Player, PlayerFinder};
 use smol_str::SmolStr;
-use tokio::{
-    sync::{broadcast, mpsc, RwLock},
-    time,
-};
+use tokio::sync::mpsc;
 
 mod cli;
 mod config;
 mod error;
+mod utils;
 
 // Re-exports
 use crate::error::{
@@ -72,6 +68,31 @@ mod player {
         pub volume: u8,
     }
 
+    impl Display for PlayerState {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            // Basic playback info
+            write!(
+                f,
+                "{:?}: {} [{}s, {}%]",
+                self.playback_status,
+                self.metadata.title().unwrap_or("Unknown"),
+                self.position,
+                self.volume
+            )?;
+
+            // Add track identifiers if available
+            if let Some(track_id) = self.metadata.track_id() {
+                write!(f, " id:{}", track_id)?;
+            }
+
+            if let Some(url) = self.metadata.url() {
+                write!(f, " url:{}", url)?;
+            }
+
+            Ok(())
+        }
+    }
+
     impl TryFrom<&Player> for PlayerState {
         type Error = PlayerError;
 
@@ -86,75 +107,54 @@ mod player {
     }
 
     impl PlayerState {
-        /// Get title with a default value if not present
-        pub fn title(&self) -> &str {
-            self.metadata.title().unwrap_or_default()
-        }
-
         /// Checks if metadata, status or volume has changed
         pub fn has_metadata_changes(&self, previous: &Self) -> bool {
-            let metadata_changed = !Arc::ptr_eq(&self.metadata, &previous.metadata)
-                && self.metadata.as_hashmap() != previous.metadata.as_hashmap();
+            // Fast path: check Arc pointer equality first
+            if Arc::ptr_eq(&self.metadata, &previous.metadata) {
+                return false;
+            }
+
+            // Check track identity (most important change)
+            if self.metadata.track_id() != previous.metadata.track_id()
+                || self.metadata.url() != previous.metadata.url()
+            {
+                debug!("Track identity changed for: {}", self);
+                return true;
+            }
+
+            // Check playback status and volume
             let status_changed = self.playback_status != previous.playback_status;
             let volume_changed = self.volume != previous.volume;
 
-            // Log changes if debug is enabled
-            if log::log_enabled!(log::Level::Debug)
-                && (metadata_changed || status_changed || volume_changed)
-            {
-                self.log_changes(previous, metadata_changed, status_changed, volume_changed);
+            if status_changed || volume_changed {
+                return true;
             }
 
-            metadata_changed || status_changed || volume_changed
-        }
+            // Check primary metadata fields
+            let title_changed = self.metadata.title() != previous.metadata.title();
+            let artists_changed = self.metadata.artists() != previous.metadata.artists();
 
-        fn log_changes(
-            &self,
-            previous: &Self,
-            metadata_changed: bool,
-            status_changed: bool,
-            volume_changed: bool,
-        ) {
-            if metadata_changed {
-                debug!("Track metadata changed for {}", self.title());
-                let old_map = previous.metadata.as_hashmap();
-                let new_map = self.metadata.as_hashmap();
-
-                // Handle only the essential changes - simplest approach
-                for key in old_map
-                    .keys()
-                    .chain(new_map.keys())
-                    .collect::<std::collections::HashSet<_>>()
-                {
-                    match (old_map.get(key), new_map.get(key)) {
-                        (Some(old), Some(new)) if old != new => {
-                            debug!("  {}: '{:?}' -> '{:?}'", key, old, new)
-                        }
-                        (Some(old), None) => debug!("  {} removed: '{:?}'", key, old),
-                        (None, Some(new)) => debug!("  {} added: '{:?}'", key, new),
-                        _ => {}
-                    }
-                }
+            if title_changed || artists_changed {
+                return true;
             }
 
-            if status_changed {
-                debug!(
-                    "Playback status changed: {:?} -> {:?}",
-                    previous.playback_status, self.playback_status
-                );
+            // Check secondary metadata fields
+            let album_changed = self.metadata.album_name() != previous.metadata.album_name();
+            let length_changed = self.metadata.length() != previous.metadata.length();
+
+            if album_changed || length_changed {
+                return true;
             }
 
-            if volume_changed {
-                debug!("Volume changed: {}% -> {}%", previous.volume, self.volume);
-            }
+            false
         }
 
         /// Checks if there's a significant position change that's not explained by normal playback
         pub fn has_position_jump(&self, previous: &Self, polling_interval: Duration) -> bool {
-            // Convert polling_interval to seconds for comparison with u32
-            let interval_secs = polling_interval.as_secs() as u32;
+            // Convert polling interval to seconds for comparison
+            let max_expected_change = (polling_interval.as_secs() as u32) * 2; // 2x polling interval as threshold
 
-            // If position decreased, it's a jump backward
+            // Check for backward jump
             if self.position < previous.position {
                 debug!(
                     "Position jumped backward: {}s -> {}s",
@@ -163,11 +163,9 @@ mod player {
                 return true;
             }
 
-            // If position increased more than expected, it's a forward jump
+            // Check for forward jump that exceeds expected progression
             let elapsed = self.position.saturating_sub(previous.position);
-            let expected_max = interval_secs.saturating_mul(2); // Double polling interval as threshold
-
-            if elapsed > expected_max {
+            if elapsed > max_expected_change {
                 debug!(
                     "Position jumped forward: {}s -> {}s",
                     previous.position, self.position
@@ -211,11 +209,15 @@ mod player {
             let config = config::get();
             let polling_interval = config.interval();
 
-            let current = self.player_finder.find_all().map_err(PlayerError::Finding)?;
+            let current = self
+                .player_finder
+                .find_all()
+                .map_err(PlayerError::Finding)?;
             let current_ids: Vec<_> = current.iter().map(PlayerId::from).collect();
 
             // Find removed players
-            let removed_ids: Vec<_> = self.player_states
+            let removed_ids: Vec<_> = self
+                .player_states
                 .keys()
                 .filter(|id| !current_ids.contains(id))
                 .cloned()
@@ -272,47 +274,45 @@ mod player {
             polling_interval: u64,
         ) -> Result<(), PlayerError> {
             let clear_on_pause = config::get().clear_on_pause();
-
-            match self.player_states.get(&id) {
-                Some(old_state) => {
+            let event = match self.player_states.entry(id) {
+                Entry::Occupied(mut entry) => {
                     let has_changes = player_state.requires_presence_update(
-                        old_state,
+                        entry.get(),
                         Duration::from_millis(polling_interval),
                     );
 
-                    if has_changes {
+                    let event = if has_changes {
+                        let key = entry.key().clone();
                         // Check if transitioning from playing to paused
                         if clear_on_pause
                             && player_state.playback_status == PlaybackStatus::Paused
-                            && old_state.playback_status == PlaybackStatus::Playing
+                            && entry.get().playback_status == PlaybackStatus::Playing
                         {
-                            info!("Player {} paused: '{}'", id, player_state.title());
-                            // Use PlayerRemoved instead of PlayerPaused
-                            self.send_event(event::Event::PlayerRemove(id.clone()))
-                                .await?;
+                            info!("Player {} paused: {}", key, player_state);
+                            Some(event::Event::PlayerRemove(key))
                         } else {
-                            debug!("Player {} updated: '{}'", id, player_state.title());
-                            self.send_event(event::Event::PlayerUpdate(
-                                id.clone(),
-                                player_state.clone(),
-                            ))
-                            .await?;
+                            debug!("Player {} updated: {}", key, player_state);
+                            Some(event::Event::PlayerUpdate(key, player_state.clone()))
                         }
-                    }
+                    } else {
+                        None
+                    };
+                    entry.insert(player_state);
+                    event
                 }
-                None => {
-                    info!(
-                        "New player detected: {} playing '{}'",
-                        id,
-                        player_state.title()
-                    );
-                    self.send_event(event::Event::PlayerUpdate(id.clone(), player_state.clone()))
-                        .await?;
+                Entry::Vacant(entry) => {
+                    let key = entry.key().clone();
+                    info!("New player detected: {} playing {}", key, player_state);
+                    entry.insert(player_state.clone());
+                    Some(event::Event::PlayerUpdate(key, player_state))
                 }
+            };
+
+            // Send event if any
+            if let Some(event) = event {
+                self.send_event(event).await?;
             }
 
-            // Always update the state
-            self.player_states.insert(id, player_state);
             Ok(())
         }
     }
@@ -340,11 +340,7 @@ mod presence {
             }
         }
 
-        pub async fn handle_event(
-            &mut self,
-            event: event::Event,
-            player_manager: &player::PlayerManager,
-        ) -> Result<(), PresenceError> {
+        pub async fn handle_event(&mut self, event: event::Event) -> Result<(), PresenceError> {
             match event {
                 event::Event::PlayerUpdate(id, state) => {
                     self.update_presence(&id, &state).await?;
@@ -539,6 +535,8 @@ mod presence {
 // TEMPLATE MODULE - Simple templating functionality
 // ============================================================================
 mod template {
+    use crate::utils::format_duration;
+
     use super::*;
     use std::collections::BTreeMap;
 
@@ -596,24 +594,26 @@ mod template {
 
             // Player information
             data.insert("player".to_string(), player_id.identity.to_string());
+            data.insert(
+                "player_bus_name".to_string(),
+                player_id.player_bus_name.to_string(),
+            );
 
             // Playback information - use static strings where possible
             data.insert("status".to_string(), format!("{:?}", state.playback_status));
 
             let status_icon = match state.playback_status {
-                PlaybackStatus::Playing => "▶️",
+                PlaybackStatus::Playing => "▶",
                 PlaybackStatus::Paused => "⏸️",
                 PlaybackStatus::Stopped => "⏹️",
             };
             data.insert("status_icon".to_string(), status_icon.to_string());
             data.insert("volume".to_string(), state.volume.to_string());
 
-            let position = format!(
-                "{:02}:{:02}",
-                state.position as u64 / 60,
-                state.position as u64 % 60
+            data.insert(
+                "position".to_string(),
+                format_duration(state.position as u64),
             );
-            data.insert("position".to_string(), position);
 
             // Basic track metadata
             if let Some(title) = state.metadata.title() {
@@ -634,8 +634,7 @@ mod template {
 
             // Track timing
             if let Some(length) = state.metadata.length() {
-                let length = format!("{:02}:{:02}", length.as_secs() / 60, length.as_secs() % 60);
-                data.insert("length".to_string(), length);
+                data.insert("length".to_string(), format_duration(length.as_secs()));
             }
 
             // Track numbering
@@ -761,7 +760,7 @@ mod service {
                     // Process events from player manager
                     Some(event) = self.event_rx.recv() => {
                         debug!("Received event: {:?}", event);
-                        if let Err(e) = self.presence_manager.handle_event(event, &self.player_manager).await {
+                        if let Err(e) = self.presence_manager.handle_event(event).await {
                             error!("Error handling event: {}", e);
                         }
                     }

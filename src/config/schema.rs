@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+use crate::utils::to_snake_case;
+
 use super::default::{get_default_config, RawTemplateConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,9 +49,9 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn get_player_config(&self, player_name: &str) -> &PlayerConfig {
+    pub fn get_player_config(&self, identity: &str) -> &PlayerConfig {
         self.player
-            .get(player_name)
+            .get(to_snake_case(identity).as_str())
             .or_else(|| self.player.get("default"))
             .expect("No default player config found")
     }
@@ -71,7 +73,11 @@ pub struct TemplateConfig {
 }
 
 fn default_template_detail() -> Box<str> {
-    get_default_config().template.detail.clone().into_boxed_str()
+    get_default_config()
+        .template
+        .detail
+        .clone()
+        .into_boxed_str()
 }
 
 fn default_template_state() -> Box<str> {
@@ -79,11 +85,19 @@ fn default_template_state() -> Box<str> {
 }
 
 fn default_template_large_text() -> Box<str> {
-    get_default_config().template.large_text.clone().into_boxed_str()
+    get_default_config()
+        .template
+        .large_text
+        .clone()
+        .into_boxed_str()
 }
 
 fn default_template_small_text() -> Box<str> {
-    get_default_config().template.small_text.clone().into_boxed_str()
+    get_default_config()
+        .template
+        .small_text
+        .clone()
+        .into_boxed_str()
 }
 
 impl Default for TemplateConfig {

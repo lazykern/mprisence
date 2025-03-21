@@ -79,9 +79,6 @@ pub enum PresenceError {
 
 #[derive(Error, Debug)]
 pub enum TemplateError {
-    #[error("Template initialization error: {0}")]
-    Init(String),
-
     #[error("Template render error: {0}")]
     Render(#[from] handlebars::RenderError),
 
