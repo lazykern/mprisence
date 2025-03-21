@@ -1,5 +1,5 @@
 ## Clear activity when player is paused
-clear_on_pause = true
+clear_on_pause = false
 
 ### Interval to update the activity (in milliseconds)
 interval = 2000
@@ -84,12 +84,12 @@ provider = ["musicbrainz", "imgbb"]
 api_key = "<YOUR API KEY>"
 
 [player.default]
-## Discord application id
 ignore = true
+## Discord application id
 # app_id = "1125274206771359826"
 ## Show the player icon as small image by default
 show_icon = false
-## Allow streaming media to be shown
+## Allow streaming media to be shown (http or https)
 allow_streaming = false
 
 [player.cmus]

@@ -21,7 +21,7 @@ provider = ["musicbrainz", "imgbb"]
 # api_key = "<YOUR API KEY>"
 
 [player.default]
-ignore = true
+ignore = false
 app_id = "1121632048155742288"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png"
 show_icon = false
@@ -40,7 +40,7 @@ app_id = "1124183825489068103"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Lollypop_icon_2019.svg/640px-Lollypop_icon_2019.svg.png"
 allow_streaming = true
 
-[player.rhythmbox]
+[player."Rhythmbox"]
 app_id = "1124770552754733056"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/Rhythmbox_logo_3.4.4.svg/1200px-Rhythmbox_logo_3.4.4.svg.png"
 allow_streaming = true
