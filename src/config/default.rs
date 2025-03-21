@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 use super::error::ConfigError;
+use super::schema::ActivityType;
 
 // Static cell to hold the default config after first load
 static DEFAULT_CONFIG: OnceLock<RawConfig> = OnceLock::new();
@@ -23,14 +24,17 @@ pub struct RawConfig {
     pub template: RawTemplateConfig,
     pub time: RawTimeConfig,
     pub cover: RawCoverConfig,
+    pub activity_type: RawActivityTypeConfig,
     pub player: HashMap<String, RawPlayerConfig>,
 }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawTemplateConfig {
     pub detail: String,
     pub state: String,
     pub large_text: String,
     pub small_text: String,
+    pub unknown_text: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +48,7 @@ pub struct RawCoverConfig {
     pub file_names: Vec<String>,
     pub provider: CoverProviderConfig,
 }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoverProviderConfig {
     pub provider: Vec<String>,
@@ -56,10 +61,17 @@ pub struct ImgBBConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RawActivityTypeConfig {
+    pub use_content_type: bool,
+    pub default: ActivityType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawPlayerConfig {
     pub ignore: Option<bool>,
     pub app_id: Option<String>,
     pub icon: Option<String>,
     pub show_icon: Option<bool>,
     pub allow_streaming: Option<bool>,
+    pub override_activity_type: Option<ActivityType>,
 }

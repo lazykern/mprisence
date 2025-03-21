@@ -3,13 +3,18 @@ interval = 2000
 
 [template]
 detail = "{{{title}}}"
-state = '{{{status_icon}}} {{{artists}}} '
+state = "{{{artists}}}"
 large_text = "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}"
 small_text = "Playing on {{{player}}}"
+unknown_text = ""
 
 [time]
 show = true
 as_elapsed = false
+
+[activity_type]
+use_content_type = true
+default = "listening"
 
 [cover]
 file_names = ["cover", "folder", "front", "album", "art"]

@@ -5,7 +5,7 @@ use std::{
     fmt::Display,
     sync::Arc,
     thread::sleep,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH, Instant},
 };
 
 use discord_rich_presence::{
@@ -245,14 +245,22 @@ mod player {
                 match PlayerState::try_from(&player) {
                     Ok(player_state) => {
                         if let Err(e) = self
-                            .process_player_state(id, player_state, polling_interval)
+                            .process_player_state(id.clone(), player_state, polling_interval)
                             .await
                         {
                             error!("Failed to process player state: {}", e);
+                            // Send clear activity event instead of removal
+                            if let Err(e) = self.send_event(event::Event::ClearActivity(id)).await {
+                                error!("Failed to send clear activity event: {}", e);
+                            }
                         }
                     }
                     Err(e) => {
                         warn!("Failed to get player state for {}: {}", id, e);
+                        // Send clear activity event instead of removal
+                        if let Err(e) = self.send_event(event::Event::ClearActivity(id)).await {
+                            error!("Failed to send clear activity event: {}", e);
+                        }
                     }
                 }
             }
@@ -273,7 +281,6 @@ mod player {
             player_state: PlayerState,
             polling_interval: u64,
         ) -> Result<(), PlayerError> {
-            let clear_on_pause = config::get().clear_on_pause();
             let event = match self.player_states.entry(id) {
                 Entry::Occupied(mut entry) => {
                     let has_changes = player_state.requires_presence_update(
@@ -283,17 +290,8 @@ mod player {
 
                     let event = if has_changes {
                         let key = entry.key().clone();
-                        // Check if transitioning from playing to paused
-                        if clear_on_pause
-                            && player_state.playback_status == PlaybackStatus::Paused
-                            && entry.get().playback_status == PlaybackStatus::Playing
-                        {
-                            info!("Player {} paused: {}", key, player_state);
-                            Some(event::Event::PlayerRemove(key))
-                        } else {
-                            debug!("Player {} updated: {}", key, player_state);
-                            Some(event::Event::PlayerUpdate(key, player_state.clone()))
-                        }
+                        debug!("Player {} updated: {}", key, player_state);
+                        Some(event::Event::PlayerUpdate(key, player_state.clone()))
                     } else {
                         None
                     };
@@ -329,6 +327,7 @@ mod presence {
     pub struct PresenceManager {
         discord_clients: HashMap<player::PlayerId, DiscordIpcClient>,
         template_manager: template::TemplateManager,
+        cleared_activities: HashMap<player::PlayerId, bool>, // true if activity is cleared
     }
 
     impl PresenceManager {
@@ -337,21 +336,52 @@ mod presence {
             Self {
                 discord_clients: HashMap::new(),
                 template_manager,
+                cleared_activities: HashMap::new(),
             }
         }
 
         pub async fn handle_event(&mut self, event: event::Event) -> Result<(), PresenceError> {
             match event {
                 event::Event::PlayerUpdate(id, state) => {
-                    self.update_presence(&id, &state).await?;
+                    // If player is paused and clear_on_pause is enabled, clear the activity
+                    if state.playback_status == PlaybackStatus::Paused && config::get().clear_on_pause() {
+                        if !self.cleared_activities.get(&id).copied().unwrap_or(false) {
+                            if let Some(client) = self.discord_clients.get_mut(&id) {
+                                if let Err(e) = Self::clear_activity(client) {
+                                    warn!("Failed to clear activity for {}: {}", id, e);
+                                } else {
+                                    debug!("Cleared activity for paused player {}", id);
+                                    self.cleared_activities.insert(id, true);
+                                }
+                            }
+                        }
+                    } else {
+                        // Player is playing or clear_on_pause is disabled, update presence
+                        self.cleared_activities.insert(id.clone(), false);
+                        self.update_presence(&id, &state).await?;
+                    }
                 }
                 event::Event::PlayerRemove(id) => {
+                    self.cleared_activities.remove(&id);
                     self.remove_presence(&id)?;
                 }
+                event::Event::ClearActivity(id) => {
+                    // Only clear if not already cleared
+                    if !self.cleared_activities.get(&id).copied().unwrap_or(false) {
+                        if let Some(client) = self.discord_clients.get_mut(&id) {
+                            if let Err(e) = Self::clear_activity(client) {
+                                warn!("Failed to clear activity for {}: {}", id, e);
+                            } else {
+                                debug!("Cleared activity for {}", id);
+                                self.cleared_activities.insert(id, true);
+                            }
+                        }
+                    } else {
+                        trace!("Skipping clear activity for {}: already cleared", id);
+                    }
+                }
                 event::Event::ConfigChanged => {
-                    // Config changed event could trigger template reload if needed
                     debug!("Received config changed event in presence manager");
-                    // We could reload templates here if needed
                     let config = config::get();
                     if let Err(e) = self.template_manager.reload(&config) {
                         error!("Failed to reload templates: {}", e);
@@ -367,6 +397,22 @@ mod presence {
             player_id: &player::PlayerId,
             state: &player::PlayerState,
         ) -> Result<(), PresenceError> {
+            // Don't show activity if player is stopped
+            if state.playback_status == PlaybackStatus::Stopped {
+                // Clear activity if it's not already cleared
+                if !self.cleared_activities.get(player_id).copied().unwrap_or(false) {
+                    if let Some(client) = self.discord_clients.get_mut(player_id) {
+                        if let Err(e) = Self::clear_activity(client) {
+                            warn!("Failed to clear activity for {}: {}", player_id, e);
+                        } else {
+                            debug!("Cleared activity for stopped player {}", player_id);
+                            self.cleared_activities.insert(player_id.clone(), true);
+                        }
+                    }
+                }
+                return Ok(());
+            }
+
             let ctx = config::get();
             let player_config = ctx.player_config(player_id.identity.as_str());
             let as_elapsed = ctx.time_config().as_elapsed;
@@ -395,6 +441,13 @@ mod presence {
                 .render("small_text", &template_data)
                 .map_err(|e| PresenceError::Update(format!("Template render error: {}", e)))?;
 
+            // Get content type from metadata if available
+            let content_type = utils::get_content_type_from_metadata(&state.metadata);
+            
+            // Determine activity type based on content type or player configuration
+            let activity_type = ctx.player_config(player_id.identity.as_str())
+                .activity_type(content_type.as_deref());
+
             trace!("Preparing Discord activity update: {}", details);
 
             // Build activity using rendered templates
@@ -403,6 +456,7 @@ mod presence {
                 state_text,
                 large_text,
                 small_text,
+                activity_type,
                 state.playback_status,
                 Duration::from_secs(state.position as u64),
                 state.metadata.length().unwrap_or_default(),
@@ -417,6 +471,7 @@ mod presence {
             state: String,
             large_text: String,
             small_text: String,
+            activity_type: config::ActivityType,
             playback_status: PlaybackStatus,
             position: Duration,
             length: Duration,
@@ -446,21 +501,52 @@ mod presence {
             // The discord-rich-presence library requires 'static str references, and these
             // strings are used for the lifetime of the program. Memory usage is bounded
             // by the number of unique status messages.
-            let details_static = Box::leak(details.into_boxed_str());
-            let state_static = Box::leak(state.into_boxed_str());
-            let large_text_static = Box::leak(large_text.into_boxed_str());
-            let small_text_static = Box::leak(small_text.into_boxed_str());
+            let details_static = if !details.is_empty() {
+                Some(Box::leak(details.into_boxed_str()))
+            } else {
+                None
+            };
 
-            let assets = Assets::new()
-                .large_text(large_text_static)
-                .small_text(small_text_static);
+            let state_static = if !state.is_empty() {
+                Some(Box::leak(state.into_boxed_str()))
+            } else {
+                None
+            };
 
-            Activity::new()
-                .activity_type(ActivityType::Listening)
-                .details(details_static)
-                .state(state_static)
-                .timestamps(timestamps)
-                .assets(assets)
+            let large_text_static = if !large_text.is_empty() {
+                Some(Box::leak(large_text.into_boxed_str()))
+            } else {
+                None
+            };
+
+            let small_text_static = if !small_text.is_empty() {
+                Some(Box::leak(small_text.into_boxed_str()))
+            } else {
+                None
+            };
+
+            let mut assets = Assets::new();
+            if let Some(large_text) = large_text_static {
+                assets = assets.large_text(large_text);
+            }
+            if let Some(small_text) = small_text_static {
+                assets = assets.small_text(small_text);
+            }
+
+            trace!("activity_type: {:?}", activity_type);
+            trace!("timestamp start: {}", start_s);
+            trace!("timestamp end: {}", end_s);
+
+            let mut activity = Activity::new().activity_type(activity_type.into());
+
+            if let Some(details) = details_static {
+                activity = activity.details(details);
+            }
+            if let Some(state) = state_static {
+                activity = activity.state(state);
+            }
+
+            activity.timestamps(timestamps).assets(assets)
         }
 
         fn update_activity(
@@ -513,6 +599,16 @@ mod presence {
             Ok(())
         }
 
+        fn clear_activity(
+            client: &mut DiscordIpcClient,
+        ) -> Result<(), PresenceError> {
+            debug!("Clearing Discord activity");
+            client
+                .clear_activity()
+                .map_err(|e| PresenceError::Update(format!("Clear error: {}", e)))?;
+            Ok(())
+        }
+
         fn close_client(client: &mut DiscordIpcClient) -> Result<(), PresenceError> {
             debug!("Closing Discord client connection");
             client
@@ -523,7 +619,12 @@ mod presence {
 
         fn remove_presence(&mut self, player_id: &player::PlayerId) -> Result<(), PresenceError> {
             debug!("Removing Discord client for player: {}", player_id);
+            self.cleared_activities.remove(player_id);
             if let Some(mut client) = self.discord_clients.remove(player_id) {
+                // Try to clear activity before closing
+                if let Err(e) = Self::clear_activity(&mut client) {
+                    warn!("Failed to clear activity: {}", e);
+                }
                 Self::close_client(&mut client)?;
             }
             Ok(())
@@ -591,6 +692,13 @@ mod template {
             state: &player::PlayerState,
         ) -> BTreeMap<String, String> {
             let mut data = BTreeMap::new();
+            let config = config::get();
+            let template_config = config.template_config();
+
+            // Helper function to handle unknown values
+            let handle_unknown = |value: Option<String>| -> String {
+                value.unwrap_or_else(|| template_config.unknown_text.to_string())
+            };
 
             // Player information
             data.insert("player".to_string(), player_id.identity.to_string());
@@ -615,22 +723,26 @@ mod template {
                 format_duration(state.position as u64),
             );
 
-            // Basic track metadata
-            if let Some(title) = state.metadata.title() {
-                data.insert("title".to_string(), title.to_string());
-            }
+            // Basic track metadata with unknown handling
+            data.insert(
+                "title".to_string(),
+                handle_unknown(state.metadata.title().map(|s| s.to_string())),
+            );
 
-            if let Some(artists) = state.metadata.artists() {
-                data.insert("artists".to_string(), artists.join(", "));
-            }
+            data.insert(
+                "artists".to_string(),
+                handle_unknown(state.metadata.artists().map(|a| a.join(", "))),
+            );
 
-            if let Some(album_name) = state.metadata.album_name() {
-                data.insert("album_name".to_string(), album_name.to_string());
-            }
+            data.insert(
+                "album_name".to_string(),
+                handle_unknown(state.metadata.album_name().map(|s| s.to_string())),
+            );
 
-            if let Some(album_artists) = state.metadata.album_artists() {
-                data.insert("album_artists".to_string(), album_artists.join(", "));
-            }
+            data.insert(
+                "album_artists".to_string(),
+                handle_unknown(state.metadata.album_artists().map(|a| a.join(", "))),
+            );
 
             // Track timing
             if let Some(length) = state.metadata.length() {
@@ -671,6 +783,7 @@ mod event {
     pub enum Event {
         PlayerUpdate(player::PlayerId, player::PlayerState),
         PlayerRemove(player::PlayerId),
+        ClearActivity(player::PlayerId),
         ConfigChanged,
     }
 }
@@ -759,7 +872,7 @@ mod service {
 
                     // Process events from player manager
                     Some(event) = self.event_rx.recv() => {
-                        debug!("Received event: {:?}", event);
+                        debug!("Received event: {:#?}", event);
                         if let Err(e) = self.presence_manager.handle_event(event).await {
                             error!("Error handling event: {}", e);
                         }

@@ -1,103 +1,153 @@
-## Clear activity when player is paused
+# ------------------
+# Basic Settings
+# ------------------
+# Whether to clear Discord activity when media is paused
 clear_on_pause = false
 
-### Interval to update the activity (in milliseconds)
+# How often to update Discord presence (in milliseconds)
 interval = 2000
 
+# ------------------
+# Display Template
+# ------------------
+# Available variables at the end of file template
 [template]
-## Variables provided for template
-
-## PLAYER
-## player - Player name
-## status - Current status of the player (playing, paused, stopped)
-## status_icon - Icon for the current status (▶, ⏸, ⏹)
-## volume - Current volume of the player
-## position - Current position of the track in "MM:SS" format.
-## length - Duration of the track in "MM:SS" format.
-
-## TRACK (general)
-## title - Title of the track.
-## artists - Artists involved in the track.
-## album_name - Name of the album.
-## album_artists - Artists involved in the album.
-## track_number - Position of the track within the album.
-## track_total - Total number of tracks in the album.
-## disc_number - Track's position within a multi-disc album.
-## sample_rate - Sample rate of the track.
-## audio_bitrate - Bitrate of the track.
-## channels - Number of channels in the track.
-## bit_depth - Bit depth of the track.
-## overall_bitrate - Overall bitrate of the track.
-
-## TRACK (might not be available)
-## auto_rating - Automatic rating assigned to the track.
-## arranger - Person who arranged the track.
-## bpm - Beats per minute of the track.
-## catalog_number - Unique identifier for the track.
-## color - Color associated with the track.
-## composer - Person who composed the track.
-## conductor - Conductor of the track.
-## director - Director associated with the track.
-## disc_number - Track's position within a multi-disc album.
-## disc_total - Total number of discs in the album.
-## encoded_by - Person or entity who encoded the track.
-## genre - Genre of the track.
-## label - Record label associated with the track.
-## language - Language of the track.
-## lyricist - Person who wrote the lyrics for the track.
-## mix_dj - DJ responsible for the mix of the track.
-## mix_engineer - Engineer who mixed the track.
-## mood - Mood or emotional tone of the track.
-## perfomer - Performer of the track.
-## producer - Producer of the track.
-## publisher - Publisher associated with the track.
-## recording_date - Date when the track was recorded.
-## year - Year when the track was released.
-
-## The template will be rendered by handlebars
-## Additional helpers:
-##  - eq
-##    Example: {{#if (eq status "playing")}}Playing{{/if}}
-##  - String transformation helpers from
-##    https://github.com/davidB/handlebars_misc_helpers#string-transformation
-
+# What appears on the first line of Discord presence
 detail = "{{{title}}}"
-state = '{{{status_icon}}} {{{artists}}}'
+
+# What appears on the second line of Discord presence
+state = "{{{artists}}}"
+
+# Text shown when hovering over the large image
 large_text = "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}"
+
+# Text shown when hovering over the small image
 small_text = "Playing on {{{player}}}"
+
+# Text shown when value is not found
+unknown_text = "" 
+
+# ------------------
+# Activity Types
+# ------------------
+# Available activity types: "listening", "watching", "playing", "competing"
+[activity_type]
+use_content_type = true
+default = "listening"
+
+# ------------------
+# Time Settings
+# ------------------
 [time]
-## Show time in activity (remaining)
+# Enable/disable time progress in Discord
 show = true
-## Show time as elapsed
+
+# Time display mode:
+# true = show elapsed time
+# false = show remaining time
 as_elapsed = false
 
-# [cover]
-## Album cover cover file names (no extension) to look for
-# file_names = ["cover", "folder", "front", "album", "art"]
+# ------------------
+# Cover Art Settings
+# ------------------
+[cover]
+# Local cover art files to look for (if cover art is not found in the tag)
+file_names = ["cover", "folder", "front", "album", "art"]
 
 [cover.provider]
-## Cover art providers: "musicbrainz", "imgbb"
+# Cover art providers (in order of preference)
 provider = ["musicbrainz", "imgbb"]
 
 [cover.provider.imgbb]
-## Api key for imgbb, get the key from https://api.imgbb.com/
-api_key = "<YOUR API KEY>"
+# Your ImgBB API key for cover art hosting
+# api_key = "YOUR_IMGBB_API_KEY"
 
+# ------------------
+# Player Settings
+# ------------------
+# Default settings for all players
 [player.default]
-ignore = true
-## Discord application id
-# app_id = "1125274206771359826"
-## Show the player icon as small image by default
+
+# Whether to ignore the player
+ignore = false
+
+# Discord application ID https://support-dev.discord.com/hc/en-us/articles/360028717192-Where-can-I-find-my-Application-Team-Server-ID
+app_id = "1121632048155742288"
+
+# Player icon URL
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png"
+
+# Show player icon in Discord (as small image)
 show_icon = false
-## Allow streaming media to be shown (http or https)
+
+# Show discord rich presence for http/https streaming media
 allow_streaming = false
 
-[player.cmus]
-## Thanks to https://github.com/cmus/cmus/issues/965 for the icon
-icon = "https://i.ibb.co/3zDHM1z/cmus.png"
-show_icon = false
+# Override media type based activity types
+# override_activity_type = "listening"
 
-# [player.microsoft_edge]
-# ignore = false
+# ------------------
+# Example Player-Specific Settings
+# ------------------
+# VLC Example
+# [player.vlc_media_player]
+# app_id = "1124968989538402334"
+# icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/VLC_Icon.svg/1200px-VLC_Icon.svg.png"
+# show_icon = false
 # allow_streaming = true
+# override_activity_type = "watching"
+
+# CMUS Example
+# [player.cmus]
+# icon = "https://i.ibb.co/3zDHM1z/cmus.png"
 # show_icon = true
+
+# ------------------
+# Browser Settings
+# ------------------
+# Commonly ignored browser media players
+# [player.chrome]
+# ignore = true
+
+# [player."Mozilla Firefox"]
+# ignore = true
+
+# [player.mozilla_zen]
+# ignore = true
+
+# [player.brave]
+# ignore = true
+
+# ------------------
+# Available Template Variables Reference
+# ------------------
+# Track Info:
+#   {{{title}}}           - Track title
+#   {{{artists}}}         - Track artists
+#   {{{album_name}}}      - Album name
+#   {{{genre}}}           - Track genre
+#   {{{year}}}            - Release year
+#   {{{composer}}}        - Track composer
+#   {{{conductor}}}       - Track conductor
+#   {{{album_artists}}}   - Album artists
+#   {{{track_number}}}    - Track position in album
+#   {{{track_total}}}     - Total tracks in album
+#   {{{disc_number}}}     - Disc number
+#   {{{disc_total}}}      - Total discs
+#   {{{bpm}}}             - Beats per minute
+#   {{{label}}}           - Record label
+#   {{{publisher}}}       - Publisher
+#   {{{recording_date}}}  - Recording date
+
+# Player Status:
+#   {{{player}}}          - Media player name
+#   {{{status}}}          - Player status
+#   {{{position}}}        - Current position (MM:SS)
+#   {{{length}}}          - Track length (MM:SS)
+
+# Technical Info:
+#   {{{sample_rate}}}     - Sample rate
+#   {{{audio_bitrate}}}   - Audio bitrate
+#   {{{channels}}}        - Number of channels
+#   {{{bit_depth}}}       - Bit depth
+#   {{{overall_bitrate}}} - Overall bitrate

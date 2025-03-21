@@ -23,6 +23,7 @@ handlebars_misc_helpers = { version = "0.17.0", features = [
 imgbb = "1.2.1"
 lofty = "0.22.2"
 log = "0.4.26"
+mime_guess = "2.0.5"
 mpris = "2.0.1"
 musicbrainz_rs = "0.9.0"
 notify = "8.0.0"
@@ -32,3 +33,4 @@ smol_str = "0.3.2"
 thiserror = "2.0.12"
 tokio = { version = "1.44.1", features = ["full"] }
 toml = "0.8.20"
+url = "2.5.0"

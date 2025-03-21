@@ -8,10 +8,11 @@ use tokio::sync::broadcast;
 
 mod default;
 mod error;
-mod schema;
+pub mod schema;
 
 pub use error::ConfigError;
 pub use schema::Config;
+pub use schema::ActivityType;
 
 pub type ConfigChangeReceiver = broadcast::Receiver<ConfigChange>;
 type ConfigChangeSender = broadcast::Sender<ConfigChange>;
@@ -60,11 +61,11 @@ impl ConfigManager {
             .clear_on_pause
     }
 
-    pub fn player_config(&self, player_name: &str) -> schema::PlayerConfig {
+    pub fn player_config(&self, identity: &str) -> schema::PlayerConfig {
         self.config
             .read()
             .expect("Failed to read config: RwLock poisoned")
-            .get_player_config(player_name)
+            .get_player_config(identity)
             .clone()
     }
 
