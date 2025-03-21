@@ -1,28 +1,39 @@
 use clap::Parser;
-use log::{debug, info, warn};
-use std::{thread::sleep, time::Duration};
+use log::{debug, error, info, warn};
+use std::{
+    collections::{HashMap, VecDeque},
+    fmt::Display,
+    sync::Arc,
+    thread::sleep,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
+// External dependencies
+use discord_rich_presence::{
+    activity::{Activity, ActivityType, Timestamps},
+    DiscordIpc, DiscordIpcClient,
+};
+use handlebars::Handlebars;
+use mpris::{Metadata, PlaybackStatus, Player, PlayerFinder};
+use tokio::{
+    sync::{broadcast, mpsc, RwLock},
+    time,
+};
 
 mod cli;
 mod config;
-pub mod error;
+mod error;
 
-use crate::error::{Error, PlayerError, PresenceError, TemplateError};
+// Re-exports
+use crate::error::{
+    Error, PlayerError, PresenceError, ServiceInitError, ServiceRuntimeError, TemplateError,
+};
 
-use handlebars::Handlebars;
-use mpris::PlayerFinder;
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use std::path::PathBuf;
-use tokio::sync::RwLock;
-
-// Internal modules - to be extracted to separate files in the future
+// ============================================================================
+// PLAYER MODULE - Media player tracking
+// ============================================================================
 mod player {
-    use crate::{
-        config,
-        error::{Error, PlayerError},
-    };
-    use log::{debug, error, info, warn};
-    use mpris::{Metadata, PlaybackStatus, Player, PlayerFinder};
-    use std::{collections::HashMap, fmt::Display, time::Duration};
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct PlayerId {
@@ -62,32 +73,64 @@ mod player {
     impl TryFrom<&Player> for PlayerState {
         type Error = PlayerError;
 
-        fn try_from(player: &Player) -> Result<Self, PlayerError> {
+        fn try_from(player: &Player) -> Result<Self, Self::Error> {
             Ok(Self {
-                playback_status: player.get_playback_status()?,
-                metadata: player.get_metadata()?,
-                position: player.get_position()?,
-                volume: (player.get_volume()? * 100.0) as u8,
+                playback_status: player.get_playback_status().map_err(PlayerError::DBus)?,
+                metadata: player.get_metadata().map_err(PlayerError::DBus)?,
+                position: player.get_position().map_err(PlayerError::DBus)?,
+                volume: (player.get_volume().map_err(PlayerError::DBus)? * 100.0) as u8,
             })
         }
     }
 
     impl PlayerState {
+        /// Get title with a default value if not present
+        pub fn title(&self) -> &str {
+            self.metadata.title().unwrap_or_default()
+        }
+
         /// Checks if metadata, status or volume has changed
         pub fn has_metadata_changes(&self, previous: &Self) -> bool {
             let metadata_changed = self.metadata.as_hashmap() != previous.metadata.as_hashmap();
             let status_changed = self.playback_status != previous.playback_status;
             let volume_changed = self.volume != previous.volume;
 
-            // Log the changes for debugging
+            // Log changes if debug is enabled
+            if log::log_enabled!(log::Level::Debug)
+                && (metadata_changed || status_changed || volume_changed)
+            {
+                self.log_changes(previous, metadata_changed, status_changed, volume_changed);
+            }
+
+            metadata_changed || status_changed || volume_changed
+        }
+
+        fn log_changes(
+            &self,
+            previous: &Self,
+            metadata_changed: bool,
+            status_changed: bool,
+            volume_changed: bool,
+        ) {
             if metadata_changed {
-                debug!("Track metadata changed");
-                if self.metadata.title() != previous.metadata.title() {
-                    debug!(
-                        "  Title: '{}' -> '{}'",
-                        previous.metadata.title().unwrap_or_default(),
-                        self.metadata.title().unwrap_or_default()
-                    );
+                debug!("Track metadata changed for {}", self.title());
+                let old_map = previous.metadata.as_hashmap();
+                let new_map = self.metadata.as_hashmap();
+
+                // Handle only the essential changes - simplest approach
+                for key in old_map
+                    .keys()
+                    .chain(new_map.keys())
+                    .collect::<std::collections::HashSet<_>>()
+                {
+                    match (old_map.get(key), new_map.get(key)) {
+                        (Some(old), Some(new)) if old != new => {
+                            debug!("  {}: '{:?}' -> '{:?}'", key, old, new)
+                        }
+                        (Some(old), None) => debug!("  {} removed: '{:?}'", key, old),
+                        (None, Some(new)) => debug!("  {} added: '{:?}'", key, new),
+                        _ => {}
+                    }
                 }
             }
 
@@ -101,71 +144,40 @@ mod player {
             if volume_changed {
                 debug!("Volume changed: {}% -> {}%", previous.volume, self.volume);
             }
-
-            metadata_changed || status_changed || volume_changed
         }
 
         /// Checks if there's a significant position change that's not explained by normal playback
         pub fn has_position_jump(&self, previous: &Self, polling_interval: Duration) -> bool {
-            const BASE_TOLERANCE: Duration = Duration::from_secs(1);
-            let position_tolerance = BASE_TOLERANCE + polling_interval;
-
-            // Different logic based on playback state
-            let position_changed = if previous.playback_status == PlaybackStatus::Playing
-                && self.playback_status == PlaybackStatus::Playing
-            {
-                // If both states are playing, check if position change is reasonable
-                if self.position < previous.position {
-                    // Position decreased - user likely sought backward
-                    debug!(
-                        "Position jumped backward: {}s -> {}s (seek: -{}s)",
-                        previous.position.as_secs(),
-                        self.position.as_secs(),
-                        (previous.position - self.position).as_secs()
-                    );
-                    return true;
-                }
-
-                // Position increased - check if it's close to the expected increase
-                let elapsed = self.position - previous.position;
-                let expected_range_min = polling_interval.saturating_sub(position_tolerance);
-                let expected_range_max = polling_interval.saturating_add(position_tolerance);
-
-                let is_jump = elapsed < expected_range_min || elapsed > expected_range_max;
-
-                if is_jump {
-                    debug!(
-                        "Position jumped: {}s -> {}s (diff: +{}s, expected: +{}s±{}s)",
-                        previous.position.as_secs(),
-                        self.position.as_secs(),
-                        elapsed.as_secs(),
-                        polling_interval.as_secs(),
-                        position_tolerance.as_secs()
-                    );
-                }
-
-                is_jump
-            } else {
-                // For non-playing states or different states, any significant position difference matters
-                let diff = self.position.abs_diff(previous.position);
-                let is_significant = diff > position_tolerance;
-
-                if is_significant {
-                    debug!(
-                          "Significant position change during non-playing state: {}s -> {}s (diff: {}s)",
-                          previous.position.as_secs(),
-                          self.position.as_secs(),
-                          diff.as_secs()
-                      );
-                }
-
-                is_significant
-            };
-
-            position_changed
+            // Simple approach: detect significant jumps (more than twice the polling interval)
+            // or when position decreases (seek backwards)
+            
+            // If position decreased, it's a jump backward
+            if self.position < previous.position {
+                debug!(
+                    "Position jumped backward: {}s -> {}s",
+                    previous.position.as_secs(),
+                    self.position.as_secs()
+                );
+                return true;
+            }
+            
+            // If position increased more than expected, it's a forward jump
+            let elapsed = self.position - previous.position;
+            let expected_max = polling_interval.saturating_mul(2); // Double polling interval as threshold
+            
+            if elapsed > expected_max {
+                debug!(
+                    "Position jumped forward: {}s -> {}s",
+                    previous.position.as_secs(),
+                    self.position.as_secs()
+                );
+                return true;
+            }
+            
+            false
         }
 
-        /// Combines both checks to determine if a presence update is needed
+        /// Determines if a presence update is needed
         pub fn requires_presence_update(
             &self,
             previous: &Self,
@@ -176,42 +188,32 @@ mod player {
         }
     }
 
-    // PlayerUpdate represents possible player state changes
-    #[derive(Debug)]
-    pub enum PlayerUpdate {
-        New(PlayerId, PlayerState),
-        Updated(PlayerId, PlayerState),
-        Paused(PlayerId, PlayerState),
-        Removed(PlayerId),
-    }
-
     pub struct PlayerManager {
         player_finder: PlayerFinder,
         player_states: HashMap<PlayerId, PlayerState>,
+        event_tx: mpsc::Sender<event::Event>,
     }
 
     impl PlayerManager {
-        pub fn new() -> Result<Self, PlayerError> {
+        pub fn new(event_tx: mpsc::Sender<event::Event>) -> Result<Self, PlayerError> {
             info!("Initializing PlayerManager");
-            let finder = PlayerFinder::new()?;
+            let finder = PlayerFinder::new().map_err(PlayerError::DBus)?;
+
             Ok(Self {
                 player_finder: finder,
                 player_states: HashMap::new(),
+                event_tx,
             })
         }
 
-        pub fn get_state(&self, player_id: &PlayerId) -> Option<&PlayerState> {
-            self.player_states.get(player_id)
-        }
-
-        pub fn update_players(&mut self) -> Result<Vec<PlayerUpdate>, PlayerError> {
-            let ctx = config::get().context();
-            let polling_interval = ctx.interval();
-            let current = self.player_finder.find_all()?;
+        pub async fn check_players(&mut self) -> Result<(), PlayerError> {
+            let config = config::get();
+            let polling_interval = config.interval();
+            let current = self
+                .player_finder
+                .find_all()
+                .map_err(PlayerError::Finding)?;
             let current_ids: Vec<_> = current.iter().map(PlayerId::from).collect();
-            let mut updates = Vec::new();
-
-            let config_ctx = config::get().context();
 
             // Find removed players
             let removed_ids: Vec<_> = self
@@ -221,19 +223,19 @@ mod player {
                 .cloned()
                 .collect();
 
-            // Process removals and collect updates
+            // Process removals
             for id in removed_ids {
                 info!("Player removed: {}", id);
                 self.player_states.remove(&id);
-                updates.push(PlayerUpdate::Removed(id));
+                if let Err(e) = self.send_event(event::Event::PlayerRemove(id)).await {
+                    error!("Failed to send removal event: {}", e);
+                }
             }
 
             // Handle new or updated players
             for player in current {
                 let id = PlayerId::from(&player);
-
-                // Service-level config access
-                let player_config = config_ctx.player_config(id.identity.as_str());
+                let player_config = config.player_config(id.identity.as_str());
 
                 if player_config.ignore {
                     debug!("Ignoring player {} (configured to ignore)", id);
@@ -243,211 +245,135 @@ mod player {
                 // Process player state
                 match PlayerState::try_from(&player) {
                     Ok(player_state) => {
-                        match self.player_states.get(&id) {
-                            Some(old_state) => {
-                                if player_state.has_metadata_changes(old_state)
-                                    || player_state.has_position_jump(
-                                        old_state,
-                                        Duration::from_millis(polling_interval),
-                                    )
-                                {
-                                    // Check if transitioning from playing to paused
-                                    let clear_on_pause = config_ctx.clear_on_pause();
-
-                                    if clear_on_pause
-                                        && player_state.playback_status == PlaybackStatus::Paused
-                                        && old_state.playback_status == PlaybackStatus::Playing
-                                    {
-                                        info!("Player paused (clearing presence): {}", id);
-                                        updates.push(PlayerUpdate::Paused(
-                                            id.clone(),
-                                            player_state.clone(),
-                                        ));
-                                    } else {
-                                        updates.push(PlayerUpdate::Updated(
-                                            id.clone(),
-                                            player_state.clone(),
-                                        ));
-                                    }
-                                }
-                                self.player_states.insert(id, player_state);
-                            }
-                            None => {
-                                info!("New player detected: {}", id);
-                                updates.push(PlayerUpdate::New(id.clone(), player_state.clone()));
-                                self.player_states.insert(id, player_state);
-                            }
+                        if let Err(e) = self
+                            .process_player_state(id, player_state, polling_interval)
+                            .await
+                        {
+                            error!("Failed to process player state: {}", e);
                         }
                     }
                     Err(e) => {
-                        error!("Failed to get player state for {}: {}", id, e);
+                        warn!("Failed to get player state for {}: {}", id, e);
                     }
                 }
             }
 
-            if !updates.is_empty() {
-                debug!("Generated {} player updates", updates.len());
+            Ok(())
+        }
+
+        async fn send_event(&self, event: event::Event) -> Result<(), PlayerError> {
+            self.event_tx
+                .send(event)
+                .await
+                .map_err(|e| PlayerError::General(format!("Failed to send event: {}", e)))
+        }
+
+        async fn process_player_state(
+            &mut self,
+            id: PlayerId,
+            player_state: PlayerState,
+            polling_interval: u64,
+        ) -> Result<(), PlayerError> {
+            let clear_on_pause = config::get().clear_on_pause();
+
+            match self.player_states.get(&id) {
+                Some(old_state) => {
+                    let has_changes = player_state.requires_presence_update(
+                        old_state,
+                        Duration::from_millis(polling_interval),
+                    );
+
+                    if has_changes {
+                        // Check if transitioning from playing to paused
+                        if clear_on_pause
+                            && player_state.playback_status == PlaybackStatus::Paused
+                            && old_state.playback_status == PlaybackStatus::Playing
+                        {
+                            info!("Player {} paused: '{}'", id, player_state.title());
+                            // Use PlayerRemoved instead of PlayerPaused
+                            self.send_event(event::Event::PlayerRemove(id.clone()))
+                                .await?;
+                        } else {
+                            debug!("Player {} updated: '{}'", id, player_state.title());
+                            self.send_event(event::Event::PlayerUpdate(
+                                id.clone(),
+                                player_state.clone(),
+                            ))
+                            .await?;
+                        }
+                    }
+                }
+                None => {
+                    info!(
+                        "New player detected: {} playing '{}'",
+                        id,
+                        player_state.title()
+                    );
+                    self.send_event(event::Event::PlayerUpdate(id.clone(), player_state.clone()))
+                        .await?;
+                }
             }
 
-            Ok(updates)
+            // Always update the state
+            self.player_states.insert(id, player_state);
+            Ok(())
         }
     }
 }
 
+// ============================================================================
+// PRESENCE MODULE - Discord integration
+// ============================================================================
 mod presence {
-    use crate::{
-        config,
-        error::{Error, PresenceError},
-        player::{PlayerId, PlayerManager, PlayerState, PlayerUpdate},
-        template::TemplateManager,
-    };
-    use discord_rich_presence::{
-        activity::{Activity, ActivityType, Timestamps},
-        DiscordIpc, DiscordIpcClient,
-    };
-    use log::{debug, error, info, warn};
-    use std::{
-        collections::{HashMap, VecDeque},
-        time::Duration,
-    };
-    use tokio::task;
+    use log::trace;
 
-    // action types for presence changes
-    #[derive(Debug)]
-    pub enum PresenceAction {
-        Update(PlayerId),
-        Remove(PlayerId),
-    }
+    use super::*;
 
     pub struct PresenceManager {
-        queue: VecDeque<PresenceAction>,
-        discord_clients: HashMap<PlayerId, DiscordIpcClient>,
+        discord_clients: HashMap<player::PlayerId, DiscordIpcClient>,
+        template_manager: template::TemplateManager,
     }
 
     impl PresenceManager {
-        pub fn new() -> Self {
+        pub fn new(template_manager: template::TemplateManager) -> Self {
             info!("Initializing PresenceManager");
             Self {
-                queue: VecDeque::new(),
                 discord_clients: HashMap::new(),
+                template_manager,
             }
         }
 
-        pub fn add_action(&mut self, action: PresenceAction) {
-            debug!("Adding presence action: {:?}", action);
-            self.queue.push_back(action);
-        }
-
-        pub fn process_player_updates(&mut self, updates: Vec<PlayerUpdate>) {
-            if updates.is_empty() {
-                return;
-            }
-
-            for update in updates {
-                match update {
-                    PlayerUpdate::New(id, _) => {
-                        info!("New player presence requested: {}", id);
-                        self.queue.push_back(PresenceAction::Update(id));
-                    }
-                    PlayerUpdate::Updated(id, _) => {
-                        self.queue.push_back(PresenceAction::Update(id));
-                    }
-                    PlayerUpdate::Paused(id, _) | PlayerUpdate::Removed(id) => {
-                        info!("Player presence removal requested: {}", id);
-                        self.queue.push_back(PresenceAction::Remove(id));
-                    }
-                }
-            }
-        }
-
-        pub async fn process_queue(
+        pub async fn handle_event(
             &mut self,
-            player_manager: &PlayerManager,
-            template_manager: &TemplateManager,
+            event: event::Event,
+            player_manager: &player::PlayerManager,
         ) -> Result<(), PresenceError> {
-            while let Some(action) = self.queue.pop_front() {
-                match action {
-                    PresenceAction::Update(player_id) => {
-                        let ctx = config::get().context();
-                        let player_config = ctx.player_config(player_id.identity.as_str());
-                        let as_elapsed = ctx.time_config().as_elapsed;
-
-                        if let Some(state) = player_manager.get_state(&player_id) {
-                            if let Err(e) = self
-                                .update_discord_rich_presence(
-                                    &player_id,
-                                    state,
-                                    template_manager,
-                                    as_elapsed,
-                                    &player_config.app_id,
-                                )
-                                .await
-                            {
-                                error!(
-                                    "Failed to update Discord presence for {}: {}",
-                                    player_id, e
-                                );
-                            }
-                        } else {
-                            warn!(
-                                "Player state not found for {}, skipping presence update",
-                                player_id
-                            );
-                        }
-                    }
-                    PresenceAction::Remove(player_id) => {
-                        if let Err(e) = self.remove_client(&player_id) {
-                            error!("Failed to remove Discord client for {}: {}", player_id, e);
-                        }
-                    }
+            match event {
+                event::Event::PlayerUpdate(id, state) => {
+                    self.update_presence(&id, &state).await?;
+                }
+                event::Event::PlayerRemove(id) => {
+                    self.remove_presence(&id)?;
+                }
+                event::Event::ConfigChanged => {
+                    // Config changed event could trigger template reload if needed
+                    debug!("Received config changed event in presence manager");
                 }
             }
 
             Ok(())
         }
 
-        fn create_client(app_id: &str) -> Result<DiscordIpcClient, PresenceError> {
-            debug!("Creating new Discord client with app_id: {}", app_id);
-            let mut client = DiscordIpcClient::new(app_id)
-                .map_err(|e| PresenceError::Connection(e.to_string()))?;
-
-            info!("Connecting to Discord...");
-            client
-                .connect()
-                .map_err(|e| PresenceError::Connection(e.to_string()))?;
-            info!("Successfully connected to Discord");
-
-            Ok(client)
-        }
-
-        fn set_activity(
-            client: &mut DiscordIpcClient,
-            activity: Activity,
-        ) -> Result<(), PresenceError> {
-            debug!("Setting Discord activity");
-            client
-                .set_activity(activity)
-                .map_err(|e| PresenceError::Update(e.to_string()))?;
-            Ok(())
-        }
-
-        fn close_client(client: &mut DiscordIpcClient) -> Result<(), PresenceError> {
-            debug!("Closing Discord client connection");
-            client
-                .close()
-                .map_err(|e| PresenceError::Connection(e.to_string()))?;
-            Ok(())
-        }
-
-        async fn update_discord_rich_presence(
+        async fn update_presence(
             &mut self,
-            player_id: &PlayerId,
-            state: &PlayerState,
-            _template_manager: &TemplateManager,
-            show_elapsed: bool,
-            app_id: &str,
+            player_id: &player::PlayerId,
+            state: &player::PlayerState,
         ) -> Result<(), PresenceError> {
-            let title = state.metadata.title().unwrap_or_default();
+            let ctx = config::get();
+            let player_config = ctx.player_config(player_id.identity.as_str());
+            let as_elapsed = ctx.time_config().as_elapsed;
+
+            let title = state.title();
             let length = state.metadata.length().unwrap_or_default();
 
             let activity = Self::build_activity(
@@ -455,23 +381,20 @@ mod presence {
                 state.playback_status,
                 state.position,
                 length,
-                show_elapsed,
+                as_elapsed,
             );
+            trace!("Preparing Discord activity update with details: {}", title);
 
-            self.update_activity(player_id, activity, app_id)
+            self.update_activity(player_id, activity, &player_config.app_id)
         }
 
         fn build_activity(
             title: &str,
-            playback_status: mpris::PlaybackStatus,
+            playback_status: PlaybackStatus,
             position: Duration,
             length: Duration,
             show_elapsed: bool,
         ) -> Activity {
-            use std::time::{SystemTime, UNIX_EPOCH};
-
-            let mut activity = Activity::new().activity_type(ActivityType::Listening);
-
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards");
@@ -489,33 +412,77 @@ mod presence {
                 timestamps = timestamps.end(end_s as i64);
             }
 
-            if playback_status == mpris::PlaybackStatus::Playing {
+            if playback_status == PlaybackStatus::Playing {
                 timestamps = timestamps.start(start_s as i64);
             }
 
-            // Build activity with owned strings
-            activity.details(title).timestamps(timestamps)
+            // Build activity with consistent builder pattern
+            Activity::new()
+                .activity_type(ActivityType::Listening)
+                .details(title)
+                .timestamps(timestamps)
         }
 
-        pub fn update_activity(
+        fn update_activity(
             &mut self,
-            player_id: &PlayerId,
+            player_id: &player::PlayerId,
             activity: Activity,
             app_id: &str,
         ) -> Result<(), PresenceError> {
             debug!("Updating activity for player: {}", player_id);
+
+            // Get or create client
+            if !self.discord_clients.contains_key(player_id) {
+                match Self::create_client(app_id) {
+                    Ok(client) => {
+                        self.discord_clients.insert(player_id.clone(), client);
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+
             let client = self
                 .discord_clients
-                .entry(player_id.clone())
-                .or_insert_with(|| {
-                    // Get or create client
-                    Self::create_client(app_id).expect("Failed to create Discord IPC client")
-                });
+                .get_mut(player_id)
+                .ok_or_else(|| PresenceError::Update("Client unexpectedly missing".to_string()))?;
 
             Self::set_activity(client, activity)
         }
 
-        pub fn remove_client(&mut self, player_id: &PlayerId) -> Result<(), PresenceError> {
+        fn create_client(app_id: &str) -> Result<DiscordIpcClient, PresenceError> {
+            debug!("Creating new Discord client with app_id: {}", app_id);
+            let mut client = DiscordIpcClient::new(app_id)
+                .map_err(|e| PresenceError::Connection(format!("Connection error: {}", e)))?;
+
+            info!("Connecting to Discord...");
+            client
+                .connect()
+                .map_err(|e| PresenceError::Connection(format!("Connection error: {}", e)))?;
+            info!("Successfully connected to Discord");
+
+            Ok(client)
+        }
+
+        fn set_activity(
+            client: &mut DiscordIpcClient,
+            activity: Activity,
+        ) -> Result<(), PresenceError> {
+            debug!("Setting Discord activity");
+            client
+                .set_activity(activity)
+                .map_err(|e| PresenceError::Update(format!("Update error: {}", e)))?;
+            Ok(())
+        }
+
+        fn close_client(client: &mut DiscordIpcClient) -> Result<(), PresenceError> {
+            debug!("Closing Discord client connection");
+            client
+                .close()
+                .map_err(|e| PresenceError::Close(format!("Connection close error: {}", e)))?;
+            Ok(())
+        }
+
+        fn remove_presence(&mut self, player_id: &player::PlayerId) -> Result<(), PresenceError> {
             debug!("Removing Discord client for player: {}", player_id);
             if let Some(mut client) = self.discord_clients.remove(player_id) {
                 Self::close_client(&mut client)?;
@@ -525,10 +492,11 @@ mod presence {
     }
 }
 
+// ============================================================================
+// TEMPLATE MODULE - Simple templating functionality
+// ============================================================================
 mod template {
-    use crate::error::TemplateError;
-    use handlebars::Handlebars;
-    use log::{debug, info};
+    use super::*;
 
     pub struct TemplateManager {
         handlebars: Handlebars<'static>,
@@ -541,119 +509,142 @@ mod template {
 
             let mut handlebars = Handlebars::new();
 
-            handlebars
-                .register_template_string("detail", detail_template)
-                .map_err(|e| TemplateError::Init(format!("Failed to register template: {}", e)))?;
+            handlebars.register_template_string("detail", detail_template)?;
 
             info!("Template registration successful");
             Ok(Self { handlebars })
         }
+
+        pub fn reload(&mut self, detail_template: &str) -> Result<(), TemplateError> {
+            debug!("Reloading template: {}", detail_template);
+            self.handlebars = Handlebars::new();
+            self.handlebars
+                .register_template_string("detail", detail_template)?;
+
+            Ok(())
+        }
     }
 }
 
+// ============================================================================
+// EVENT MODULE - Event definitions and processing
+// ============================================================================
+mod event {
+    use super::*;
+
+    #[derive(Debug)]
+    pub enum Event {
+        PlayerUpdate(player::PlayerId, player::PlayerState),
+        PlayerRemove(player::PlayerId),
+        ConfigChanged,
+    }
+}
+
+// ============================================================================
+// SERVICE MODULE - Main application service
+// ============================================================================
 mod service {
-    use crate::{
-        config::{self, ConfigChange, ConfigChangeReceiver},
-        error::{ServiceInitError, ServiceRuntimeError},
-        player::PlayerManager,
-        presence::PresenceManager,
-        template::TemplateManager,
-    };
-    use log::{debug, error, info, warn};
-    use std::{sync::Arc, thread::sleep, time::Duration};
+    use log::trace;
+
+    use super::*;
 
     pub struct Service {
-        player_manager: PlayerManager,
-        presence_manager: PresenceManager,
-        template_manager: TemplateManager,
-        config_rx: ConfigChangeReceiver,
+        player_manager: player::PlayerManager,
+        presence_manager: presence::PresenceManager,
+        event_rx: mpsc::Receiver<event::Event>,
+        event_tx: mpsc::Sender<event::Event>,
+        config_rx: config::ConfigChangeReceiver,
     }
 
     impl Service {
         pub fn new() -> Result<Self, ServiceInitError> {
             info!("Initializing service components");
-            let cfg = config::get();
 
-            debug!("Creating player manager");
-            let player_manager = PlayerManager::new()?;
-
-            debug!("Creating presence manager");
-            let presence_manager = PresenceManager::new();
+            let (event_tx, event_rx) = mpsc::channel(32);
 
             debug!("Creating template manager");
-            let template_manager = TemplateManager::new("")?;
+            let detail_template = config::get().template_config().detail;
+            let template_manager = template::TemplateManager::new(&detail_template)?;
+
+            debug!("Creating player manager");
+            let player_manager = player::PlayerManager::new(event_tx.clone())?;
+
+            debug!("Creating presence manager");
+            let presence_manager = presence::PresenceManager::new(template_manager);
 
             info!("Service initialization complete");
             Ok(Self {
                 player_manager,
                 presence_manager,
-                template_manager,
-                config_rx: cfg.subscribe(),
+                event_rx,
+                event_tx,
+                config_rx: config::get().subscribe(),
             })
         }
 
         pub async fn run(&mut self) -> Result<(), ServiceRuntimeError> {
             info!("Starting service main loop");
+
+            let mut interval =
+                tokio::time::interval(Duration::from_millis(config::get().interval()));
+
             loop {
                 tokio::select! {
+                    // Check players on interval tick
+                    _ = interval.tick() => {
+                        trace!("Checking players");
+                        if let Err(e) = self.player_manager.check_players().await {
+                            error!("Error checking players: {}", e);
+                        }
+                    },
+
                     // Handle config changes
                     Ok(change) = self.config_rx.recv() => {
                         match change {
-                            ConfigChange::Updated | ConfigChange::Reloaded => {
-                                info!("Config change detected, reloading components");
-                                if let Err(e) = self.reload_components() {
+                            config::ConfigChange::Updated | config::ConfigChange::Reloaded => {
+                                info!("Config change detected");
+                                // Update interval
+                                interval = tokio::time::interval(Duration::from_millis(config::get().interval()));
+
+                                // Send config changed event
+                                if let Err(e) = self.event_tx.send(event::Event::ConfigChanged).await {
+                                    error!("Failed to send config changed event: {}", e);
+                                }
+
+                                // Reload template manager with new template
+                                if let Err(e) = self.reload_components().await {
                                     error!("Failed to reload components: {}", e);
-                                } else {
-                                    info!("Components reloaded successfully");
                                 }
                             },
-                            ConfigChange::Error(e) => {
+                            config::ConfigChange::Error(e) => {
                                 error!("Config error: {}", e);
                             }
                         }
                     }
 
-                    // Normal service loop with moved self reference
-                    _ = async {
-                      let interval = config::get().context().interval();
-                        sleep(Duration::from_millis(interval));
-                        Ok::<_, ServiceRuntimeError>(())
-                    } => {
-                        // After the sleep, update
-                        if let Err(e) = self.update_loop().await {
-                            error!("Error in update loop: {}", e);
+                    // Process events from player manager
+                    Some(event) = self.event_rx.recv() => {
+                        debug!("Received event: {:?}", event);
+                        if let Err(e) = self.presence_manager.handle_event(event, &self.player_manager).await {
+                            error!("Error handling event: {}", e);
                         }
+                    }
+
+                    else => {
+                        warn!("All event sources have closed, shutting down");
+                        break;
                     }
                 }
             }
-        }
 
-        fn reload_components(&mut self) -> Result<(), ServiceRuntimeError> {
-            debug!("Reloading service components");
-            let ctx = config::get().context();
-            let detail_template = ctx.template_config().detail;
-
-            debug!("Recreating template manager with new template");
-            self.template_manager = TemplateManager::new(&detail_template)?;
-
-            debug!("Components reload complete");
             Ok(())
         }
 
-        async fn update_loop(&mut self) -> Result<(), ServiceRuntimeError> {
-            let player_updates = self.player_manager.update_players()?;
-
-            if !player_updates.is_empty() {
-                debug!("Processing {} player updates", player_updates.len());
-                // Process updates to generate presence actions
-                self.presence_manager.process_player_updates(player_updates);
-
-                // Process presence queue
-                self.presence_manager
-                    .process_queue(&self.player_manager, &self.template_manager)
-                    .await?;
-            }
-
+        async fn reload_components(&mut self) -> Result<(), ServiceRuntimeError> {
+            debug!("Reloading service components");
+            let detail_template = config::get().template_config().detail;
+            let template_manager = template::TemplateManager::new(&detail_template)?;
+            self.presence_manager = presence::PresenceManager::new(template_manager);
             Ok(())
         }
     }

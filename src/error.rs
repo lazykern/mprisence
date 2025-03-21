@@ -15,6 +15,9 @@ pub enum Error {
 
     #[error("Config error: {0}")]
     Config(#[from] config::ConfigError),
+
+    #[error("IO error: {0}")]
+    IO(#[from] std::io::Error),
 }
 
 #[derive(Error, Debug)]
@@ -47,19 +50,29 @@ pub enum ServiceRuntimeError {
 #[derive(Error, Debug)]
 pub enum PlayerError {
     #[error("DBus error: {0}")]
-    DBus(#[from] mpris::DBusError),
+    DBus(#[from] DBusError),
+
     #[error("Finding error: {0}")]
-    Finding(#[from] mpris::FindingError),
+    Finding(#[from] FindingError),
+
     #[error("Config access error: {0}")]
     Config(#[from] config::ConfigError),
+
+    #[error("General error: {0}")]
+    General(String),
 }
 
 #[derive(Error, Debug)]
 pub enum PresenceError {
     #[error("Failed to connect to Discord: {0}")]
     Connection(String),
+
     #[error("Failed to update presence: {0}")]
     Update(String),
+
+    #[error("Failed to close connection: {0}")]
+    Close(String),
+
     #[error("Config access error: {0}")]
     Config(#[from] config::ConfigError),
 }
@@ -68,6 +81,23 @@ pub enum PresenceError {
 pub enum TemplateError {
     #[error("Template initialization error: {0}")]
     Init(String),
+
     #[error("Template render error: {0}")]
     Render(#[from] handlebars::RenderError),
+
+    #[error("Template error: {0}")]
+    Template(#[from] handlebars::TemplateError),
+}
+
+// Provide some convenience conversions for common error situations
+impl From<String> for PlayerError {
+    fn from(msg: String) -> Self {
+        PlayerError::General(msg)
+    }
+}
+
+impl From<&str> for PlayerError {
+    fn from(msg: &str) -> Self {
+        PlayerError::General(msg.to_string())
+    }
 }
