@@ -9,12 +9,14 @@ use std::{
 };
 
 // External dependencies
+use bumpalo;
 use discord_rich_presence::{
     activity::{Activity, ActivityType, Assets, Timestamps},
     DiscordIpc, DiscordIpcClient,
 };
 use handlebars::Handlebars;
 use mpris::{Metadata, PlaybackStatus, Player, PlayerFinder};
+use smol_str::SmolStr;
 use tokio::{
     sync::{broadcast, mpsc, RwLock},
     time,
@@ -37,9 +39,9 @@ mod player {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct PlayerId {
-        pub player_bus_name: String,
-        pub identity: String,
-        pub unique_name: String,
+        pub player_bus_name: SmolStr,
+        pub identity: SmolStr,
+        pub unique_name: SmolStr,
     }
 
     impl Display for PlayerId {
@@ -55,9 +57,9 @@ mod player {
     impl From<&Player> for PlayerId {
         fn from(player: &Player) -> Self {
             Self {
-                player_bus_name: player.bus_name_player_name_part().to_string(),
-                identity: player.identity().to_string(),
-                unique_name: player.unique_name().to_string(),
+                player_bus_name: SmolStr::new(player.bus_name_player_name_part()),
+                identity: SmolStr::new(player.identity()),
+                unique_name: SmolStr::new(player.unique_name()),
             }
         }
     }
@@ -65,8 +67,8 @@ mod player {
     #[derive(Debug, Clone)]
     pub struct PlayerState {
         pub playback_status: PlaybackStatus,
-        pub metadata: Metadata,
-        pub position: Duration,
+        pub metadata: Arc<Metadata>,
+        pub position: u32,
         pub volume: u8,
     }
 
@@ -76,8 +78,8 @@ mod player {
         fn try_from(player: &Player) -> Result<Self, Self::Error> {
             Ok(Self {
                 playback_status: player.get_playback_status().map_err(PlayerError::DBus)?,
-                metadata: player.get_metadata().map_err(PlayerError::DBus)?,
-                position: player.get_position().map_err(PlayerError::DBus)?,
+                metadata: Arc::new(player.get_metadata().map_err(PlayerError::DBus)?),
+                position: player.get_position().map_err(PlayerError::DBus)?.as_secs() as u32,
                 volume: (player.get_volume().map_err(PlayerError::DBus)? * 100.0) as u8,
             })
         }
@@ -91,7 +93,8 @@ mod player {
 
         /// Checks if metadata, status or volume has changed
         pub fn has_metadata_changes(&self, previous: &Self) -> bool {
-            let metadata_changed = self.metadata.as_hashmap() != previous.metadata.as_hashmap();
+            let metadata_changed = !Arc::ptr_eq(&self.metadata, &previous.metadata)
+                && self.metadata.as_hashmap() != previous.metadata.as_hashmap();
             let status_changed = self.playback_status != previous.playback_status;
             let volume_changed = self.volume != previous.volume;
 
@@ -148,28 +151,26 @@ mod player {
 
         /// Checks if there's a significant position change that's not explained by normal playback
         pub fn has_position_jump(&self, previous: &Self, polling_interval: Duration) -> bool {
-            // Simple approach: detect significant jumps (more than twice the polling interval)
-            // or when position decreases (seek backwards)
+            // Convert polling_interval to seconds for comparison with u32
+            let interval_secs = polling_interval.as_secs() as u32;
 
             // If position decreased, it's a jump backward
             if self.position < previous.position {
                 debug!(
                     "Position jumped backward: {}s -> {}s",
-                    previous.position.as_secs(),
-                    self.position.as_secs()
+                    previous.position, self.position
                 );
                 return true;
             }
 
             // If position increased more than expected, it's a forward jump
-            let elapsed = self.position - previous.position;
-            let expected_max = polling_interval.saturating_mul(2); // Double polling interval as threshold
+            let elapsed = self.position.saturating_sub(previous.position);
+            let expected_max = interval_secs.saturating_mul(2); // Double polling interval as threshold
 
             if elapsed > expected_max {
                 debug!(
                     "Position jumped forward: {}s -> {}s",
-                    previous.position.as_secs(),
-                    self.position.as_secs()
+                    previous.position, self.position
                 );
                 return true;
             }
@@ -209,17 +210,14 @@ mod player {
         pub async fn check_players(&mut self) -> Result<(), PlayerError> {
             let config = config::get();
             let polling_interval = config.interval();
-            let current = self
-                .player_finder
-                .find_all()
-                .map_err(PlayerError::Finding)?;
+
+            let current = self.player_finder.find_all().map_err(PlayerError::Finding)?;
             let current_ids: Vec<_> = current.iter().map(PlayerId::from).collect();
 
             // Find removed players
-            let removed_ids: Vec<_> = self
-                .player_states
+            let removed_ids: Vec<_> = self.player_states
                 .keys()
-                .filter(|id| !current_ids.iter().any(|curr_id| curr_id == *id))
+                .filter(|id| !current_ids.contains(id))
                 .cloned()
                 .collect();
 
@@ -242,7 +240,6 @@ mod player {
                     continue;
                 }
 
-                // Process player state
                 match PlayerState::try_from(&player) {
                     Ok(player_state) => {
                         if let Err(e) = self
@@ -411,7 +408,7 @@ mod presence {
                 large_text,
                 small_text,
                 state.playback_status,
-                state.position,
+                Duration::from_secs(state.position as u64),
                 state.metadata.length().unwrap_or_default(),
                 as_elapsed,
             );
@@ -439,7 +436,6 @@ mod presence {
             let start_s = start_dur.as_secs();
             let end_s = end.as_secs();
 
-            // Build timestamps
             let mut timestamps = Timestamps::new();
 
             if !show_elapsed {
@@ -450,18 +446,19 @@ mod presence {
                 timestamps = timestamps.start(start_s as i64);
             }
 
-            // Leak these strings to get 'static references
+            // SAFETY: We intentionally leak these strings to get 'static references.
+            // The discord-rich-presence library requires 'static str references, and these
+            // strings are used for the lifetime of the program. Memory usage is bounded
+            // by the number of unique status messages.
             let details_static = Box::leak(details.into_boxed_str());
             let state_static = Box::leak(state.into_boxed_str());
             let large_text_static = Box::leak(large_text.into_boxed_str());
             let small_text_static = Box::leak(small_text.into_boxed_str());
 
-            // Create assets with large and small text
             let assets = Assets::new()
                 .large_text(large_text_static)
                 .small_text(small_text_static);
 
-            // Build activity with consistent builder pattern
             Activity::new()
                 .activity_type(ActivityType::Listening)
                 .details(details_static)
@@ -478,7 +475,6 @@ mod presence {
         ) -> Result<(), PresenceError> {
             debug!("Updating activity for player: {}", player_id);
 
-            // Get or create client
             if !self.discord_clients.contains_key(player_id) {
                 match Self::create_client(app_id) {
                     Ok(client) => {
@@ -543,8 +539,6 @@ mod presence {
 // TEMPLATE MODULE - Simple templating functionality
 // ============================================================================
 mod template {
-    use rustc_hash::FxHashMap;
-
     use super::*;
     use std::collections::BTreeMap;
 
@@ -588,7 +582,7 @@ mod template {
         pub fn render(
             &self,
             template_name: &str,
-            data: &FxHashMap<String, String>,
+            data: &BTreeMap<String, String>,
         ) -> Result<String, TemplateError> {
             Ok(self.handlebars.render(template_name, data)?)
         }
@@ -597,27 +591,27 @@ mod template {
         pub fn create_data(
             player_id: &player::PlayerId,
             state: &player::PlayerState,
-        ) -> FxHashMap<String, String> {
+        ) -> BTreeMap<String, String> {
+            let mut data = BTreeMap::new();
+
+            // Player information
+            data.insert("player".to_string(), player_id.identity.to_string());
+
+            // Playback information - use static strings where possible
+            data.insert("status".to_string(), format!("{:?}", state.playback_status));
+
             let status_icon = match state.playback_status {
                 PlaybackStatus::Playing => "▶️",
                 PlaybackStatus::Paused => "⏸️",
                 PlaybackStatus::Stopped => "⏹️",
             };
-
-            let mut data = FxHashMap::default();
-
-            // Player information
-            data.insert("player".to_string(), player_id.identity.clone());
-
-            // Playback information
-            data.insert("status".to_string(), format!("{:?}", state.playback_status));
             data.insert("status_icon".to_string(), status_icon.to_string());
             data.insert("volume".to_string(), state.volume.to_string());
 
             let position = format!(
                 "{:02}:{:02}",
-                state.position.as_secs() / 60,
-                state.position.as_secs() % 60
+                state.position as u64 / 60,
+                state.position as u64 % 60
             );
             data.insert("position".to_string(), position);
 

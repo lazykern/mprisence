@@ -58,32 +58,32 @@ impl Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateConfig {
     #[serde(default = "default_template_detail")]
-    pub detail: String,
+    pub detail: Box<str>,
 
     #[serde(default = "default_template_state")]
-    pub state: String,
+    pub state: Box<str>,
 
     #[serde(default = "default_template_large_text")]
-    pub large_text: String,
+    pub large_text: Box<str>,
 
     #[serde(default = "default_template_small_text")]
-    pub small_text: String,
+    pub small_text: Box<str>,
 }
 
-fn default_template_detail() -> String {
-    get_default_config().template.detail.clone()
+fn default_template_detail() -> Box<str> {
+    get_default_config().template.detail.clone().into_boxed_str()
 }
 
-fn default_template_state() -> String {
-    get_default_config().template.state.clone()
+fn default_template_state() -> Box<str> {
+    get_default_config().template.state.clone().into_boxed_str()
 }
 
-fn default_template_large_text() -> String {
-    get_default_config().template.large_text.clone()
+fn default_template_large_text() -> Box<str> {
+    get_default_config().template.large_text.clone().into_boxed_str()
 }
 
-fn default_template_small_text() -> String {
-    get_default_config().template.small_text.clone()
+fn default_template_small_text() -> Box<str> {
+    get_default_config().template.small_text.clone().into_boxed_str()
 }
 
 impl Default for TemplateConfig {
