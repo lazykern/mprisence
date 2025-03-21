@@ -269,9 +269,8 @@ mod player {
                                             player_state.clone(),
                                         ));
                                     }
-
-                                    self.player_states.insert(id, player_state);
                                 }
+                                self.player_states.insert(id, player_state);
                             }
                             None => {
                                 info!("New player detected: {}", id);
