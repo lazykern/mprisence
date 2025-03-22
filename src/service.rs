@@ -248,8 +248,8 @@ impl Service {
     pub async fn run(&mut self) -> Result<(), ServiceRuntimeError> {
         info!("Starting service main loop");
 
-        let mut interval =
-            tokio::time::interval(Duration::from_millis(get_config().interval()));
+        let mut interval = tokio::time::interval(Duration::from_millis(get_config().interval()));
+        let mut client_check_interval = tokio::time::interval(Duration::from_secs(30));
 
         loop {
             tokio::select! {
@@ -258,6 +258,10 @@ impl Service {
                     if let Err(e) = self.check_players().await {
                         error!("Error checking players: {}", e);
                     }
+                },
+
+                _ = client_check_interval.tick() => {
+                    self.presence_manager.check_clients().await;
                 },
 
                 Ok(change) = self.config_rx.recv() => {
