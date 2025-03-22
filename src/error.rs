@@ -52,6 +52,9 @@ pub enum ServiceRuntimeError {
 
     #[error("Config error: {0}")]
     Config(#[from] config::ConfigError),
+
+    #[error("General error: {0}")]
+    General(String),
 }
 
 #[derive(Error, Debug)]

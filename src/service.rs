@@ -1,10 +1,24 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
+use discord_presence::models::Activity;
 use log::{debug, error, info, trace, warn};
+use mpris::{Metadata, PlaybackStatus};
 use smallvec::SmallVec;
 use tokio::sync::{mpsc, Mutex};
 
-use crate::{config::{self, get_config}, error::{ServiceInitError, ServiceRuntimeError}, event::Event, player::PlayerManager, presence, template};
+use crate::{
+    config::{self, get_config},
+    error::{ServiceInitError, ServiceRuntimeError},
+    event::Event,
+    player::{PlayerManager, PlayerId, PlayerState},
+    presence,
+    template,
+    utils,
+};
 
 pub struct Service {
     player_manager: Arc<Mutex<PlayerManager>>,
@@ -54,7 +68,19 @@ impl Service {
         debug!("Handling event: {:?}", event);
         match event {
             Event::PlayerUpdate(id, state) => {
-                if let Err(e) = self.presence_manager.update_presence(&id, &state).await {
+                // Get full metadata
+                let metadata = {
+                    let player_manager = self.player_manager.lock().await;
+                    player_manager
+                        .get_metadata(&id)
+                        .map_err(|e| ServiceRuntimeError::General(format!("Failed to get metadata: {}", e)))?
+                };
+
+                // Create activity
+                let activity = self.create_activity(&id, &state, &metadata).await?;
+
+                // Update presence with activity
+                if let Err(e) = self.presence_manager.update_presence(&id, activity).await {
                     error!("Failed to update presence: {}", e);
                 }
             }
@@ -81,6 +107,107 @@ impl Service {
             }
         }
         Ok(())
+    }
+
+    async fn create_activity(
+        &self,
+        player_id: &PlayerId,
+        state: &PlayerState,
+        metadata: &Metadata,
+    ) -> Result<Activity, ServiceRuntimeError> {
+        // Don't show activity if player is stopped
+        if state.playback_status == PlaybackStatus::Stopped {
+            return Ok(Activity::default());
+        }
+
+        let config = get_config();
+        let player_config = config.player_config(player_id.identity.as_str());
+        let as_elapsed = config.time_config().as_elapsed;
+
+        let length = metadata.length().unwrap_or_default();
+
+        // Calculate timestamps if playing
+        let (start_s, end_s) = if state.playback_status == PlaybackStatus::Playing {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards");
+
+            let start_dur = now.checked_sub(Duration::from_secs(state.position as u64)).unwrap_or_default();
+            let start_s = start_dur.as_secs() as i64;
+
+            let mut end_s = None;
+            if !as_elapsed && !length.is_zero() {
+                let end = start_dur
+                    .checked_add(length)
+                    .unwrap_or_default();
+                end_s = Some(end.as_secs() as i64);
+            }
+
+            (Some(start_s as u64), end_s.map(|s| s as u64))
+        } else {
+            (None, None)
+        };
+
+        let mut activity = Activity::default();
+
+        let content_type = utils::get_content_type_from_metadata(metadata);
+        let activity_type = player_config.activity_type(content_type.as_deref());
+
+        activity = activity._type(activity_type.into());
+
+        let activity_texts = self.presence_manager
+            .get_template_manager()
+            .render_activity_texts(
+                player_id,
+                state,
+                metadata,
+            )
+            .map_err(|e| ServiceRuntimeError::General(format!("Activity creation error: {}", e)))?;
+
+        if !activity_texts.details.is_empty() {
+            activity = activity.details(&activity_texts.details);
+        }
+
+        if !activity_texts.state.is_empty() {
+            activity = activity.state(&activity_texts.state);
+        }
+
+        if let Some(start) = start_s {
+            activity = activity.timestamps(|ts| {
+                if let Some(end) = end_s {
+                    ts.start(start).end(end)
+                } else {
+                    ts.start(start)
+                }
+            });
+        }
+
+        // Get cover art URL from presence manager
+        let cover_art_url = self.presence_manager.get_cover_art_url(metadata).await.unwrap_or_default();
+
+        activity = activity.assets(|a| {
+            let mut assets = a;
+
+            // Set large image (album art) if available
+            if let Some(img_url) = &cover_art_url {
+                assets = assets.large_image(img_url);
+                if !activity_texts.large_text.is_empty() {
+                    assets = assets.large_text(&activity_texts.large_text);
+                }
+            }
+
+            // Set small image (player icon) if enabled
+            if player_config.show_icon {
+                assets = assets.small_image(player_config.icon);
+                if !activity_texts.small_text.is_empty() {
+                    assets = assets.small_text(&activity_texts.small_text);
+                }
+            }
+
+            assets
+        });
+
+        Ok(activity)
     }
 
     pub async fn run(&mut self) -> Result<(), ServiceRuntimeError> {
