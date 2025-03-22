@@ -20,6 +20,7 @@ mod cli;
 mod config;
 mod cover;
 mod error;
+mod memory_logger;
 mod utils;
 
 use std::alloc::System;
@@ -978,7 +979,7 @@ use crate::{cli::Cli, service::Service};
 
 #[tokio::main]
 async fn main() -> Result<(), error::Error> {
-    env_logger::init();
+    memory_logger::MemoryLogger::init().expect("Failed to initialize memory logger");
 
     config::initialize()?;
 

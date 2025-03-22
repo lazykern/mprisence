@@ -19,7 +19,6 @@ mime_guess = "2.0.5"
 mpris = "2.0.1"
 notify = "8.0.0"
 parking_lot = "0.12"
-reqwest = "0.12.15"
 serde = { version = "1.0.219", features = ["derive"] }
 smallvec = "1.13"
 smol_str = "0.3.2"
@@ -28,12 +27,9 @@ tokio = { version = "1.44.1", features = ["full"] }
 toml = "0.8.20"
 lazy_static = "1.4.0"
 url = "2.5.4"
-musicbrainz_rs = "0.9.0"
 blake3 = "1.7.0"
 async-trait = "0.1.88"
 discord-presence = { version = "1.5.0", features = ["activity_type"] }
-
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = 'z'
+chrono = "0.4.40"
+reqwest = "0.12.15"
+musicbrainz_rs = { version = "0.9.0", features = ["async"] }

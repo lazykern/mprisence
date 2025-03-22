@@ -1417,6 +1417,7 @@ version = "1.0.0"
 dependencies = [
  "async-trait",
  "blake3",
+ "chrono",
  "clap",
  "dirs",
  "discord-presence",
