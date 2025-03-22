@@ -10,9 +10,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use discord_presence::{
-    Client as DiscordClient,
-};
+use discord_presence::Client as DiscordClient;
 use handlebars::Handlebars;
 use mpris::{Metadata, PlaybackStatus, Player, PlayerFinder};
 use smol_str::SmolStr;
@@ -109,7 +107,7 @@ mod player {
 
         fn try_from(player: &Player) -> Result<Self, Self::Error> {
             let metadata = player.get_metadata().map_err(PlayerError::DBus)?;
-            
+
             Ok(Self {
                 playback_status: player.get_playback_status().map_err(PlayerError::DBus)?,
                 track_id: metadata.track_id().map(|s| s.to_string().into_boxed_str()),
@@ -535,20 +533,20 @@ mod presence {
             trace!("Preparing Discord activity update: {}", details);
 
             self.update_activity(
-                player_id, 
-                details, 
-                state_text, 
-                large_text, 
-                small_text, 
-                activity_type, 
-                state.playback_status, 
+                player_id,
+                details,
+                state_text,
+                large_text,
+                small_text,
+                activity_type,
+                state.playback_status,
                 Duration::from_secs(state.position as u64),
                 full_metadata.length().unwrap_or_default(),
                 as_elapsed,
                 cover_art_url,
                 player_config.show_icon,
                 player_config.icon.clone(),
-                &player_config.app_id
+                &player_config.app_id,
             )
         }
 
@@ -574,16 +572,16 @@ mod presence {
             if !self.discord_clients.contains_key(player_id) {
                 match Self::create_client(app_id) {
                     Ok(mut client) => {
-                        let mut client_clone = client.clone();
-                        
                         // Setup error handler
-                        client.on_error(move |ctx| {
-                            error!("Discord error: {:?}", ctx.event);
-                        }).persist();
-                        
+                        client
+                            .on_error(move |ctx| {
+                                error!("Discord error: {:?}", ctx.event);
+                            })
+                            .persist();
+
                         // Start the client
                         client.start();
-                        
+
                         self.discord_clients.insert(player_id.clone(), client);
                     }
                     Err(e) => return Err(e),
@@ -602,7 +600,7 @@ mod presence {
 
             let start_dur = now.checked_sub(position).unwrap_or_default();
             let start_s = start_dur.as_secs() as i64;
-            
+
             let mut end_s = None;
             if !show_elapsed {
                 let end = start_dur.checked_add(length).unwrap_or_default();
@@ -610,81 +608,83 @@ mod presence {
             }
 
             // Set the activity using the builder pattern
-            client.set_activity(|act| {
-                let mut activity = act;
-                
-                // Set details and state if not empty
-                if !details.is_empty() {
-                    activity = activity.details(&details);
-                }
-                
-                if !state.is_empty() {
-                    activity = activity.state(&state);
-                }
-                
-                // Set timestamps if playing
-                if playback_status == PlaybackStatus::Playing {
-                    activity = activity.timestamps(|ts| {
-                        if let Some(end) = end_s {
-                            ts.start(start_s as u64).end(end as u64)
-                        } else {
-                            ts.start(start_s as u64)
+            client
+                .set_activity(|mut act| {
+                    act = act._type(activity_type.into());
+
+                    // Set details and state if not empty
+                    if !details.is_empty() {
+                        act = act.details(&details);
+                    }
+
+                    if !state.is_empty() {
+                        act = act.state(&state);
+                    }
+
+                    // Set timestamps if playing
+                    if playback_status == PlaybackStatus::Playing {
+                        act = act.timestamps(|ts| {
+                            if let Some(end) = end_s {
+                                ts.start(start_s as u64).end(end as u64)
+                            } else {
+                                ts.start(start_s as u64)
+                            }
+                        });
+                    }
+
+                    // Set assets (images and their tooltips)
+                    act = act.assets(|a| {
+                        let mut assets = a;
+
+                        // Set large image (album art) if available
+                        if let Some(img_url) = &large_image {
+                            assets = assets.large_image(img_url);
+                            if !large_text.is_empty() {
+                                assets = assets.large_text(&large_text);
+                            }
                         }
+
+                        // Set small image (player icon) if enabled
+                        if show_small_image {
+                            assets = assets.small_image(&small_image);
+                            if !small_text.is_empty() {
+                                assets = assets.small_text(&small_text);
+                            }
+                        }
+
+                        assets
                     });
-                }
-                
-                // Set assets (images and their tooltips)
-                activity = activity.assets(|a| {
-                    let mut assets = a;
-                    
-                    // Set large image (album art) if available
-                    if let Some(img_url) = &large_image {
-                        assets = assets.large_image(img_url);
-                        if !large_text.is_empty() {
-                            assets = assets.large_text(&large_text);
-                        }
-                    }
-                    
-                    // Set small image (player icon) if enabled
-                    if show_small_image {
-                        assets = assets.small_image(&small_image);
-                        if !small_text.is_empty() {
-                            assets = assets.small_text(&small_text);
-                        }
-                    }
-                    
-                    assets
-                });
-                
-                activity
-            })
-            .map_err(|e| PresenceError::Update(format!("Failed to update presence: {}", e)))?;
+
+                    act
+                })
+                .map_err(|e| PresenceError::Update(format!("Failed to update presence: {}", e)))?;
 
             Ok(())
         }
 
         fn create_client(app_id: &str) -> Result<DiscordClient, PresenceError> {
             debug!("Creating new Discord client with app_id: {}", app_id);
-            
+
             // Parse app_id from string to u64
-            let app_id_u64 = app_id.parse::<u64>()
+            let app_id_u64 = app_id
+                .parse::<u64>()
                 .map_err(|e| PresenceError::Connection(format!("Invalid app_id: {}", e)))?;
-                
+
             let client = DiscordClient::new(app_id_u64);
             info!("Successfully created Discord client");
-            
+
             Ok(client)
         }
 
         fn remove_presence(&mut self, player_id: &player::PlayerId) -> Result<(), PresenceError> {
             debug!("Removing Discord client for player: {}", player_id);
             self.has_activity.remove(player_id);
-            
+
             if let Some(client) = self.discord_clients.remove(player_id) {
                 // The client will be dropped, which should automatically clean up
                 debug!("Removed Discord client for player: {}", player_id);
             }
-            
+
             Ok(())
         }
 
@@ -703,8 +703,8 @@ mod presence {
 // TEMPLATE MODULE - Simple templating functionality
 // ============================================================================
 mod template {
-    use crate::utils::format_duration;
     use super::*;
+    use crate::utils::format_duration;
     use std::collections::{BTreeMap, HashMap};
 
     pub struct TemplateManager {
@@ -724,9 +724,7 @@ mod template {
             handlebars.register_template_string("small_text", &template_config.small_text)?;
 
             info!("Template registration successful");
-            Ok(Self {
-                handlebars,
-            })
+            Ok(Self { handlebars })
         }
 
         pub fn reload(&mut self, config: &Arc<config::ConfigManager>) -> Result<(), TemplateError> {
@@ -752,8 +750,7 @@ mod template {
             data: &BTreeMap<String, String>,
         ) -> Result<String, TemplateError> {
             // Directly render without caching
-            Ok(self.handlebars
-                .render(template_name, data)?)
+            Ok(self.handlebars.render(template_name, data)?)
         }
 
         /// Helper to create template data from player state
@@ -869,10 +866,13 @@ mod service {
             let template_manager = template::TemplateManager::new(&config)?;
 
             debug!("Creating player manager");
-            let player_manager = Arc::new(TokioMutex::new(player::PlayerManager::new(event_tx.clone())?));
+            let player_manager = Arc::new(TokioMutex::new(player::PlayerManager::new(
+                event_tx.clone(),
+            )?));
 
             debug!("Creating presence manager");
-            let presence_manager = presence::PresenceManager::new(template_manager, player_manager.clone())?;
+            let presence_manager =
+                presence::PresenceManager::new(template_manager, player_manager.clone())?;
 
             info!("Service initialization complete");
             Ok(Self {
@@ -888,7 +888,8 @@ mod service {
         pub async fn run(&mut self) -> Result<(), ServiceRuntimeError> {
             info!("Starting service main loop");
 
-            let mut interval = tokio::time::interval(Duration::from_millis(config::get().interval()));
+            let mut interval =
+                tokio::time::interval(Duration::from_millis(config::get().interval()));
 
             loop {
                 tokio::select! {
@@ -922,10 +923,10 @@ mod service {
 
                     Some(event) = self.event_rx.recv() => {
                         debug!("Received event: {}", event);
-                        
+
                         // Add first event to SmallVec
                         self.pending_events.push(event);
-                        
+
                         // Try to collect more events
                         for _ in 0..9 {
                             match self.event_rx.try_recv() {
@@ -936,7 +937,7 @@ mod service {
                                 Err(_) => break,
                             }
                         }
-                        
+
                         // Process all collected events
                         for event in self.pending_events.drain(..) {
                             trace!("Handling event: {:?}", event);

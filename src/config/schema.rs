@@ -1,29 +1,35 @@
+use log::warn;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use log::warn;
 
 use crate::utils::to_snake_case;
 
-use super::default::{get_default_config};
+use super::default::get_default_config;
 
 mod snake_case_string {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use crate::utils::to_snake_case;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::collections::HashMap;
 
-    pub fn serialize<S>(map: &HashMap<String, super::PlayerConfig>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(
+        map: &HashMap<String, super::PlayerConfig>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         map.serialize(serializer)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, super::PlayerConfig>, D::Error>
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<HashMap<String, super::PlayerConfig>, D::Error>
     where
         D: Deserializer<'de>,
     {
         let map = HashMap::<String, super::PlayerConfig>::deserialize(deserializer)?;
-        Ok(map.into_iter()
+        Ok(map
+            .into_iter()
             .map(|(k, v)| (to_snake_case(&k), v))
             .collect())
     }
@@ -88,7 +94,6 @@ fn default_interval() -> u64 {
     get_default_config().interval
 }
 
-
 impl Default for Config {
     fn default() -> Self {
         Config {
@@ -121,7 +126,7 @@ impl Config {
         if let Some(config) = self.player.get(normalized_identity) {
             return config.clone();
         }
-        
+
         // If not found, try to get the default config
         self.player.get("default").cloned().unwrap_or_else(|| {
             // If no default config exists, create a new one
@@ -287,7 +292,7 @@ impl Default for ActivityType {
     }
 }
 
-impl From<ActivityType> for discord_rich_presence::activity::ActivityType {
+impl From<ActivityType> for discord_presence::models::ActivityType {
     fn from(activity_type: ActivityType) -> Self {
         match activity_type {
             ActivityType::Listening => Self::Listening,
@@ -321,7 +326,8 @@ pub struct PlayerConfig {
 
 const DEFAULT_PLAYER_IGNORE: bool = false;
 const DEFAULT_PLAYER_APP_ID: &str = "1121632048155742288";
-const DEFAULT_PLAYER_ICON: &str = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png";
+const DEFAULT_PLAYER_ICON: &str =
+    "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png";
 const DEFAULT_PLAYER_SHOW_ICON: bool = false;
 const DEFAULT_PLAYER_ALLOW_STREAMING: bool = false;
 
@@ -365,7 +371,7 @@ impl PlayerConfig {
         if let Some(override_type) = &self.override_activity_type {
             return *override_type;
         }
-        
+
         // If there's no override and content type detection is enabled,
         // determine based on content type
         let config = get_default_config();
@@ -381,7 +387,7 @@ impl PlayerConfig {
                 }
             }
         }
-        
+
         // Fallback to default
         config.activity_type.default
     }
