@@ -1,14 +1,24 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
-use discord_presence::Client as DiscordClient;
+use discord_presence::{
+    models::{Activity, ActivityType as DiscordActivityType},
+    Client as DiscordClient,
+};
 use log::{debug, error, info, trace, warn};
 use mpris::PlaybackStatus;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 
-use crate::{config::{self, get_config}, cover::CoverArtManager, error::PresenceError, player::{self, PlayerId, PlayerManager, PlayerState}, template, utils};
-
-use super::utils::format_duration;
+use crate::{
+    config::{self, get_config, ActivityType},
+    cover::CoverArtManager,
+    error::PresenceError,
+    player::{PlayerId, PlayerManager, PlayerState},
+    template, utils,
+};
 
 pub struct PresenceManager {
     discord_clients: HashMap<PlayerId, DiscordClient>,
@@ -67,6 +77,8 @@ impl PresenceManager {
                 .map_err(|e| PresenceError::Update(format!("Failed to get metadata: {}", e)))?
         };
 
+        let length = full_metadata.length().unwrap_or_default();
+
         // Get cover art using full metadata
         let cover_art_url = match self.cover_art_manager.get_cover_art(&full_metadata).await {
             Ok(url) => url,
@@ -76,71 +88,88 @@ impl PresenceManager {
             }
         };
 
-        // Create template data with additional metadata
-        let mut template_data = template::TemplateManager::create_data(player_id, state);
+        // Create activity using template manager
 
-        // Add additional metadata fields
-        if let Some(length) = full_metadata.length() {
-            template_data.insert("length".to_string(), format_duration(length.as_secs()));
-        }
-        if let Some(track_number) = full_metadata.track_number() {
-            template_data.insert("track_number".to_string(), track_number.to_string());
-        }
-        if let Some(disc_number) = full_metadata.disc_number() {
-            template_data.insert("disc_number".to_string(), disc_number.to_string());
-        }
-        if let Some(album_name) = full_metadata.album_name() {
-            template_data.insert("album".to_string(), album_name.to_string());
-        }
-        if let Some(album_artists) = full_metadata.album_artists() {
-            template_data.insert("album_artists".to_string(), album_artists.join(", "));
-        }
+        // Calculate timestamps if playing
+        let (start_s, end_s) = if state.playback_status == PlaybackStatus::Playing {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards");
 
-        // Render templates with full metadata
-        let details = self
-            .template_manager
-            .render("detail", &template_data)
-            .map_err(|e| PresenceError::Update(format!("Template render error: {}", e)))?;
+            let start_dur = now.checked_sub(Duration::from_secs(state.position as u64)).unwrap_or_default();
+            let start_s = start_dur.as_secs() as i64;
 
-        let state_text = self
-            .template_manager
-            .render("state", &template_data)
-            .map_err(|e| PresenceError::Update(format!("Template render error: {}", e)))?;
+            let mut end_s = None;
+            if !as_elapsed && !length.is_zero() {
+                let end = start_dur
+                    .checked_add(length)
+                    .unwrap_or_default();
+                end_s = Some(end.as_secs() as i64);
+            }
 
-        let large_text = self
-            .template_manager
-            .render("large_text", &template_data)
-            .map_err(|e| PresenceError::Update(format!("Template render error: {}", e)))?;
+            (Some(start_s as u64), end_s.map(|s| s as u64))
+        } else {
+            (None, None)
+        };
 
-        let small_text = self
-            .template_manager
-            .render("small_text", &template_data)
-            .map_err(|e| PresenceError::Update(format!("Template render error: {}", e)))?;
+        let mut activity = Activity::default();
 
-        // Determine content type from full metadata
         let content_type = utils::get_content_type_from_metadata(&full_metadata);
-
-        // Determine activity type based on content type or player configuration
         let activity_type = player_config.activity_type(content_type.as_deref());
 
-        trace!("Preparing Discord activity update: {}", details);
+        activity = activity._type(activity_type.into());
 
-        self.update_activity(
-            player_id,
-            details,
-            state_text,
-            large_text,
-            small_text,
-            activity_type,
-            state.playback_status,
-            Duration::from_secs(state.position as u64),
-            full_metadata.length().unwrap_or_default(),
-            as_elapsed,
-            cover_art_url,
-            player_config.show_icon,
-            player_config.icon.clone(),
-            &player_config.app_id,
-        )
+        let activity_texts = self
+            .template_manager
+            .render_activity_texts(
+                player_id,
+                state,
+                &full_metadata,
+            )
+            .map_err(|e| PresenceError::Update(format!("Activity creation error: {}", e)))?;
+
+        if !activity_texts.details.is_empty() {
+            activity = activity.details(&activity_texts.details);
+        }
+
+        if !activity_texts.state.is_empty() {
+            activity = activity.state(&activity_texts.state);
+        }
+
+        if let Some(start) = start_s {
+            activity = activity.timestamps(|ts| {
+                if let Some(end) = end_s {
+                    ts.start(start).end(end)
+                } else {
+                    ts.start(start)
+                }
+            });
+        }
+
+        activity = activity.assets(|a| {
+            let mut assets = a;
+
+            // Set large image (album art) if available
+            if let Some(img_url) = &cover_art_url {
+                assets = assets.large_image(img_url);
+                if !activity_texts.large_text.is_empty() {
+                    assets = assets.large_text(&activity_texts.large_text);
+                }
+            }
+
+            // Set small image (player icon) if enabled
+            if player_config.show_icon {
+                assets = assets.small_image(player_config.icon);
+                if !activity_texts.small_text.is_empty() {
+                    assets = assets.small_text(&activity_texts.small_text);
+                }
+            }
+
+            assets
+        });
+
+        // Apply activity to Discord
+        self.update_activity(player_id, activity, &player_config.app_id)
     }
 
     pub fn clear_activity(&mut self, player_id: &PlayerId) -> Result<(), PresenceError> {
@@ -162,7 +191,7 @@ impl PresenceManager {
         self.has_activity.remove(player_id);
         self.player_states.remove(player_id);
 
-        if let Some(client) = self.discord_clients.remove(player_id) {
+        if let Some(_client) = self.discord_clients.remove(player_id) {
             debug!("Removed Discord client for player: {}", player_id);
         }
 
@@ -172,29 +201,22 @@ impl PresenceManager {
     pub fn reload_config(&mut self) -> Result<(), PresenceError> {
         debug!("Reloading config in presence manager");
         let config = get_config();
-        self.template_manager.reload(&config).map_err(|e| PresenceError::Update(format!("Failed to reload templates: {}", e)))?;
+        self.template_manager
+            .reload(&config)
+            .map_err(|e| PresenceError::Update(format!("Failed to reload templates: {}", e)))?;
         Ok(())
     }
 
+    // Method to update activity with Discord-specific logic
     fn update_activity(
         &mut self,
-        player_id: &player::PlayerId,
-        details: String,
-        state: String,
-        large_text: String,
-        small_text: String,
-        activity_type: config::ActivityType,
-        playback_status: PlaybackStatus,
-        position: Duration,
-        length: Duration,
-        show_elapsed: bool,
-        large_image: Option<String>,
-        show_small_image: bool,
-        small_image: String,
+        player_id: &PlayerId,
+        activity: Activity,
         app_id: &str,
     ) -> Result<(), PresenceError> {
         debug!("Updating activity for player: {}", player_id);
 
+        // Get or create the Discord client
         if !self.discord_clients.contains_key(player_id) {
             match Self::create_client(app_id) {
                 Ok(mut client) => {
@@ -219,70 +241,10 @@ impl PresenceManager {
             .get_mut(player_id)
             .ok_or_else(|| PresenceError::Update("Client unexpectedly missing".to_string()))?;
 
-        // Calculate timestamps
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-
-        let start_dur = now.checked_sub(position).unwrap_or_default();
-        let start_s = start_dur.as_secs() as i64;
-
-        let mut end_s = None;
-        if !show_elapsed {
-            let end = start_dur.checked_add(length).unwrap_or_default();
-            end_s = Some(end.as_secs() as i64);
-        }
 
         // Set the activity using the builder pattern
         client
-            .set_activity(|mut act| {
-                act = act._type(activity_type.into());
-
-                // Set details and state if not empty
-                if !details.is_empty() {
-                    act = act.details(&details);
-                }
-
-                if !state.is_empty() {
-                    act = act.state(&state);
-                }
-
-                // Set timestamps if playing
-                if playback_status == PlaybackStatus::Playing {
-                    act = act.timestamps(|ts| {
-                        if let Some(end) = end_s {
-                            ts.start(start_s as u64).end(end as u64)
-                        } else {
-                            ts.start(start_s as u64)
-                        }
-                    });
-                }
-
-                // Set assets (images and their tooltips)
-                act = act.assets(|a| {
-                    let mut assets = a;
-
-                    // Set large image (album art) if available
-                    if let Some(img_url) = &large_image {
-                        assets = assets.large_image(img_url);
-                        if !large_text.is_empty() {
-                            assets = assets.large_text(&large_text);
-                        }
-                    }
-
-                    // Set small image (player icon) if enabled
-                    if show_small_image {
-                        assets = assets.small_image(&small_image);
-                        if !small_text.is_empty() {
-                            assets = assets.small_text(&small_text);
-                        }
-                    }
-
-                    assets
-                });
-
-                act
-            })
+            .set_activity(|mut _act| activity)
             .map_err(|e| PresenceError::Update(format!("Failed to update presence: {}", e)))?;
 
         Ok(())

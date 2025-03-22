@@ -2,13 +2,21 @@ use log::{debug, info};
 use std::sync::Arc;
 
 use handlebars::Handlebars;
-use mpris::PlaybackStatus;
+use mpris::{Metadata, PlaybackStatus};
+use std::time::Duration;
 
-use crate::{config::{self, get_config, ConfigManager}, error::TemplateError, player::{PlayerId, PlayerState}, utils::format_duration};
+use crate::{config::{self, get_config, ConfigManager, schema}, error::TemplateError, player::{PlayerId, PlayerState}, utils::{self, format_duration}};
 use std::collections::BTreeMap;
 
 pub struct TemplateManager {
     handlebars: Handlebars<'static>,
+}
+
+pub struct ActivityTexts {
+    pub details: String,
+    pub state: String,
+    pub large_text: String,
+    pub small_text: String,
 }
 
 impl TemplateManager {
@@ -51,6 +59,58 @@ impl TemplateManager {
     ) -> Result<String, TemplateError> {
         // Directly render without caching
         Ok(self.handlebars.render(template_name, data)?)
+    }
+
+    /// Create a complete Activity object from player state and metadata
+    pub fn render_activity_texts(
+        &self,
+        player_id: &PlayerId,
+        state: &PlayerState,
+        metadata: &Metadata,
+    ) -> Result<ActivityTexts, TemplateError> {
+        // Create template data with metadata fields
+        let template_data = Self::create_full_data(player_id, state, metadata);
+        
+        // Render templates with full metadata
+        let details = self.render("detail", &template_data)?;
+        let state_text = self.render("state", &template_data)?;
+        let large_text = self.render("large_text", &template_data)?;
+        let small_text = self.render("small_text", &template_data)?;
+        
+        Ok(ActivityTexts {
+            details,
+            state: state_text,
+            large_text,
+            small_text,
+        })
+    }
+
+    /// Helper to create template data from player state and full metadata
+    pub fn create_full_data(
+        player_id: &PlayerId, 
+        state: &PlayerState,
+        metadata: &Metadata,
+    ) -> BTreeMap<String, String> {
+        let mut data = Self::create_data(player_id, state);
+        
+        // Add additional metadata fields
+        if let Some(length) = metadata.length() {
+            data.insert("length".to_string(), format_duration(length.as_secs()));
+        }
+        if let Some(track_number) = metadata.track_number() {
+            data.insert("track_number".to_string(), track_number.to_string());
+        }
+        if let Some(disc_number) = metadata.disc_number() {
+            data.insert("disc_number".to_string(), disc_number.to_string());
+        }
+        if let Some(album_name) = metadata.album_name() {
+            data.insert("album".to_string(), album_name.to_string());
+        }
+        if let Some(album_artists) = metadata.album_artists() {
+            data.insert("album_artists".to_string(), album_artists.join(", "));
+        }
+        
+        data
     }
 
     /// Helper to create template data from player state
