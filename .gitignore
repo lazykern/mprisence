@@ -1,1 +1,9 @@
 /target
+
+# Profiling
+heaptrack*
+flamegraph*
+
+# Editor
+.vscode
+.idea

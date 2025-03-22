@@ -1,6 +1,7 @@
 use crate::config;
 use mpris::{DBusError, FindingError};
 use thiserror::Error;
+use crate::cover;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -30,6 +31,12 @@ pub enum ServiceInitError {
 
     #[error("Failed to access config: {0}")]
     Config(#[from] config::ConfigError),
+    
+    #[error("Failed to initialize cover art: {0}")]
+    CoverArt(#[from] cover::CoverArtError),
+    
+    #[error("Presence error: {0}")]
+    Presence(#[from] PresenceError),
 }
 
 #[derive(Error, Debug)]
@@ -75,6 +82,12 @@ pub enum PresenceError {
 
     #[error("Config access error: {0}")]
     Config(#[from] config::ConfigError),
+    
+    #[error("Cover art error: {0}")]
+    CoverArt(#[from] cover::CoverArtError),
+    
+    #[error("General error: {0}")]
+    General(String),
 }
 
 #[derive(Error, Debug)]

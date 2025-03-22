@@ -2,7 +2,7 @@
 # Basic Settings
 # ------------------
 # Whether to clear Discord activity when media is paused
-clear_on_pause = false
+clear_on_pause = true
 
 # How often to update Discord presence (in milliseconds)
 interval = 2000

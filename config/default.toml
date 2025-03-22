@@ -1,4 +1,4 @@
-clear_on_pause = false
+clear_on_pause = true
 interval = 2000
 
 [template]
@@ -25,12 +25,8 @@ provider = ["musicbrainz", "imgbb"]
 # [cover.provider.imgbb]
 # api_key = "<YOUR API KEY>"
 
-[player.default]
-ignore = false
-app_id = "1121632048155742288"
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png"
-show_icon = false
-allow_streaming = false
+[player]
+default = { ignore = false, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false }
 
 [player.audacious]
 app_id = "1125084572166656031"
@@ -108,12 +104,20 @@ allow_streaming = true
 # BROWSERS
 [player.microsoft_edge]
 ignore = true
+allow_streaming = true
 
 [player.chrome]
 ignore = true
+allow_streaming = true
 
 [player.mozilla_firefox]
 ignore = true
+allow_streaming = true
+
+[player.mozilla_zen]
+ignore = true
+allow_streaming = true
 
 [player.brave]
 ignore = true
+allow_streaming = true

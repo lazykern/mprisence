@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use log::warn;
 
 use crate::utils::to_snake_case;
 
@@ -109,17 +110,24 @@ impl Config {
     }
 
     /// Get player config by raw identity (will be normalized internally)
-    pub fn get_player_config(&self, identity: &str) -> &PlayerConfig {
+    pub fn get_player_config(&self, identity: &str) -> PlayerConfig {
         let normalized = Self::normalize_player_name(identity);
         self.get_player_config_normalized(&normalized)
     }
 
     /// Get player config by pre-normalized identity
-    pub fn get_player_config_normalized(&self, normalized_identity: &str) -> &PlayerConfig {
-        self.player
-            .get(normalized_identity)
-            .or_else(|| self.player.get("default"))
-            .expect("No default player config found")
+    pub fn get_player_config_normalized(&self, normalized_identity: &str) -> PlayerConfig {
+        // First try to get the specific player config
+        if let Some(config) = self.player.get(normalized_identity) {
+            return config.clone();
+        }
+        
+        // If not found, try to get the default config
+        self.player.get("default").cloned().unwrap_or_else(|| {
+            // If no default config exists, create a new one
+            warn!("No default player config found, using built-in defaults");
+            PlayerConfig::default()
+        })
     }
 }
 
@@ -264,7 +272,7 @@ pub struct ImgBBConfig {
     pub api_key: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum ActivityType {
     Listening,
@@ -311,61 +319,41 @@ pub struct PlayerConfig {
     pub override_activity_type: Option<ActivityType>,
 }
 
+const DEFAULT_PLAYER_IGNORE: bool = false;
+const DEFAULT_PLAYER_APP_ID: &str = "1121632048155742288";
+const DEFAULT_PLAYER_ICON: &str = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png";
+const DEFAULT_PLAYER_SHOW_ICON: bool = false;
+const DEFAULT_PLAYER_ALLOW_STREAMING: bool = false;
+
 fn default_player_ignore() -> bool {
-    get_default_config()
-        .player
-        .get("default")
-        .expect("Default player config missing")
-        .ignore
-        .expect("player.default.ignore missing in default player config")
+    DEFAULT_PLAYER_IGNORE
 }
 
 fn default_player_app_id() -> String {
-    get_default_config()
-        .player
-        .get("default")
-        .expect("Default player config missing")
-        .app_id
-        .clone()
-        .expect("player.default.app_id missing in default player config")
+    DEFAULT_PLAYER_APP_ID.to_string()
 }
 
 fn default_player_icon() -> String {
-    get_default_config()
-        .player
-        .get("default")
-        .expect("Default player config missing")
-        .icon
-        .clone()
-        .expect("player.default.icon missing in default player config")
+    DEFAULT_PLAYER_ICON.to_string()
 }
 
 fn default_player_show_icon() -> bool {
-    get_default_config()
-        .player
-        .get("default")
-        .expect("Default player config missing")
-        .show_icon
-        .expect("player.default.show_icon missing in default player config")
+    DEFAULT_PLAYER_SHOW_ICON
 }
 
 fn default_player_allow_streaming() -> bool {
-    get_default_config()
-        .player
-        .get("default")
-        .expect("Default player config missing")
-        .allow_streaming
-        .expect("player.default.allow_streaming missing in default player config")
+    DEFAULT_PLAYER_ALLOW_STREAMING
 }
 
 impl Default for PlayerConfig {
     fn default() -> Self {
+        // Provide hardcoded defaults as a last resort
         PlayerConfig {
-            ignore: default_player_ignore(),
-            app_id: default_player_app_id(),
-            icon: default_player_icon(),
-            show_icon: default_player_show_icon(),
-            allow_streaming: default_player_allow_streaming(),
+            ignore: DEFAULT_PLAYER_IGNORE,
+            app_id: DEFAULT_PLAYER_APP_ID.to_string(), // Default Discord app ID
+            icon: DEFAULT_PLAYER_ICON.to_string(),
+            show_icon: DEFAULT_PLAYER_SHOW_ICON,
+            allow_streaming: DEFAULT_PLAYER_ALLOW_STREAMING,
             override_activity_type: None,
         }
     }
@@ -375,7 +363,7 @@ impl PlayerConfig {
     pub fn activity_type(&self, content_type: Option<&str>) -> ActivityType {
         // First check if there's an override specifically for this player
         if let Some(override_type) = &self.override_activity_type {
-            return override_type.clone();
+            return *override_type;
         }
         
         // If there's no override and content type detection is enabled,
@@ -383,22 +371,18 @@ impl PlayerConfig {
         let config = get_default_config();
         if config.activity_type.use_content_type {
             if let Some(content) = content_type {
-                let media_type: Option<String> = content.split('/').next().map(|s| s.to_lowercase());
-                
-                // Check config for activity type based on media type
-                if let Some(media_type) = media_type {
-                    if media_type == "audio" {
-                        return ActivityType::Listening;
-                    } else if media_type == "video" {
-                        return ActivityType::Watching;
-                    } else if media_type == "image" {
-                        return ActivityType::Watching;
-                    }
+                // Avoid allocations by not using to_lowercase() on every call
+                if content.starts_with("audio/") {
+                    return ActivityType::Listening;
+                } else if content.starts_with("video/") {
+                    return ActivityType::Watching;
+                } else if content.starts_with("image/") {
+                    return ActivityType::Watching;
                 }
             }
         }
         
         // Fallback to default
-        config.activity_type.default.clone()
+        config.activity_type.default
     }
 }

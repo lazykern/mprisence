@@ -11,8 +11,8 @@ mod error;
 pub mod schema;
 
 pub use error::ConfigError;
-pub use schema::Config;
 pub use schema::ActivityType;
+pub use schema::Config;
 
 pub type ConfigChangeReceiver = broadcast::Receiver<ConfigChange>;
 type ConfigChangeSender = broadcast::Sender<ConfigChange>;
@@ -85,6 +85,14 @@ impl ConfigManager {
             .clone()
     }
 
+    pub fn cover_config(&self) -> schema::CoverConfig {
+        self.config
+            .read()
+            .expect("Failed to read config: RwLock poisoned")
+            .cover
+            .clone()
+    }
+
     // Direct read/write access for more complex operations
     pub fn read(&self) -> Result<impl std::ops::Deref<Target = Config> + '_, ConfigError> {
         self.config
@@ -113,6 +121,7 @@ impl ConfigManager {
 
     // Reload config from file
     pub fn reload(&self) -> Result<(), ConfigError> {
+        log::info!("Reloading configuration from {}", self.path.display());
         let new_config = load_config_from_file(&self.path)?;
         let mut config = self.write()?;
         *config = new_config;
@@ -218,14 +227,29 @@ fn ensure_config_exists(path: &Path) -> Result<(), ConfigError> {
 }
 
 fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
-    // Start with default embedded config
-    let mut figment = Figment::new().merge(Toml::string(include_str!("../../config/default.toml")));
+    log::info!("Loading configuration from {}", path.display());
+    // Use a static cache for the default config to avoid parsing it multiple times
+    static DEFAULT_CONFIG: OnceLock<Config> = OnceLock::new();
 
-    // If user config exists, merge it on top of default
+    // Get or initialize default config
+    let default_config = DEFAULT_CONFIG.get_or_init(|| {
+        Figment::new()
+            .merge(Toml::string(include_str!("../../config/default.toml")))
+            .extract()
+            .expect("Failed to parse default config")
+    });
+
+    // If user config exists, merge it with the default
     if path.exists() {
-        figment = figment.merge(Toml::file(path));
-    }
+        // Start with default config and merge user config on top
+        let figment = Figment::new()
+            .merge(Toml::string(include_str!("../../config/default.toml")))
+            .merge(Toml::file(path));
 
-    // Extract the merged config
-    figment.extract().map_err(ConfigError::Figment)
+        // Extract merged config
+        figment.extract().map_err(ConfigError::Figment)
+    } else {
+        // Return a clone of the default config
+        Ok(default_config.clone())
+    }
 }

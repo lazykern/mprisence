@@ -1,10 +1,10 @@
 use crate::player::{PlayerId, PlayerState};
+use mime_guess::mime;
+use mpris::Metadata;
 use mpris::PlaybackStatus;
 use std::collections::BTreeMap;
 use std::path::Path;
 use url::Url;
-use mime_guess::mime;
-use mpris::Metadata;
 
 pub fn to_snake_case(input: &str) -> String {
     let mut result = String::with_capacity(input.len());
@@ -25,8 +25,11 @@ pub fn to_snake_case(input: &str) -> String {
         if c.is_uppercase() {
             // Add underscore if previous char was lowercase
             // or if previous char was uppercase and next char is lowercase
-            if (!prev_is_underscore && prev_is_lowercase) ||
-               (!prev_is_underscore && !prev_is_lowercase && chars.peek().map_or(false, |next| next.is_lowercase())) {
+            if (!prev_is_underscore && prev_is_lowercase)
+                || (!prev_is_underscore
+                    && !prev_is_lowercase
+                    && chars.peek().map_or(false, |next| next.is_lowercase()))
+            {
                 result.push('_');
             }
             result.push(c.to_ascii_lowercase());
@@ -57,7 +60,7 @@ pub fn get_content_type_from_metadata(metadata: &Metadata) -> Option<String> {
                 return Some(mime_type.to_string());
             }
         }
-        
+
         // Check if it's a file path
         let path = Path::new(url);
         if path.exists() {
@@ -67,7 +70,7 @@ pub fn get_content_type_from_metadata(metadata: &Metadata) -> Option<String> {
             }
         }
     }
-    
+
     // Check for content type based on track id
     if let Some(track_id) = metadata.track_id() {
         let track_id_str = track_id.to_string();
@@ -77,11 +80,11 @@ pub fn get_content_type_from_metadata(metadata: &Metadata) -> Option<String> {
             return Some("audio/unknown".to_string());
         }
     }
-    
+
     // Fallback: if we have audio artists, it's probably audio
     if metadata.artists().is_some() {
         return Some("audio/unknown".to_string());
     }
-    
+
     None
 }
