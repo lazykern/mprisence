@@ -1,39 +1,32 @@
 use async_trait::async_trait;
 use blake3::Hasher;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, warn};
 use mpris::Metadata;
 use std::{
-    any::Any,
-    collections::HashMap,
     fmt::Display,
     fs::{self, File},
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::Arc,
-    time::{Duration, SystemTime, Instant},
+    time::{Duration, SystemTime},
 };
 use thiserror::Error;
-use tokio::sync::Mutex as TokioMutex;
 use url::Url;
-use serde::{Deserialize, Serialize};
 use lazy_static::lazy_static;
 
 // Import more specific modules from musicbrainz_rs
 use musicbrainz_rs::{
     entity::{
-        recording::{Recording, RecordingSearchQuery, RecordingSearchQueryLuceneQueryBuilder},
-        release::{Release, ReleaseSearchQuery, ReleaseSearchQueryLuceneQueryBuilder},
+        recording::{Recording, RecordingSearchQuery},
+        release::{Release, ReleaseSearchQuery},
         release_group::{
-            ReleaseGroup, ReleaseGroupSearchQuery, ReleaseGroupSearchQueryLuceneQueryBuilder,
+            ReleaseGroup, ReleaseGroupSearchQuery,
         },
-        CoverartResponse,
     },
     prelude::*,
-    client,
 };
 
 use crate::config;
-use crate::utils;
 
 // Create a lazy static shared HTTP client for non-MusicBrainz requests
 lazy_static! {
@@ -252,18 +245,12 @@ trait CoverArtProvider {
 pub struct CoverArtManager {
     providers: Vec<Box<dyn CoverArtProvider>>,
     cache: CoverArtCache,
-    local_file_names: Vec<String>,
 }
 
 impl CoverArtManager {
     pub fn new(config: &Arc<config::ConfigManager>) -> Result<Self, CoverArtError> {
         let cover_config = config.cover_config();
         let mut providers: Vec<Box<dyn CoverArtProvider>> = Vec::new();
-
-        // Set the MusicBrainz user agent with application info
-        // User agent is automatically applied to MusicBrainz requests via the client
-        // No need to manually set it as it's handled internally by the library
-        // when making API requests
 
         for provider in &cover_config.provider.provider {
             match provider.as_str() {
@@ -280,7 +267,6 @@ impl CoverArtManager {
         Ok(Self {
             providers,
             cache: CoverArtCache::new()?,
-            local_file_names: cover_config.file_names,
         })
     }
 
@@ -299,7 +285,7 @@ impl CoverArtManager {
 
         // Try each provider
         for provider in &self.providers {
-            trace!("Trying cover art provider: {}", provider.name());
+            debug!("Trying cover art provider: {}", provider.name());
             match provider.get_cover_url(metadata).await {
                 Ok(Some(url)) => {
                     debug!("Got URL from {}: {}", provider.name(), url);
@@ -322,34 +308,6 @@ impl CoverArtManager {
             }
         }
         Ok(None)
-    }
-
-    fn check_local_files(&self, metadata: &Metadata) -> Option<PathBuf> {
-        metadata.url().and_then(|url| {
-            Url::parse(url).ok().and_then(|url| {
-                if url.scheme() == "file" {
-                    url.to_file_path().ok().and_then(|path| {
-                        let dir = if path.is_dir() {
-                            path
-                        } else {
-                            path.parent()?.to_path_buf()
-                        };
-
-                        for name in &self.local_file_names {
-                            for ext in &["jpg", "jpeg", "png", "gif"] {
-                                let file = dir.join(format!("{}.{}", name, ext));
-                                if file.exists() {
-                                    return Some(file);
-                                }
-                            }
-                        }
-                        None
-                    })
-                } else {
-                    None
-                }
-            })
-        })
     }
 }
 
@@ -412,7 +370,7 @@ impl CoverArtCache {
         Ok((content, modified))
     }
 
-    pub fn put(&self, metadata: &Metadata, provider: &str, url: &str) -> Result<(), CoverArtError> {
+    pub fn put(&self, metadata: &Metadata, _provider: &str, url: &str) -> Result<(), CoverArtError> {
         let cache_key = CacheKey::generate(metadata);
         let cache_file = cache_key.to_path(&self.cache_dir);
         
@@ -546,21 +504,6 @@ impl MusicbrainzProvider {
         }
 
         Ok(None)
-    }
-
-    async fn get_final_cover_url(url: &str) -> Result<String, CoverArtError> {
-        // Use our shared HTTP client for cover art URL resolution (non-MusicBrainz API requests)
-        let response = HTTP_CLIENT
-            .head(url)
-            .send()
-            .await?;
-            
-        if response.status().is_success() {
-            // Store the final URL after redirects
-            Ok(response.url().to_string())
-        } else {
-            Err(CoverArtError::Provider(format!("Failed to get cover art: {}", response.status())))
-        }
     }
 }
 
