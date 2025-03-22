@@ -9,7 +9,7 @@ use mpris::{Metadata, PlaybackStatus, Player, PlayerFinder};
 use smol_str::SmolStr;
 use tokio::sync::mpsc;
 
-use crate::{config::{self, get_config}, error::PlayerError, event::Event};
+use crate::{config::{get_config}, error::PlayerError, event::Event};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PlayerId {

@@ -3,9 +3,8 @@ use std::sync::Arc;
 
 use handlebars::Handlebars;
 use mpris::{Metadata, PlaybackStatus};
-use std::time::Duration;
 
-use crate::{config::{self, get_config, ConfigManager, schema}, error::TemplateError, player::{PlayerId, PlayerState}, utils::{self, format_duration}};
+use crate::{config::{get_config, ConfigManager}, error::TemplateError, player::{PlayerId, PlayerState}, utils::{format_duration}};
 use std::collections::BTreeMap;
 
 pub struct TemplateManager {

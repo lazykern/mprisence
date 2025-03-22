@@ -11,7 +11,6 @@ mod error;
 pub mod schema;
 
 pub use error::ConfigError;
-pub use schema::ActivityType;
 pub use schema::Config;
 
 pub type ConfigChangeReceiver = broadcast::Receiver<ConfigChange>;

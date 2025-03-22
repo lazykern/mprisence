@@ -5,15 +5,15 @@ use std::{
 };
 
 use discord_presence::{
-    models::{Activity, ActivityType as DiscordActivityType},
+    models::Activity,
     Client as DiscordClient,
 };
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, warn};
 use mpris::PlaybackStatus;
 use tokio::sync::Mutex;
 
 use crate::{
-    config::{self, get_config, ActivityType},
+    config::{get_config},
     cover::CoverArtManager,
     error::PresenceError,
     player::{PlayerId, PlayerManager, PlayerState},
