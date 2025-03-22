@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -12,9 +11,10 @@ use tokio::sync::{mpsc, Mutex};
 
 use crate::{
     config::{self, get_config},
+    cover::CoverArtManager,
     error::{ServiceInitError, ServiceRuntimeError},
     event::Event,
-    player::{PlayerManager, PlayerId, PlayerState},
+    player::{PlayerManager, PlayerId, PlayerState, PlayerStateChange},
     presence,
     template,
     utils,
@@ -23,6 +23,8 @@ use crate::{
 pub struct Service {
     player_manager: Arc<Mutex<PlayerManager>>,
     presence_manager: presence::PresenceManager,
+    template_manager: template::TemplateManager,
+    cover_art_manager: CoverArtManager,
     event_rx: mpsc::Receiver<Event>,
     event_tx: mpsc::Sender<Event>,
     config_rx: config::ConfigChangeReceiver,
@@ -45,13 +47,17 @@ impl Service {
         )?));
 
         debug!("Creating presence manager");
-        let presence_manager =
-            presence::PresenceManager::new(template_manager, player_manager.clone())?;
+        let presence_manager = presence::PresenceManager::new()?;
+
+        debug!("Creating cover art manager");
+        let cover_art_manager = CoverArtManager::new(&config)?;
 
         info!("Service initialization complete");
         Ok(Self {
             player_manager,
             presence_manager,
+            template_manager,
+            cover_art_manager,
             event_rx,
             event_tx,
             config_rx: get_config().subscribe(),
@@ -59,41 +65,52 @@ impl Service {
         })
     }
 
-    async fn check_players(&self) -> Result<(), ServiceRuntimeError> {
+    async fn check_players(&mut self) -> Result<(), ServiceRuntimeError> {
         let mut player_manager = self.player_manager.lock().await;
-        Ok(player_manager.check_players().await?)
+        let state_changes = player_manager.check_players().await?;
+
+        // Process state changes
+        for change in state_changes {
+            match change {
+                PlayerStateChange::Updated(id, state) => {
+                    // Check if we should clear on pause
+                    if state.playback_status == PlaybackStatus::Paused && get_config().clear_on_pause() {
+                        if let Err(e) = self.presence_manager.clear_activity(&id) {
+                            error!("Failed to clear activity: {}", e);
+                        }
+                        continue;
+                    }
+
+                    // Get full metadata
+                    let metadata = player_manager.get_metadata(&id)?;
+
+                    // Create activity
+                    let activity = self.create_activity(&id, &state, &metadata).await?;
+
+                    // Update presence with activity
+                    if let Err(e) = self.presence_manager.update_presence(&id, activity).await {
+                        error!("Failed to update presence: {}", e);
+                    }
+                }
+                PlayerStateChange::Removed(id) => {
+                    if let Err(e) = self.presence_manager.remove_presence(&id) {
+                        error!("Failed to remove presence: {}", e);
+                    }
+                }
+                PlayerStateChange::Cleared(id) => {
+                    if let Err(e) = self.presence_manager.clear_activity(&id) {
+                        error!("Failed to clear activity: {}", e);
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     async fn handle_event(&mut self, event: Event) -> Result<(), ServiceRuntimeError> {
         debug!("Handling event: {:?}", event);
         match event {
-            Event::PlayerUpdate(id, state) => {
-                // Get full metadata
-                let metadata = {
-                    let player_manager = self.player_manager.lock().await;
-                    player_manager
-                        .get_metadata(&id)
-                        .map_err(|e| ServiceRuntimeError::General(format!("Failed to get metadata: {}", e)))?
-                };
-
-                // Create activity
-                let activity = self.create_activity(&id, &state, &metadata).await?;
-
-                // Update presence with activity
-                if let Err(e) = self.presence_manager.update_presence(&id, activity).await {
-                    error!("Failed to update presence: {}", e);
-                }
-            }
-            Event::PlayerRemove(id) => {
-                if let Err(e) = self.presence_manager.remove_presence(&id) {
-                    error!("Failed to remove presence: {}", e);
-                }
-            }
-            Event::ClearActivity(id) => {
-                if let Err(e) = self.presence_manager.clear_activity(&id) {
-                    error!("Failed to clear activity: {}", e);
-                }
-            }
             Event::ConfigChanged => {
                 debug!("Handling config change event");
                 if let Err(e) = self.reload_components().await {
@@ -105,6 +122,8 @@ impl Service {
                     error!("Failed to check players after config change: {}", e);
                 }
             }
+            // Other events are now handled directly in check_players
+            _ => {}
         }
         Ok(())
     }
@@ -155,15 +174,13 @@ impl Service {
 
         activity = activity._type(activity_type.into());
 
-        let activity_texts = self.presence_manager
-            .get_template_manager()
+        let activity_texts = self.template_manager
             .render_activity_texts(
                 player_id,
                 state,
                 metadata,
-            )
-            .map_err(|e| ServiceRuntimeError::General(format!("Activity creation error: {}", e)))?;
-
+            )?;
+            
         if !activity_texts.details.is_empty() {
             activity = activity.details(&activity_texts.details);
         }
@@ -182,8 +199,14 @@ impl Service {
             });
         }
 
-        // Get cover art URL from presence manager
-        let cover_art_url = self.presence_manager.get_cover_art_url(metadata).await.unwrap_or_default();
+        // Get cover art URL using cover art manager
+        let cover_art_url = match self.cover_art_manager.get_cover_art(metadata).await {
+            Ok(url) => url,
+            Err(e) => {
+                warn!("Failed to get cover art: {}", e);
+                None
+            }
+        };
 
         activity = activity.assets(|a| {
             let mut assets = a;
@@ -208,6 +231,18 @@ impl Service {
         });
 
         Ok(activity)
+    }
+
+    async fn reload_components(&mut self) -> Result<(), ServiceRuntimeError> {
+        debug!("Reloading service components based on configuration changes");
+        let config = get_config();
+
+        // Reload template manager
+        if let Err(e) = self.template_manager.reload(&config) {
+            error!("Failed to reload templates: {}", e);
+        }
+
+        Ok(())
     }
 
     pub async fn run(&mut self) -> Result<(), ServiceRuntimeError> {
@@ -270,26 +305,6 @@ impl Service {
                     break;
                 }
             }
-        }
-
-        Ok(())
-    }
-
-    async fn reload_components(&mut self) -> Result<(), ServiceRuntimeError> {
-        debug!("Reloading service components based on configuration changes");
-        let config = get_config();
-
-        // Only create a new template manager and pass it to presence manager
-        let template_manager = template::TemplateManager::new(&config)?;
-
-        // Update presence manager with new templates
-        if let Err(e) = self.presence_manager.update_templates(template_manager) {
-            error!("Failed to update templates: {}", e);
-        }
-
-        // Reload presence manager config
-        if let Err(e) = self.presence_manager.reload_config() {
-            error!("Failed to reload presence manager config: {}", e);
         }
 
         Ok(())

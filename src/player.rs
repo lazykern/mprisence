@@ -11,6 +11,13 @@ use tokio::sync::mpsc;
 
 use crate::{config::{get_config}, error::PlayerError, event::Event};
 
+#[derive(Debug, Clone)]
+pub enum PlayerStateChange {
+    Updated(PlayerId, PlayerState),
+    Removed(PlayerId),
+    Cleared(PlayerId),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PlayerId {
     pub player_bus_name: SmolStr,
@@ -167,7 +174,7 @@ impl PlayerManager {
         })
     }
 
-    pub async fn check_players(&mut self) -> Result<(), PlayerError> {
+    pub async fn check_players(&mut self) -> Result<Vec<PlayerStateChange>, PlayerError> {
         let config = get_config();
         let polling_interval = config.interval();
 
@@ -177,6 +184,7 @@ impl PlayerManager {
             .map_err(PlayerError::Finding)?;
 
         let current_ids: Vec<_> = current.iter().map(PlayerId::from).collect();
+        let mut state_changes = Vec::new();
 
         // Find removed players
         let removed_ids: Vec<_> = self
@@ -191,9 +199,7 @@ impl PlayerManager {
             info!("Player removed: {}", id);
             self.player_states.remove(&id);
             self.players.remove(&id);
-            if let Err(e) = self.send_event(Event::PlayerRemove(id)).await {
-                error!("Failed to send removal event: {}", e);
-            }
+            state_changes.push(PlayerStateChange::Removed(id));
         }
 
         // Handle new or updated players
@@ -211,88 +217,36 @@ impl PlayerManager {
                     // Store the player for later metadata access
                     self.players.insert(id.clone(), player);
 
-                    if let Err(e) = self
-                        .process_player_state(id.clone(), player_state, polling_interval)
-                        .await
-                    {
-                        error!("Failed to process player state: {}", e);
-                        // Send clear activity event instead of removal
-                        if let Err(e) = self.send_event(Event::ClearActivity(id)).await {
-                            error!("Failed to send clear activity event: {}", e);
+                    match self.player_states.entry(id.clone()) {
+                        Entry::Occupied(mut entry) => {
+                            let has_changes = player_state.requires_presence_update(
+                                entry.get(),
+                                Duration::from_millis(polling_interval),
+                            );
+
+                            if has_changes {
+                                let key = entry.key().clone();
+                                debug!("Player {} updated: {}", key, player_state);
+                                state_changes.push(PlayerStateChange::Updated(key, player_state.clone()));
+                            }
+                            entry.insert(player_state);
+                        }
+                        Entry::Vacant(entry) => {
+                            let key = entry.key().clone();
+                            info!("New player detected: {} playing {}", key, player_state);
+                            entry.insert(player_state.clone());
+                            state_changes.push(PlayerStateChange::Updated(key, player_state));
                         }
                     }
                 }
                 Err(e) => {
                     warn!("Failed to get player state for {}: {}", id, e);
-                    // Send clear activity event instead of removal
-                    if let Err(e) = self.send_event(Event::ClearActivity(id)).await {
-                        error!("Failed to send clear activity event: {}", e);
-                    }
+                    state_changes.push(PlayerStateChange::Cleared(id));
                 }
             }
         }
 
-        Ok(())
-    }
-
-    async fn send_event(&self, event: Event) -> Result<(), PlayerError> {
-        self.event_tx
-            .send(event)
-            .await
-            .map_err(|e| PlayerError::General(format!("Failed to send event: {}", e)))
-    }
-
-    async fn process_player_state(
-        &mut self,
-        id: PlayerId,
-        player_state: PlayerState,
-        polling_interval: u64,
-    ) -> Result<(), PlayerError> {
-        let event = match self.player_states.entry(id) {
-            Entry::Occupied(mut entry) => {
-                let has_changes = player_state
-                    .requires_presence_update(entry.get(), Duration::from_millis(polling_interval));
-
-                let event = if has_changes {
-                    let key = entry.key().clone();
-                    debug!("Player {} updated: {}", key, player_state);
-
-                    // Handle clear on pause here
-                    if player_state.playback_status == PlaybackStatus::Paused
-                        && get_config().clear_on_pause()
-                    {
-                        Some(Event::ClearActivity(key))
-                    } else {
-                        Some(Event::PlayerUpdate(key, player_state.clone()))
-                    }
-                } else {
-                    None
-                };
-                entry.insert(player_state);
-                event
-            }
-            Entry::Vacant(entry) => {
-                let key = entry.key().clone();
-                info!("New player detected: {} playing {}", key, player_state);
-                entry.insert(player_state.clone());
-
-                // Handle clear on pause for new players too
-                if player_state.playback_status == PlaybackStatus::Paused
-                    && get_config().clear_on_pause()
-                {
-                    Some(Event::ClearActivity(key))
-                } else {
-                    Some(Event::PlayerUpdate(key, player_state))
-                }
-            }
-        };
-
-        // Send event if any
-        if let Some(event) = event {
-            self.send_event(event).await?;
-        }
-
-        Ok(())
+        Ok(state_changes)
     }
 
     // New method to get current metadata for a player

@@ -52,9 +52,6 @@ pub enum ServiceRuntimeError {
 
     #[error("Config error: {0}")]
     Config(#[from] config::ConfigError),
-
-    #[error("General error: {0}")]
-    General(String),
 }
 
 #[derive(Error, Debug)]
@@ -85,12 +82,6 @@ pub enum PresenceError {
 
     #[error("Config access error: {0}")]
     Config(#[from] config::ConfigError),
-
-    #[error("Cover art error: {0}")]
-    CoverArt(#[from] cover::error::CoverArtError),
-
-    #[error("General error: {0}")]
-    General(String),
 }
 
 #[derive(Error, Debug)]

@@ -1,52 +1,29 @@
-use std::{
-    collections::HashMap,
-    sync::Arc,
-};
+use std::collections::HashMap;
 
 use discord_presence::{
     models::Activity,
     Client as DiscordClient,
 };
 use log::{debug, error, info, warn};
-use mpris::Metadata;
-use tokio::sync::Mutex;
 
 use crate::{
     config::get_config,
-    cover::CoverArtManager,
     error::PresenceError,
-    player::{PlayerId, PlayerState, PlayerManager},
-    template,
+    player::PlayerId,
 };
 
 pub struct PresenceManager {
     discord_clients: HashMap<PlayerId, DiscordClient>,
-    template_manager: template::TemplateManager,
     has_activity: HashMap<PlayerId, bool>,
-    cover_art_manager: CoverArtManager,
-    player_states: HashMap<PlayerId, PlayerState>,
-    player_manager: Arc<Mutex<PlayerManager>>,
 }
 
 impl PresenceManager {
-    pub fn new(
-        template_manager: template::TemplateManager,
-        player_manager: Arc<Mutex<PlayerManager>>,
-    ) -> Result<Self, PresenceError> {
+    pub fn new() -> Result<Self, PresenceError> {
         info!("Initializing PresenceManager");
-        let config = get_config();
-
-        let cover_art_manager = CoverArtManager::new(&config).map_err(|e| {
-            PresenceError::General(format!("Failed to initialize cover art manager: {}", e))
-        })?;
 
         Ok(Self {
             discord_clients: HashMap::new(),
-            template_manager,
             has_activity: HashMap::new(),
-            cover_art_manager,
-            player_states: HashMap::new(),
-            player_manager,
         })
     }
 
@@ -82,21 +59,11 @@ impl PresenceManager {
     pub fn remove_presence(&mut self, player_id: &PlayerId) -> Result<(), PresenceError> {
         debug!("Removing Discord client for player: {}", player_id);
         self.has_activity.remove(player_id);
-        self.player_states.remove(player_id);
 
         if let Some(_client) = self.discord_clients.remove(player_id) {
             debug!("Removed Discord client for player: {}", player_id);
         }
 
-        Ok(())
-    }
-
-    pub fn reload_config(&mut self) -> Result<(), PresenceError> {
-        debug!("Reloading config in presence manager");
-        let config = get_config();
-        self.template_manager
-            .reload(&config)
-            .map_err(|e| PresenceError::Update(format!("Failed to reload templates: {}", e)))?;
         Ok(())
     }
 
@@ -154,25 +121,5 @@ impl PresenceManager {
         info!("Successfully created Discord client");
 
         Ok(client)
-    }
-
-    pub fn update_templates(
-        &mut self,
-        new_templates: template::TemplateManager,
-    ) -> Result<(), PresenceError> {
-        debug!("Updating templates in presence manager");
-        self.template_manager = new_templates;
-        Ok(())
-    }
-
-    // Accessor methods for Service
-    pub fn get_template_manager(&self) -> &template::TemplateManager {
-        &self.template_manager
-    }
-
-    pub async fn get_cover_art_url(&self, metadata: &Metadata) -> Result<Option<String>, PresenceError> {
-        self.cover_art_manager.get_cover_art(metadata).await.map_err(|e| {
-            PresenceError::General(format!("Failed to get cover art: {}", e))
-        })
     }
 }
