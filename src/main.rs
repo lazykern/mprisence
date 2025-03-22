@@ -10,9 +10,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use discord_rich_presence::{
-    activity::{Activity, ActivityType, Assets, Timestamps},
-    DiscordIpc, DiscordIpcClient,
+use discord_presence::{
+    Client as DiscordClient,
 };
 use handlebars::Handlebars;
 use mpris::{Metadata, PlaybackStatus, Player, PlayerFinder};
@@ -357,7 +356,7 @@ mod presence {
     use super::*;
 
     pub struct PresenceManager {
-        discord_clients: HashMap<player::PlayerId, DiscordIpcClient>,
+        discord_clients: HashMap<player::PlayerId, DiscordClient>,
         template_manager: template::TemplateManager,
         has_activity: HashMap<player::PlayerId, bool>,
         cover_art_manager: cover::CoverArtManager,
@@ -401,7 +400,7 @@ mod presence {
                     // Only clear if activity is active
                     if self.has_activity.get(&id).copied().unwrap_or(false) {
                         if let Some(client) = self.discord_clients.get_mut(&id) {
-                            if let Err(e) = Self::clear_activity(client) {
+                            if let Err(e) = client.clear_activity() {
                                 warn!("Failed to clear activity for {}: {}", id, e);
                             } else {
                                 debug!("Cleared activity for {}", id);
@@ -449,9 +448,9 @@ mod presence {
             // Don't show activity if player is stopped
             if state.playback_status == PlaybackStatus::Stopped {
                 // Clear activity if it's not already cleared
-                if !self.has_activity.get(player_id).copied().unwrap_or(false) {
+                if self.has_activity.get(player_id).copied().unwrap_or(false) {
                     if let Some(client) = self.discord_clients.get_mut(player_id) {
-                        if let Err(e) = Self::clear_activity(client) {
+                        if let Err(e) = client.clear_activity() {
                             warn!("Failed to clear activity for {}: {}", player_id, e);
                         } else {
                             debug!("Cleared activity for stopped player {}", player_id);
@@ -462,9 +461,9 @@ mod presence {
                 return Ok(());
             }
 
-            let ctx = config::get();
-            let player_config = ctx.player_config(player_id.identity.as_str());
-            let as_elapsed = ctx.time_config().as_elapsed;
+            let config = config::get();
+            let player_config = config.player_config(player_id.identity.as_str());
+            let as_elapsed = config.time_config().as_elapsed;
 
             // Save player state for later reference
             self.player_states.insert(player_id.clone(), state.clone());
@@ -531,32 +530,31 @@ mod presence {
             let content_type = utils::get_content_type_from_metadata(&full_metadata);
 
             // Determine activity type based on content type or player configuration
-            let activity_type = ctx
-                .player_config(player_id.identity.as_str())
-                .activity_type(content_type.as_deref());
+            let activity_type = player_config.activity_type(content_type.as_deref());
 
             trace!("Preparing Discord activity update: {}", details);
 
-            // Build activity using rendered templates and full metadata
-            let activity = Self::build_activity(
-                details,
-                state_text,
-                large_text,
-                small_text,
-                activity_type,
-                state.playback_status,
+            self.update_activity(
+                player_id, 
+                details, 
+                state_text, 
+                large_text, 
+                small_text, 
+                activity_type, 
+                state.playback_status, 
                 Duration::from_secs(state.position as u64),
                 full_metadata.length().unwrap_or_default(),
                 as_elapsed,
                 cover_art_url,
                 player_config.show_icon,
                 player_config.icon.clone(),
-            );
-
-            self.update_activity(player_id, activity, &player_config.app_id)
+                &player_config.app_id
+            )
         }
 
-        fn build_activity(
+        fn update_activity(
+            &mut self,
+            player_id: &player::PlayerId,
             details: String,
             state: String,
             large_text: String,
@@ -569,110 +567,23 @@ mod presence {
             large_image: Option<String>,
             show_small_image: bool,
             small_image: String,
-        ) -> Activity<'static> {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("Time went backwards");
-
-            let start_dur = now.checked_sub(position).unwrap_or_default();
-            let end = start_dur.checked_add(length).unwrap_or_default();
-
-            let start_s = start_dur.as_secs();
-            let end_s = end.as_secs();
-
-            let mut timestamps = Timestamps::new();
-
-            if !show_elapsed {
-                timestamps = timestamps.end(end_s as i64);
-            }
-
-            if playback_status == PlaybackStatus::Playing {
-                timestamps = timestamps.start(start_s as i64);
-            }
-
-            // SAFETY: We intentionally leak these strings to get 'static references.
-            // The discord-rich-presence library requires 'static str references, and these
-            // strings are used for the lifetime of the program. Memory usage is bounded
-            // by the number of unique status messages.
-            let details_static = if !details.is_empty() {
-                trace!("details: {}", details);
-                Some(Box::leak(details.into_boxed_str()))
-            } else {
-                None
-            };
-
-            let state_static = if !state.is_empty() {
-                trace!("state: {}", state);
-                Some(Box::leak(state.into_boxed_str()))
-            } else {
-                None
-            };
-
-            let large_text_static = if !large_text.is_empty() {
-                trace!("large_text: {}", large_text);
-                Some(Box::leak(large_text.into_boxed_str()))
-            } else {
-                None
-            };
-
-            let small_text_static = if !small_text.is_empty() {
-                trace!("small_text: {}", small_text);
-                Some(Box::leak(small_text.into_boxed_str()))
-            } else {
-                None
-            };
-
-            let mut assets = Assets::new();
-
-            // Add large image (album art) if available
-            if let Some(large_image_url) = large_image {
-                let large_image_static = Box::leak(large_image_url.into_boxed_str());
-                assets = assets.large_image(large_image_static);
-                trace!("large_image: {}", large_image_static);
-            }
-
-            // Add large text if available
-            if let Some(large_text) = large_text_static {
-                assets = assets.large_text(large_text);
-                trace!("large_text: {}", large_text);
-            }
-
-            // Add small image (player icon) if enabled
-            if show_small_image {
-                trace!("small_image: {}", small_image);
-                let small_image_static = Box::leak(small_image.into_boxed_str());
-                assets = assets.small_image(small_image_static);
-            }
-
-            // Add small text if available
-            if let Some(small_text) = small_text_static {
-                assets = assets.small_text(small_text);
-                trace!("small_text: {}", small_text);
-            }
-
-            let mut activity = Activity::new().activity_type(activity_type.into());
-
-            if let Some(details) = details_static {
-                activity = activity.details(details);
-            }
-            if let Some(state) = state_static {
-                activity = activity.state(state);
-            }
-
-            activity.timestamps(timestamps).assets(assets)
-        }
-
-        fn update_activity(
-            &mut self,
-            player_id: &player::PlayerId,
-            activity: Activity,
             app_id: &str,
         ) -> Result<(), PresenceError> {
             debug!("Updating activity for player: {}", player_id);
 
             if !self.discord_clients.contains_key(player_id) {
                 match Self::create_client(app_id) {
-                    Ok(client) => {
+                    Ok(mut client) => {
+                        let mut client_clone = client.clone();
+                        
+                        // Setup error handler
+                        client.on_error(move |ctx| {
+                            error!("Discord error: {:?}", ctx.event);
+                        }).persist();
+                        
+                        // Start the client
+                        client.start();
+                        
                         self.discord_clients.insert(player_id.clone(), client);
                     }
                     Err(e) => return Err(e),
@@ -684,60 +595,96 @@ mod presence {
                 .get_mut(player_id)
                 .ok_or_else(|| PresenceError::Update("Client unexpectedly missing".to_string()))?;
 
-            Self::set_activity(client, activity)
+            // Calculate timestamps
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards");
+
+            let start_dur = now.checked_sub(position).unwrap_or_default();
+            let start_s = start_dur.as_secs() as i64;
+            
+            let mut end_s = None;
+            if !show_elapsed {
+                let end = start_dur.checked_add(length).unwrap_or_default();
+                end_s = Some(end.as_secs() as i64);
+            }
+
+            // Set the activity using the builder pattern
+            client.set_activity(|act| {
+                let mut activity = act;
+                
+                // Set details and state if not empty
+                if !details.is_empty() {
+                    activity = activity.details(&details);
+                }
+                
+                if !state.is_empty() {
+                    activity = activity.state(&state);
+                }
+                
+                // Set timestamps if playing
+                if playback_status == PlaybackStatus::Playing {
+                    activity = activity.timestamps(|ts| {
+                        if let Some(end) = end_s {
+                            ts.start(start_s as u64).end(end as u64)
+                        } else {
+                            ts.start(start_s as u64)
+                        }
+                    });
+                }
+                
+                // Set assets (images and their tooltips)
+                activity = activity.assets(|a| {
+                    let mut assets = a;
+                    
+                    // Set large image (album art) if available
+                    if let Some(img_url) = &large_image {
+                        assets = assets.large_image(img_url);
+                        if !large_text.is_empty() {
+                            assets = assets.large_text(&large_text);
+                        }
+                    }
+                    
+                    // Set small image (player icon) if enabled
+                    if show_small_image {
+                        assets = assets.small_image(&small_image);
+                        if !small_text.is_empty() {
+                            assets = assets.small_text(&small_text);
+                        }
+                    }
+                    
+                    assets
+                });
+                
+                activity
+            })
+            .map_err(|e| PresenceError::Update(format!("Failed to update presence: {}", e)))?;
+
+            Ok(())
         }
 
-        fn create_client(app_id: &str) -> Result<DiscordIpcClient, PresenceError> {
+        fn create_client(app_id: &str) -> Result<DiscordClient, PresenceError> {
             debug!("Creating new Discord client with app_id: {}", app_id);
-            let mut client = DiscordIpcClient::new(app_id)
-                .map_err(|e| PresenceError::Connection(format!("Connection error: {}", e)))?;
-
-            info!("Connecting to Discord...");
-            client
-                .connect()
-                .map_err(|e| PresenceError::Connection(format!("Connection error: {}", e)))?;
-            info!("Successfully connected to Discord");
-
+            
+            // Parse app_id from string to u64
+            let app_id_u64 = app_id.parse::<u64>()
+                .map_err(|e| PresenceError::Connection(format!("Invalid app_id: {}", e)))?;
+                
+            let client = DiscordClient::new(app_id_u64);
+            info!("Successfully created Discord client");
+            
             Ok(client)
-        }
-
-        fn set_activity(
-            client: &mut DiscordIpcClient,
-            activity: Activity,
-        ) -> Result<(), PresenceError> {
-            debug!("Setting Discord activity");
-            client
-                .set_activity(activity)
-                .map_err(|e| PresenceError::Update(format!("Update error: {}", e)))?;
-            Ok(())
-        }
-
-        fn clear_activity(client: &mut DiscordIpcClient) -> Result<(), PresenceError> {
-            debug!("Clearing Discord activity");
-            client
-                .clear_activity()
-                .map_err(|e| PresenceError::Update(format!("Clear error: {}", e)))?;
-            Ok(())
-        }
-
-        fn close_client(client: &mut DiscordIpcClient) -> Result<(), PresenceError> {
-            debug!("Closing Discord client connection");
-            client
-                .close()
-                .map_err(|e| PresenceError::Close(format!("Connection close error: {}", e)))?;
-            Ok(())
         }
 
         fn remove_presence(&mut self, player_id: &player::PlayerId) -> Result<(), PresenceError> {
             debug!("Removing Discord client for player: {}", player_id);
             self.has_activity.remove(player_id);
-            if let Some(mut client) = self.discord_clients.remove(player_id) {
-                // Try to clear activity before closing
-                if let Err(e) = Self::clear_activity(&mut client) {
-                    warn!("Failed to clear activity: {}", e);
-                }
-                Self::close_client(&mut client)?;
+            
+            if let Some(client) = self.discord_clients.remove(player_id) {
+                // The client will be dropped, which should automatically clean up
+                debug!("Removed Discord client for player: {}", player_id);
             }
+            
             Ok(())
         }
 
