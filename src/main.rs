@@ -1,13 +1,11 @@
 use clap::Parser;
-use log::{debug, error, info, trace, warn};
-use parking_lot::Mutex as ParkingLotMutex;
+use log::{debug, error, info, warn};
 use smallvec::SmallVec;
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, VecDeque},
+    collections::{hash_map::Entry, HashMap},
     fmt::Display,
     sync::Arc,
-    thread::sleep,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use discord_presence::Client as DiscordClient;

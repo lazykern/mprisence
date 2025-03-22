@@ -1,8 +1,4 @@
-use crate::player::{PlayerId, PlayerState};
-use mime_guess::mime;
 use mpris::Metadata;
-use mpris::PlaybackStatus;
-use std::collections::BTreeMap;
 use std::path::Path;
 use url::Url;
 

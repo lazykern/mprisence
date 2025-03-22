@@ -1,5 +1,5 @@
 use env_logger::fmt::Formatter;
-use log::{Level, Log, Metadata, Record, SetLoggerError};
+use log::{Log, Metadata, Record, SetLoggerError};
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 

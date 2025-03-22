@@ -1,7 +1,6 @@
-use async_trait::async_trait;
 use blake3::Hasher;
 use error::CoverArtError;
-use log::{debug, error, info, warn};
+use log::{debug, warn};
 use mpris::Metadata;
 use providers::{imgbb::ImgbbProvider, musicbrainz::MusicbrainzProvider, CoverArtProvider};
 use std::{
@@ -12,7 +11,6 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime},
 };
-use thiserror::Error;
 use url::Url;
 
 pub mod error;

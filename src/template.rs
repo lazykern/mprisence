@@ -1,6 +1,6 @@
 use super::*;
 use crate::{error::TemplateError, utils::format_duration};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 pub struct TemplateManager {
     handlebars: Handlebars<'static>,
