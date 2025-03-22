@@ -33,3 +33,4 @@ discord-presence = { version = "1.5.0", features = ["activity_type"] }
 chrono = "0.4.40"
 reqwest = "0.12.15"
 musicbrainz_rs = { version = "0.9.0", features = ["async"] }
+lofty = "0.22.2"

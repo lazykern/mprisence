@@ -13,7 +13,7 @@ flowchart TD
         I1{"Player State Changes?"}
     end
 
-    subgraph CoverArtModule
+    subgraph CoverModule
         CA1{"Check Cache"}
         CA2["Process Cover Art"]
         CA3["Return Cached/Default URL"]
@@ -24,7 +24,7 @@ flowchart TD
         T1["Process Templates"]
     end
 
-    subgraph DiscordModule
+    subgraph PresenceModule
         D5["Update Discord Rich Presence"]
     end
 

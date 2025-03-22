@@ -1,28 +1,33 @@
-use log::trace;
+use std::{collections::HashMap, sync::Arc};
 
-use crate::error::PresenceError;
+use discord_presence::Client as DiscordClient;
+use log::{debug, error, info, trace, warn};
+use mpris::PlaybackStatus;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex;
+
+use crate::{config::{self, get_config}, cover::CoverArtManager, error::PresenceError, player::{self, PlayerId, PlayerManager, PlayerState}, template, utils};
 
 use super::utils::format_duration;
-use super::*;
 
 pub struct PresenceManager {
-    discord_clients: HashMap<player::PlayerId, DiscordClient>,
+    discord_clients: HashMap<PlayerId, DiscordClient>,
     template_manager: template::TemplateManager,
-    has_activity: HashMap<player::PlayerId, bool>,
-    cover_art_manager: cover::CoverArtManager,
-    player_states: HashMap<player::PlayerId, player::PlayerState>,
-    player_manager: Arc<TokioMutex<player::PlayerManager>>,
+    has_activity: HashMap<PlayerId, bool>,
+    cover_art_manager: CoverArtManager,
+    player_states: HashMap<PlayerId, PlayerState>,
+    player_manager: Arc<Mutex<PlayerManager>>,
 }
 
 impl PresenceManager {
     pub fn new(
         template_manager: template::TemplateManager,
-        player_manager: Arc<TokioMutex<player::PlayerManager>>,
+        player_manager: Arc<Mutex<PlayerManager>>,
     ) -> Result<Self, PresenceError> {
         info!("Initializing PresenceManager");
-        let config = config::get();
+        let config = get_config();
 
-        let cover_art_manager = cover::CoverArtManager::new(&config).map_err(|e| {
+        let cover_art_manager = CoverArtManager::new(&config).map_err(|e| {
             PresenceError::General(format!("Failed to initialize cover art manager: {}", e))
         })?;
 
@@ -36,87 +41,23 @@ impl PresenceManager {
         })
     }
 
-    pub async fn handle_event(&mut self, event: event::Event) -> Result<(), PresenceError> {
-        match event {
-            event::Event::PlayerUpdate(id, state) => {
-                self.has_activity.insert(id.clone(), true);
-                self.update_presence(&id, &state).await?;
-            }
-            event::Event::PlayerRemove(id) => {
-                self.has_activity.remove(&id);
-                self.remove_presence(&id)?;
-            }
-            event::Event::ClearActivity(id) => {
-                // Only clear if activity is active
-                if self.has_activity.get(&id).copied().unwrap_or(false) {
-                    if let Some(client) = self.discord_clients.get_mut(&id) {
-                        if let Err(e) = client.clear_activity() {
-                            warn!("Failed to clear activity for {}: {}", id, e);
-                        } else {
-                            debug!("Cleared activity for {}", id);
-                            self.has_activity.insert(id, false);
-                        }
-                    }
-                } else {
-                    trace!("Skipping clear activity for {}: already cleared", id);
-                }
-            }
-            event::Event::ConfigChanged => {
-                debug!("Received config changed event in presence manager");
-                let config = config::get();
-                if let Err(e) = self.template_manager.reload(&config) {
-                    error!("Failed to reload templates: {}", e);
-                }
-
-                // Update all active players with new template/config
-                let players_to_update: Vec<_> = self
-                    .player_states
-                    .iter()
-                    .filter(|(id, _)| self.has_activity.get(id).copied().unwrap_or(false))
-                    .map(|(id, state)| (id.clone(), state.clone()))
-                    .collect();
-
-                for (id, state) in players_to_update {
-                    if let Err(e) = self.update_presence(&id, &state).await {
-                        error!(
-                            "Failed to update presence for {} after config change: {}",
-                            id, e
-                        );
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn update_presence(
+    pub async fn update_presence(
         &mut self,
-        player_id: &player::PlayerId,
-        state: &player::PlayerState,
+        player_id: &PlayerId,
+        state: &PlayerState,
     ) -> Result<(), PresenceError> {
         // Don't show activity if player is stopped
         if state.playback_status == PlaybackStatus::Stopped {
-            // Clear activity if it's not already cleared
-            if self.has_activity.get(player_id).copied().unwrap_or(false) {
-                if let Some(client) = self.discord_clients.get_mut(player_id) {
-                    if let Err(e) = client.clear_activity() {
-                        warn!("Failed to clear activity for {}: {}", player_id, e);
-                    } else {
-                        debug!("Cleared activity for stopped player {}", player_id);
-                        self.has_activity.insert(player_id.clone(), false);
-                    }
-                }
-            }
-            return Ok(());
+            return self.clear_activity(player_id);
         }
-
-        let config = config::get();
-        let player_config = config.player_config(player_id.identity.as_str());
-        let as_elapsed = config.time_config().as_elapsed;
 
         // Save player state for later reference
         self.player_states.insert(player_id.clone(), state.clone());
+        self.has_activity.insert(player_id.clone(), true);
+
+        let config = get_config();
+        let player_config = config.player_config(player_id.identity.as_str());
+        let as_elapsed = config.time_config().as_elapsed;
 
         // Get full metadata on demand
         let full_metadata = {
@@ -200,6 +141,39 @@ impl PresenceManager {
             player_config.icon.clone(),
             &player_config.app_id,
         )
+    }
+
+    pub fn clear_activity(&mut self, player_id: &PlayerId) -> Result<(), PresenceError> {
+        if self.has_activity.get(player_id).copied().unwrap_or(false) {
+            if let Some(client) = self.discord_clients.get_mut(player_id) {
+                if let Err(e) = client.clear_activity() {
+                    warn!("Failed to clear activity for {}: {}", player_id, e);
+                } else {
+                    debug!("Cleared activity for {}", player_id);
+                    self.has_activity.insert(player_id.clone(), false);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn remove_presence(&mut self, player_id: &PlayerId) -> Result<(), PresenceError> {
+        debug!("Removing Discord client for player: {}", player_id);
+        self.has_activity.remove(player_id);
+        self.player_states.remove(player_id);
+
+        if let Some(client) = self.discord_clients.remove(player_id) {
+            debug!("Removed Discord client for player: {}", player_id);
+        }
+
+        Ok(())
+    }
+
+    pub fn reload_config(&mut self) -> Result<(), PresenceError> {
+        debug!("Reloading config in presence manager");
+        let config = get_config();
+        self.template_manager.reload(&config).map_err(|e| PresenceError::Update(format!("Failed to reload templates: {}", e)))?;
+        Ok(())
     }
 
     fn update_activity(
@@ -326,18 +300,6 @@ impl PresenceManager {
         info!("Successfully created Discord client");
 
         Ok(client)
-    }
-
-    fn remove_presence(&mut self, player_id: &player::PlayerId) -> Result<(), PresenceError> {
-        debug!("Removing Discord client for player: {}", player_id);
-        self.has_activity.remove(player_id);
-
-        if let Some(client) = self.discord_clients.remove(player_id) {
-            // The client will be dropped, which should automatically clean up
-            debug!("Removed Discord client for player: {}", player_id);
-        }
-
-        Ok(())
     }
 
     pub fn update_templates(

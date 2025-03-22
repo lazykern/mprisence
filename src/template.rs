@@ -1,5 +1,10 @@
-use super::*;
-use crate::{error::TemplateError, utils::format_duration};
+use log::{debug, info};
+use std::sync::Arc;
+
+use handlebars::Handlebars;
+use mpris::PlaybackStatus;
+
+use crate::{config::{self, get_config, ConfigManager}, error::TemplateError, player::{PlayerId, PlayerState}, utils::format_duration};
 use std::collections::BTreeMap;
 
 pub struct TemplateManager {
@@ -7,7 +12,7 @@ pub struct TemplateManager {
 }
 
 impl TemplateManager {
-    pub fn new(config: &Arc<config::ConfigManager>) -> Result<Self, TemplateError> {
+    pub fn new(config: &Arc<ConfigManager>) -> Result<Self, TemplateError> {
         info!("Initializing TemplateManager");
         let mut handlebars = Handlebars::new();
         let template_config = config.template_config();
@@ -22,7 +27,7 @@ impl TemplateManager {
         Ok(Self { handlebars })
     }
 
-    pub fn reload(&mut self, config: &Arc<config::ConfigManager>) -> Result<(), TemplateError> {
+    pub fn reload(&mut self, config: &Arc<ConfigManager>) -> Result<(), TemplateError> {
         debug!("Reloading templates");
         let template_config = config.template_config();
 
@@ -50,11 +55,11 @@ impl TemplateManager {
 
     /// Helper to create template data from player state
     pub fn create_data(
-        player_id: &player::PlayerId,
-        state: &player::PlayerState,
+        player_id: &PlayerId,
+        state: &PlayerState,
     ) -> BTreeMap<String, String> {
         let mut data = BTreeMap::new();
-        let config = config::get();
+        let config = get_config();
         let template_config = config.template_config();
 
         // Helper function to handle unknown values

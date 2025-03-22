@@ -1,18 +1,6 @@
 use clap::Parser;
-use log::{debug, error, info, warn};
-use smallvec::SmallVec;
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    fmt::Display,
-    sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use log::info;
 
-use discord_presence::Client as DiscordClient;
-use handlebars::Handlebars;
-use mpris::{Metadata, PlaybackStatus, Player, PlayerFinder};
-use smol_str::SmolStr;
-use tokio::sync::{mpsc, Mutex as TokioMutex};
 
 mod cli;
 mod config;

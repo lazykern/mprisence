@@ -1,6 +1,15 @@
-use crate::error::PlayerError;
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    fmt::Display,
+    time::Duration,
+};
 
-use super::*;
+use log::{debug, error, info, warn};
+use mpris::{Metadata, PlaybackStatus, Player, PlayerFinder};
+use smol_str::SmolStr;
+use tokio::sync::mpsc;
+
+use crate::{config::{self, get_config}, error::PlayerError, event::Event};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PlayerId {
@@ -95,10 +104,9 @@ impl PlayerState {
 
         // Check playback status and volume
         if self.playback_status != previous.playback_status || self.volume != previous.volume {
-            log::info!(
+            info!(
                 "Player changed status: {:?} -> {:?}",
-                previous.playback_status,
-                self.playback_status,
+                previous.playback_status, self.playback_status,
             );
             return true;
         }
@@ -134,13 +142,8 @@ impl PlayerState {
     }
 
     /// Determines if a presence update is needed
-    pub fn requires_presence_update(
-        &self,
-        previous: &Self,
-        polling_interval: Duration,
-    ) -> bool {
-        self.has_metadata_changes(previous)
-            || self.has_position_jump(previous, polling_interval)
+    pub fn requires_presence_update(&self, previous: &Self, polling_interval: Duration) -> bool {
+        self.has_metadata_changes(previous) || self.has_position_jump(previous, polling_interval)
     }
 }
 
@@ -148,11 +151,11 @@ pub struct PlayerManager {
     player_finder: PlayerFinder,
     players: HashMap<PlayerId, Player>, // Store actual players for metadata access
     player_states: HashMap<PlayerId, PlayerState>,
-    event_tx: mpsc::Sender<event::Event>,
+    event_tx: mpsc::Sender<Event>,
 }
 
 impl PlayerManager {
-    pub fn new(event_tx: mpsc::Sender<event::Event>) -> Result<Self, PlayerError> {
+    pub fn new(event_tx: mpsc::Sender<Event>) -> Result<Self, PlayerError> {
         info!("Initializing PlayerManager");
         let finder = PlayerFinder::new().map_err(PlayerError::DBus)?;
 
@@ -165,7 +168,7 @@ impl PlayerManager {
     }
 
     pub async fn check_players(&mut self) -> Result<(), PlayerError> {
-        let config = config::get();
+        let config = get_config();
         let polling_interval = config.interval();
 
         let current = self
@@ -188,7 +191,7 @@ impl PlayerManager {
             info!("Player removed: {}", id);
             self.player_states.remove(&id);
             self.players.remove(&id);
-            if let Err(e) = self.send_event(event::Event::PlayerRemove(id)).await {
+            if let Err(e) = self.send_event(Event::PlayerRemove(id)).await {
                 error!("Failed to send removal event: {}", e);
             }
         }
@@ -214,7 +217,7 @@ impl PlayerManager {
                     {
                         error!("Failed to process player state: {}", e);
                         // Send clear activity event instead of removal
-                        if let Err(e) = self.send_event(event::Event::ClearActivity(id)).await {
+                        if let Err(e) = self.send_event(Event::ClearActivity(id)).await {
                             error!("Failed to send clear activity event: {}", e);
                         }
                     }
@@ -222,7 +225,7 @@ impl PlayerManager {
                 Err(e) => {
                     warn!("Failed to get player state for {}: {}", id, e);
                     // Send clear activity event instead of removal
-                    if let Err(e) = self.send_event(event::Event::ClearActivity(id)).await {
+                    if let Err(e) = self.send_event(Event::ClearActivity(id)).await {
                         error!("Failed to send clear activity event: {}", e);
                     }
                 }
@@ -232,7 +235,7 @@ impl PlayerManager {
         Ok(())
     }
 
-    async fn send_event(&self, event: event::Event) -> Result<(), PlayerError> {
+    async fn send_event(&self, event: Event) -> Result<(), PlayerError> {
         self.event_tx
             .send(event)
             .await
@@ -247,10 +250,8 @@ impl PlayerManager {
     ) -> Result<(), PlayerError> {
         let event = match self.player_states.entry(id) {
             Entry::Occupied(mut entry) => {
-                let has_changes = player_state.requires_presence_update(
-                    entry.get(),
-                    Duration::from_millis(polling_interval),
-                );
+                let has_changes = player_state
+                    .requires_presence_update(entry.get(), Duration::from_millis(polling_interval));
 
                 let event = if has_changes {
                     let key = entry.key().clone();
@@ -258,11 +259,11 @@ impl PlayerManager {
 
                     // Handle clear on pause here
                     if player_state.playback_status == PlaybackStatus::Paused
-                        && config::get().clear_on_pause()
+                        && get_config().clear_on_pause()
                     {
-                        Some(event::Event::ClearActivity(key))
+                        Some(Event::ClearActivity(key))
                     } else {
-                        Some(event::Event::PlayerUpdate(key, player_state.clone()))
+                        Some(Event::PlayerUpdate(key, player_state.clone()))
                     }
                 } else {
                     None
@@ -277,11 +278,11 @@ impl PlayerManager {
 
                 // Handle clear on pause for new players too
                 if player_state.playback_status == PlaybackStatus::Paused
-                    && config::get().clear_on_pause()
+                    && get_config().clear_on_pause()
                 {
-                    Some(event::Event::ClearActivity(key))
+                    Some(Event::ClearActivity(key))
                 } else {
-                    Some(event::Event::PlayerUpdate(key, player_state))
+                    Some(Event::PlayerUpdate(key, player_state))
                 }
             }
         };

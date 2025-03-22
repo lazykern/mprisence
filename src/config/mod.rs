@@ -155,7 +155,7 @@ pub fn initialize() -> Result<(), ConfigError> {
 }
 
 // Get config with simplified error handling
-pub fn get() -> Arc<ConfigManager> {
+pub fn get_config() -> Arc<ConfigManager> {
     CONFIG
         .get()
         .expect("Config not initialized. Call config::initialize() first")
