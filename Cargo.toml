@@ -14,6 +14,7 @@ dirs = "6.0.0"
 env_logger = "0.11.7"
 figment = { version = "0.10.19", features = ["toml"] }
 handlebars = "6.3.2"
+handlebars_misc_helpers = { version = "0.17.0", features = ["string"] }
 log = "0.4.26"
 mime_guess = "2.0.5"
 mpris = "2.0.1"

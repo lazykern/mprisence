@@ -119,7 +119,10 @@ impl PresenceManager {
 
                         // Apply initial activity immediately when ready, but only if it has content
                         debug!("Checking if initial activity has content");
-                        if activity.details.is_some() || activity.state.is_some() || activity.assets.is_some() {
+                        if activity.details.is_some()
+                            || activity.state.is_some()
+                            || activity.assets.is_some()
+                        {
                             debug!("Applying initial activity");
                             if let Ok(mut client) = client_for_ready.lock() {
                                 if let Err(e) = client.set_activity(|_| activity.clone()) {

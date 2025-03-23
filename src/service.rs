@@ -3,19 +3,17 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use discord_presence::models::Activity;
-use log::{debug, error, info, trace, warn};
-use mpris::{Metadata, PlaybackStatus};
-use tokio::sync::Mutex;
 use crate::{
     config::{self, get_config},
     cover::CoverArtManager,
     error::{ServiceInitError, ServiceRuntimeError},
-    player::{PlayerManager, PlayerId, PlayerState, PlayerStateChange},
-    presence,
-    template,
-    utils,
+    player::{PlayerId, PlayerManager, PlayerState, PlayerStateChange},
+    presence, template, utils,
 };
+use discord_presence::models::Activity;
+use log::{debug, error, info, trace, warn};
+use mpris::{Metadata, PlaybackStatus};
+use tokio::sync::Mutex;
 
 pub struct Service {
     player_manager: Arc<Mutex<PlayerManager>>,
@@ -61,7 +59,9 @@ impl Service {
             match change {
                 PlayerStateChange::Updated(id, state) => {
                     // Check if we should clear on pause
-                    if state.playback_status == PlaybackStatus::Paused && get_config().clear_on_pause() {
+                    if state.playback_status == PlaybackStatus::Paused
+                        && get_config().clear_on_pause()
+                    {
                         if let Err(e) = self.presence_manager.clear_activity(&id) {
                             error!("Failed to clear activity: {}", e);
                         }
@@ -81,7 +81,10 @@ impl Service {
                     let activity = self.create_activity(&id, &state, &metadata).await?;
 
                     // Update presence with activity only if it contains data
-                    if activity.details.is_some() || activity.state.is_some() || activity.assets.is_some() {
+                    if activity.details.is_some()
+                        || activity.state.is_some()
+                        || activity.assets.is_some()
+                    {
                         if let Err(e) = self.presence_manager.update_presence(&id, activity).await {
                             error!("Failed to update presence: {}", e);
                         }
@@ -140,14 +143,16 @@ impl Service {
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards");
 
-            let start_dur = now.checked_sub(Duration::from_secs(state.position.unwrap_or_default() as u64)).unwrap_or_default();
+            let start_dur = now
+                .checked_sub(Duration::from_secs(
+                    state.position.unwrap_or_default() as u64
+                ))
+                .unwrap_or_default();
             let start_s = start_dur.as_secs() as i64;
 
             let mut end_s = None;
             if !as_elapsed && !length.is_zero() {
-                let end = start_dur
-                    .checked_add(length)
-                    .unwrap_or_default();
+                let end = start_dur.checked_add(length).unwrap_or_default();
                 end_s = Some(end.as_secs() as i64);
             }
 
@@ -163,13 +168,10 @@ impl Service {
 
         activity = activity._type(activity_type.into());
 
-        let activity_texts = self.template_manager
-            .render_activity_texts(
-                player_id,
-                state,
-                metadata,
-            )?;
-            
+        let activity_texts = self
+            .template_manager
+            .render_activity_texts(player_id, state, metadata)?;
+
         if !activity_texts.details.is_empty() {
             activity = activity.details(&activity_texts.details);
         }
@@ -194,14 +196,16 @@ impl Service {
                 info!("Found cover art URL for Discord");
                 debug!("Using cover art URL: {}", url);
                 Some(url)
-            },
+            }
             Ok(None) => {
                 debug!("No cover art URL available for Discord");
                 None
-            },
+            }
             Err(e) => {
                 warn!("Failed to get cover art: {}", e);
-                debug!("Discord requires HTTP/HTTPS URLs for images, not file paths or base64 data");
+                debug!(
+                    "Discord requires HTTP/HTTPS URLs for images, not file paths or base64 data"
+                );
                 None
             }
         };
@@ -220,7 +224,10 @@ impl Service {
 
             // Set small image (player icon) if enabled
             if player_config.show_icon {
-                debug!("Setting Discord small image to player icon: {}", player_config.icon);
+                debug!(
+                    "Setting Discord small image to player icon: {}",
+                    player_config.icon
+                );
                 assets = assets.small_image(player_config.icon);
                 if !activity_texts.small_text.is_empty() {
                     assets = assets.small_text(&activity_texts.small_text);
@@ -237,7 +244,7 @@ impl Service {
         info!("Starting service main loop");
 
         let mut interval = tokio::time::interval(Duration::from_millis(get_config().interval()));
-        let mut client_check_interval = tokio::time::interval(Duration::from_secs(30));
+        let mut client_check_interval = tokio::time::interval(Duration::from_secs(10)); // Check more frequently
 
         loop {
             tokio::select! {
@@ -258,7 +265,7 @@ impl Service {
                             info!("Config change detected");
                             // Update interval with new config
                             interval = tokio::time::interval(Duration::from_millis(get_config().interval()));
-                            
+
                             // Handle config change
                             if let Err(e) = self.handle_config_change().await {
                                 error!("Failed to handle config change: {}", e);

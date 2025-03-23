@@ -1,7 +1,7 @@
 use log::{debug, info};
 use std::sync::Arc;
 
-use handlebars::Handlebars;
+use handlebars::{handlebars_helper, Handlebars};
 use mpris::{Metadata, PlaybackStatus};
 
 use crate::{config::{get_config, ConfigManager}, error::TemplateError, player::{PlayerId, PlayerState}, utils::{format_duration}};
@@ -18,11 +18,16 @@ pub struct ActivityTexts {
     pub small_text: String,
 }
 
+handlebars_helper!(eq: |x: str, y: str| x == y);
+
 impl TemplateManager {
     pub fn new(config: &Arc<ConfigManager>) -> Result<Self, TemplateError> {
         info!("Initializing TemplateManager");
         let mut handlebars = Handlebars::new();
         let template_config = config.template_config();
+
+        // Register custom helpers
+        handlebars.register_helper("eq", Box::new(eq));
 
         // Register all templates
         handlebars.register_template_string("detail", &template_config.detail)?;
@@ -107,28 +112,6 @@ impl TemplateManager {
         }
         if let Some(album_artists) = metadata.album_artists() {
             data.insert("album_artists".to_string(), album_artists.join(", "));
-        }
-        // Add genre if available
-        if let Some(value) = metadata.get("xesam:genre") {
-            if let Some(array) = value.as_array() {
-                let genres: Vec<String> = array.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect();
-                if !genres.is_empty() {
-                    data.insert("genre".to_string(), genres.join(", "));
-                }
-            }
-        }
-        // Add composer if available
-        if let Some(value) = metadata.get("xesam:composer") {
-            if let Some(array) = value.as_array() {
-                let composers: Vec<String> = array.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect();
-                if !composers.is_empty() {
-                    data.insert("composer".to_string(), composers.join(", "));
-                }
-            }
         }
         
         data
