@@ -4,12 +4,6 @@ use crate::config;
 
 #[derive(Error, Debug)]
 pub enum CoverArtError {
-    #[error("Provider error: {0}")]
-    Provider(String),
-
-    #[error("No valid cover art found")]
-    NotFound,
-
     #[error("Cache error: {0}")]
     Cache(#[from] std::io::Error),
 

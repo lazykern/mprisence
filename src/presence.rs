@@ -41,14 +41,14 @@ impl PresenceManager {
         let config = get_config();
         let player_config = config.player_config(player_id.identity.as_str());
 
-        self.update_activity(player_id, activity, &player_config.app_id).await
+        self.update_activity(player_id, activity, player_config.app_id).await
     }
 
     async fn update_activity(
         &mut self,
         player_id: &PlayerId,
         activity: Activity,
-        app_id: &str,
+        app_id: u64,
     ) -> Result<(), PresenceError> {
         debug!("Updating activity for player: {}", player_id);
 
@@ -86,14 +86,10 @@ impl PresenceManager {
         Ok(())
     }
 
-    fn create_client_state(&self, app_id: &str, initial_activity: Activity) -> Result<DiscordClientState, PresenceError> {
+    fn create_client_state(&self, app_id: u64, initial_activity: Activity) -> Result<DiscordClientState, PresenceError> {
         debug!("Creating new Discord client with app_id: {}", app_id);
 
-        let app_id_u64 = app_id
-            .parse::<u64>()
-            .map_err(|e| PresenceError::Connection(format!("Invalid app_id: {}", e)))?;
-
-        let client = Arc::new(Mutex::new(DiscordClient::new(app_id_u64)));
+        let client = Arc::new(Mutex::new(DiscordClient::new(app_id)));
         let is_ready = Arc::new(AtomicBool::new(false));
         
         // Setup handlers - just handle state changes

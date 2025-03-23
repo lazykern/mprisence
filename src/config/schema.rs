@@ -309,7 +309,7 @@ pub struct PlayerConfig {
     pub ignore: bool,
 
     #[serde(default = "default_player_app_id")]
-    pub app_id: String,
+    pub app_id: u64,
 
     #[serde(default = "default_player_icon")]
     pub icon: String,
@@ -325,7 +325,7 @@ pub struct PlayerConfig {
 }
 
 const DEFAULT_PLAYER_IGNORE: bool = false;
-const DEFAULT_PLAYER_APP_ID: &str = "1121632048155742288";
+const DEFAULT_PLAYER_APP_ID: u64 = 1121632048155742288;
 const DEFAULT_PLAYER_ICON: &str =
     "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png";
 const DEFAULT_PLAYER_SHOW_ICON: bool = false;
@@ -335,8 +335,8 @@ fn default_player_ignore() -> bool {
     DEFAULT_PLAYER_IGNORE
 }
 
-fn default_player_app_id() -> String {
-    DEFAULT_PLAYER_APP_ID.to_string()
+fn default_player_app_id() -> u64 {
+    DEFAULT_PLAYER_APP_ID
 }
 
 fn default_player_icon() -> String {
@@ -356,7 +356,7 @@ impl Default for PlayerConfig {
         // Provide hardcoded defaults as a last resort
         PlayerConfig {
             ignore: DEFAULT_PLAYER_IGNORE,
-            app_id: DEFAULT_PLAYER_APP_ID.to_string(), // Default Discord app ID
+            app_id: DEFAULT_PLAYER_APP_ID,
             icon: DEFAULT_PLAYER_ICON.to_string(),
             show_icon: DEFAULT_PLAYER_SHOW_ICON,
             allow_streaming: DEFAULT_PLAYER_ALLOW_STREAMING,

@@ -71,14 +71,11 @@ pub enum PlayerError {
 
 #[derive(Error, Debug)]
 pub enum PresenceError {
-    #[error("Failed to connect to Discord: {0}")]
-    Connection(String),
+    #[error("Discord error: {0}")]
+    Discord(#[from] discord_presence::DiscordError),
 
     #[error("Failed to update presence: {0}")]
     Update(String),
-
-    #[error("Failed to close connection: {0}")]
-    Close(String),
 
     #[error("Config access error: {0}")]
     Config(#[from] config::ConfigError),

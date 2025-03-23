@@ -2,9 +2,6 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
-    #[error("Config not initialized")]
-    NotInitialized,
-
     #[error("Config already initialized")]
     AlreadyInitialized,
 
