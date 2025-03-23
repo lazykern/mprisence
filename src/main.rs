@@ -17,7 +17,6 @@ static GLOBAL: System = System;
 mod player;
 mod presence;
 mod template;
-mod event;
 mod service;
 
 use crate::{cli::Cli, service::Service};

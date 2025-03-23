@@ -6,13 +6,12 @@ use std::{
 use discord_presence::models::Activity;
 use log::{debug, error, info, trace, warn};
 use mpris::{Metadata, PlaybackStatus};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
 
 use crate::{
     config::{self, get_config},
     cover::CoverArtManager,
     error::{ServiceInitError, ServiceRuntimeError},
-    event::Event,
     player::{PlayerManager, PlayerId, PlayerState, PlayerStateChange},
     presence,
     template,

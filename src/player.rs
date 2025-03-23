@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use mpris::{Metadata, PlaybackStatus, Player, PlayerFinder};
 use smol_str::SmolStr;
 
