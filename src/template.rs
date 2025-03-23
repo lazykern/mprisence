@@ -108,6 +108,28 @@ impl TemplateManager {
         if let Some(album_artists) = metadata.album_artists() {
             data.insert("album_artists".to_string(), album_artists.join(", "));
         }
+        // Add genre if available
+        if let Some(value) = metadata.get("xesam:genre") {
+            if let Some(array) = value.as_array() {
+                let genres: Vec<String> = array.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect();
+                if !genres.is_empty() {
+                    data.insert("genre".to_string(), genres.join(", "));
+                }
+            }
+        }
+        // Add composer if available
+        if let Some(value) = metadata.get("xesam:composer") {
+            if let Some(array) = value.as_array() {
+                let composers: Vec<String> = array.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect();
+                if !composers.is_empty() {
+                    data.insert("composer".to_string(), composers.join(", "));
+                }
+            }
+        }
         
         data
     }
@@ -142,12 +164,10 @@ impl TemplateManager {
             PlaybackStatus::Stopped => "⏹️",
         };
         data.insert("status_icon".to_string(), status_icon.to_string());
-        data.insert("volume".to_string(), state.volume.to_string());
 
-        data.insert(
-            "position".to_string(),
-            format_duration(state.position as u64),
-        );
+        if let Some(volume) = state.volume {
+            data.insert("volume".to_string(), volume.to_string());
+        }
 
         // Basic track metadata with unknown handling
         data.insert(

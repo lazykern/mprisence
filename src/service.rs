@@ -140,7 +140,7 @@ impl Service {
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards");
 
-            let start_dur = now.checked_sub(Duration::from_secs(state.position as u64)).unwrap_or_default();
+            let start_dur = now.checked_sub(Duration::from_secs(state.position.unwrap_or_default() as u64)).unwrap_or_default();
             let start_s = start_dur.as_secs() as i64;
 
             let mut end_s = None;

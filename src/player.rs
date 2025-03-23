@@ -52,8 +52,8 @@ pub struct PlayerState {
     pub url: Option<Box<str>>,
     pub title: Option<Box<str>>,
     pub artists: Option<Box<str>>,
-    pub position: u32,
-    pub volume: u8,
+    pub position: Option<u32>,
+    pub volume: Option<u8>,
 }
 
 impl Display for PlayerState {
@@ -64,8 +64,8 @@ impl Display for PlayerState {
             "{:?}: {} [{}s, {}%]",
             self.playback_status,
             self.title.as_deref().unwrap_or("Unknown"),
-            self.position,
-            self.volume
+            self.position.unwrap_or(0),
+            self.volume.unwrap_or(0)
         )?;
 
         // Add track identifiers if available
@@ -93,8 +93,8 @@ impl TryFrom<&Player> for PlayerState {
             url: metadata.url().map(|s| s.to_string().into_boxed_str()),
             title: metadata.title().map(|s| s.to_string().into_boxed_str()),
             artists: metadata.artists().map(|a| a.join(", ").into_boxed_str()),
-            position: player.get_position().map_err(PlayerError::DBus)?.as_secs() as u32,
-            volume: (player.get_volume().map_err(PlayerError::DBus)? * 100.0) as u8,
+            position: player.get_position().map_err(PlayerError::DBus).map(|d| d.as_secs() as u32).ok(),
+            volume: player.get_volume().map_err(PlayerError::DBus).map(|v| (v * 100.0) as u8).ok(),
         })
     }
 }
@@ -129,17 +129,17 @@ impl PlayerState {
         if self.position < previous.position {
             debug!(
                 "Position jumped backward: {}s -> {}s",
-                previous.position, self.position
+                previous.position.unwrap_or(0), self.position.unwrap_or(0)
             );
             return true;
         }
 
         // Check for forward jump that exceeds expected progression
-        let elapsed = self.position.saturating_sub(previous.position);
+        let elapsed = self.position.unwrap_or(0).saturating_sub(previous.position.unwrap_or(0));
         if elapsed > max_expected_change {
             debug!(
                 "Position jumped forward: {}s -> {}s",
-                previous.position, self.position
+                previous.position.unwrap_or(0), self.position.unwrap_or(0)
             );
             return true;
         }
