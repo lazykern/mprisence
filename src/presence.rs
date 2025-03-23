@@ -60,7 +60,6 @@ impl PresenceManager {
             client_state.last_used = Instant::now();
 
             if client_state.is_ready.load(Ordering::Relaxed) {
-                debug!("Client is ready, setting activity");
                 if let Ok(mut client) = client_state.client.lock() {
                     client.set_activity(|_| activity)
                         .map_err(|e| PresenceError::Update(format!("Failed to update presence: {}", e)))?;

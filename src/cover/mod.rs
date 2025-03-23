@@ -217,6 +217,8 @@ impl CoverArtManager {
                         .and_then(|c| c.api_key.as_ref())
                     {
                         providers.push(Box::new(ImgbbProvider::new(api_key.clone())));
+                    } else {
+                        warn!("ImgBB provider is disabled (no API key configured)");
                     }
                 }
                 unknown => warn!("Unknown cover art provider: {}", unknown),

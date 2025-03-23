@@ -40,7 +40,7 @@ impl MusicbrainzProvider {
         let results = ReleaseGroup::search(builder.build()).execute().await?;
 
         for group in results.entities.iter().take(2) {
-            let cover = group.get_coverart().front().execute().await?;
+            let cover = group.get_coverart().front().res_250().execute().await?;
             if let CoverartResponse::Url(url) = cover {
                 return Ok(Some(url));
             }
@@ -48,7 +48,7 @@ impl MusicbrainzProvider {
             // Try covers from releases in the group
             if let Some(releases) = &group.releases {
                 for release in releases.iter().take(2) {
-                    let cover = release.get_coverart().front().execute().await?;
+                    let cover = release.get_coverart().front().res_250().execute().await?;
                     if let CoverartResponse::Url(url) = cover {
                         return Ok(Some(url));
                     }
@@ -66,7 +66,7 @@ impl MusicbrainzProvider {
         let results = Release::search(builder.build()).execute().await?;
 
         for release in results.entities.iter().take(2) {
-            let cover = release.get_coverart().front().execute().await?;
+            let cover = release.get_coverart().front().res_250().execute().await?;
             if let CoverartResponse::Url(url) = cover {
                 return Ok(Some(url));
             }
@@ -103,14 +103,14 @@ impl MusicbrainzProvider {
             if let Some(releases) = &recording.releases {
                 for release in releases.iter().take(2) {
                     // Try release cover
-                    let cover = release.get_coverart().front().execute().await?;
+                    let cover = release.get_coverart().front().res_250().execute().await?;
                     if let CoverartResponse::Url(url) = cover {
                         return Ok(Some(url));
                     }
 
                     // Try release group cover
                     if let Some(rg) = &release.release_group {
-                        let cover = rg.get_coverart().front().execute().await?;
+                        let cover = rg.get_coverart().front().res_250().execute().await?;
                         if let CoverartResponse::Url(url) = cover {
                             return Ok(Some(url));
                         }

@@ -6,7 +6,6 @@ use std::{
 use discord_presence::models::Activity;
 use log::{debug, error, info, trace, warn};
 use mpris::{Metadata, PlaybackStatus};
-use smallvec::SmallVec;
 use tokio::sync::{mpsc, Mutex};
 
 use crate::{
@@ -25,17 +24,12 @@ pub struct Service {
     presence_manager: presence::PresenceManager,
     template_manager: template::TemplateManager,
     cover_art_manager: CoverArtManager,
-    event_rx: mpsc::Receiver<Event>,
-    event_tx: mpsc::Sender<Event>,
     config_rx: config::ConfigChangeReceiver,
-    pending_events: SmallVec<[Event; 16]>,
 }
 
 impl Service {
     pub fn new() -> Result<Self, ServiceInitError> {
         info!("Initializing service components");
-
-        let (event_tx, event_rx) = mpsc::channel(128);
 
         debug!("Creating template manager");
         let config = get_config();
@@ -56,10 +50,7 @@ impl Service {
             presence_manager,
             template_manager,
             cover_art_manager,
-            event_rx,
-            event_tx,
             config_rx: get_config().subscribe(),
-            pending_events: SmallVec::new(),
         })
     }
 
@@ -106,24 +97,15 @@ impl Service {
         Ok(())
     }
 
-    async fn handle_event(&mut self, event: Event) -> Result<(), ServiceRuntimeError> {
-        debug!("Handling event: {:?}", event);
-        match event {
-            Event::ConfigChanged => {
-                debug!("Handling config change event");
-                if let Err(e) = self.reload_components().await {
-                    error!("Failed to reload components: {}", e);
-                }
-
-                // After reloading components, update all active players
-                if let Err(e) = self.check_players().await {
-                    error!("Failed to check players after config change: {}", e);
-                }
-            }
-            // Other events are now handled directly in check_players
-            _ => {}
+    async fn handle_config_change(&mut self) -> Result<(), ServiceRuntimeError> {
+        debug!("Handling config change");
+        // Reload components that depend on config
+        if let Err(e) = self.template_manager.reload(&get_config()) {
+            error!("Failed to reload templates: {}", e);
         }
-        Ok(())
+
+        // Update all active players to reflect new config
+        self.check_players().await
     }
 
     async fn create_activity(
@@ -231,18 +213,6 @@ impl Service {
         Ok(activity)
     }
 
-    async fn reload_components(&mut self) -> Result<(), ServiceRuntimeError> {
-        debug!("Reloading service components based on configuration changes");
-        let config = get_config();
-
-        // Reload template manager
-        if let Err(e) = self.template_manager.reload(&config) {
-            error!("Failed to reload templates: {}", e);
-        }
-
-        Ok(())
-    }
-
     pub async fn run(&mut self) -> Result<(), ServiceRuntimeError> {
         info!("Starting service main loop");
 
@@ -266,38 +236,16 @@ impl Service {
                     match change {
                         config::ConfigChange::Updated | config::ConfigChange::Reloaded => {
                             info!("Config change detected");
+                            // Update interval with new config
                             interval = tokio::time::interval(Duration::from_millis(get_config().interval()));
-
-                            if let Err(e) = self.event_tx.send(Event::ConfigChanged).await {
-                                error!("Failed to send config changed event: {}", e);
+                            
+                            // Handle config change
+                            if let Err(e) = self.handle_config_change().await {
+                                error!("Failed to handle config change: {}", e);
                             }
                         },
                         config::ConfigChange::Error(e) => {
                             error!("Config error: {}", e);
-                        }
-                    }
-                },
-
-                Some(event) = self.event_rx.recv() => {
-                    debug!("Received event: {}", event);
-
-                    // Add first event to SmallVec
-                    self.pending_events.push(event);
-
-                    // Try to collect more events
-                    while let Ok(event) = self.event_rx.try_recv() {
-                        debug!("Batched event: {}", event);
-                        self.pending_events.push(event);
-                        if self.pending_events.len() >= 10 {
-                            break;
-                        }
-                    }
-
-                    // Take events out of pending_events to avoid multiple mutable borrows
-                    let events: SmallVec<[Event; 16]> = self.pending_events.drain(..).collect();
-                    for event in events {
-                        if let Err(e) = self.handle_event(event).await {
-                            error!("Error handling event: {}", e);
                         }
                     }
                 },
