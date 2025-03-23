@@ -274,7 +274,16 @@ impl Default for CoverProviderConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ImgBBConfig {
+    // API key for ImgBB service
     pub api_key: Option<String>,
+    
+    // Optional expiration time in seconds (0 = no expiration)
+    #[serde(default)]
+    pub expiration: Option<u64>,
+    
+    // Optional default name for uploaded images
+    #[serde(default)]
+    pub default_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Copy)]

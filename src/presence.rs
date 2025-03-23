@@ -59,7 +59,7 @@ impl PresenceManager {
         activity: Activity,
         app_id: u64,
     ) -> Result<(), PresenceError> {
-        debug!("Updating activity for player: {}", player_id);
+        debug!("Updating activity for {} with {:?}", player_id, activity);
 
         // Get or create the Discord client
         if !self.discord_clients.contains_key(player_id) {
@@ -117,12 +117,17 @@ impl PresenceManager {
                         info!("Discord client ready: {:?}", ctx);
                         ready_flag.store(true, Ordering::Release);
 
-                        // Apply initial activity immediately when ready
-                        debug!("Applying initial activity");
-                        if let Ok(mut client) = client_for_ready.lock() {
-                            if let Err(e) = client.set_activity(|_| activity.clone()) {
-                                error!("Failed to apply initial activity: {}", e);
+                        // Apply initial activity immediately when ready, but only if it has content
+                        debug!("Checking if initial activity has content");
+                        if activity.details.is_some() || activity.state.is_some() || activity.assets.is_some() {
+                            debug!("Applying initial activity");
+                            if let Ok(mut client) = client_for_ready.lock() {
+                                if let Err(e) = client.set_activity(|_| activity.clone()) {
+                                    error!("Failed to apply initial activity: {}", e);
+                                }
                             }
+                        } else {
+                            debug!("Initial activity is empty, not applying");
                         }
                     }
                 })

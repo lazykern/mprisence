@@ -55,9 +55,11 @@ pub struct CoverProviderConfig {
     pub imgbb: Option<ImgBBConfig>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ImgBBConfig {
     pub api_key: Option<String>,
+    pub expiration: Option<u64>,
+    pub default_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

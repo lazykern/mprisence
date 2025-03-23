@@ -68,15 +68,25 @@ impl Service {
                         continue;
                     }
 
+                    // Skip empty activities for stopped players
+                    if state.playback_status == PlaybackStatus::Stopped {
+                        debug!("Skipping stopped player: {}", id);
+                        continue;
+                    }
+
                     // Get full metadata
                     let metadata = player_manager.get_metadata(&id)?;
 
                     // Create activity
                     let activity = self.create_activity(&id, &state, &metadata).await?;
 
-                    // Update presence with activity
-                    if let Err(e) = self.presence_manager.update_presence(&id, activity).await {
-                        error!("Failed to update presence: {}", e);
+                    // Update presence with activity only if it contains data
+                    if activity.details.is_some() || activity.state.is_some() || activity.assets.is_some() {
+                        if let Err(e) = self.presence_manager.update_presence(&id, activity).await {
+                            error!("Failed to update presence: {}", e);
+                        }
+                    } else {
+                        debug!("Skipping empty activity for player: {}", id);
                     }
                 }
                 PlayerStateChange::Removed(id) => {
@@ -114,6 +124,7 @@ impl Service {
     ) -> Result<Activity, ServiceRuntimeError> {
         // Don't show activity if player is stopped
         if state.playback_status == PlaybackStatus::Stopped {
+            debug!("Player is stopped, returning empty activity");
             return Ok(Activity::default());
         }
 
@@ -179,9 +190,18 @@ impl Service {
 
         // Get cover art URL using cover art manager
         let cover_art_url = match self.cover_art_manager.get_cover_art(metadata).await {
-            Ok(url) => url,
+            Ok(Some(url)) => {
+                info!("Found cover art URL for Discord");
+                debug!("Using cover art URL: {}", url);
+                Some(url)
+            },
+            Ok(None) => {
+                debug!("No cover art URL available for Discord");
+                None
+            },
             Err(e) => {
                 warn!("Failed to get cover art: {}", e);
+                debug!("Discord requires HTTP/HTTPS URLs for images, not file paths or base64 data");
                 None
             }
         };
@@ -191,6 +211,7 @@ impl Service {
 
             // Set large image (album art) if available
             if let Some(img_url) = &cover_art_url {
+                debug!("Setting Discord large image to: {}", img_url);
                 assets = assets.large_image(img_url);
                 if !activity_texts.large_text.is_empty() {
                     assets = assets.large_text(&activity_texts.large_text);
@@ -199,6 +220,7 @@ impl Service {
 
             // Set small image (player icon) if enabled
             if player_config.show_icon {
+                debug!("Setting Discord small image to player icon: {}", player_config.icon);
                 assets = assets.small_image(player_config.icon);
                 if !activity_texts.small_text.is_empty() {
                     assets = assets.small_text(&activity_texts.small_text);
