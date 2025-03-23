@@ -309,7 +309,7 @@ pub struct PlayerConfig {
     pub ignore: bool,
 
     #[serde(default = "default_player_app_id")]
-    pub app_id: u64,
+    pub app_id: String,
 
     #[serde(default = "default_player_icon")]
     pub icon: String,
@@ -324,42 +324,61 @@ pub struct PlayerConfig {
     pub override_activity_type: Option<ActivityType>,
 }
 
-const DEFAULT_PLAYER_IGNORE: bool = false;
-const DEFAULT_PLAYER_APP_ID: u64 = 1121632048155742288;
-const DEFAULT_PLAYER_ICON: &str =
-    "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png";
-const DEFAULT_PLAYER_SHOW_ICON: bool = false;
-const DEFAULT_PLAYER_ALLOW_STREAMING: bool = false;
-
 fn default_player_ignore() -> bool {
-    DEFAULT_PLAYER_IGNORE
+    get_default_config()
+        .player
+        .get("default")
+        .expect("Failed to get default player config")
+        .ignore
+        .expect("Failed to get default player ignore")
 }
 
-fn default_player_app_id() -> u64 {
-    DEFAULT_PLAYER_APP_ID
+fn default_player_app_id() -> String {
+    get_default_config()
+        .player
+        .get("default")
+        .expect("Failed to get default player config")
+        .app_id
+        .clone()
+        .expect("Failed to get default player app_id")
 }
 
 fn default_player_icon() -> String {
-    DEFAULT_PLAYER_ICON.to_string()
+    get_default_config()
+        .player
+        .get("default")
+        .expect("Failed to get default player config")
+        .icon
+        .clone()
+        .expect("Failed to get default player icon")
 }
 
 fn default_player_show_icon() -> bool {
-    DEFAULT_PLAYER_SHOW_ICON
+    get_default_config()
+        .player
+        .get("default")
+        .expect("Failed to get default player config")
+        .show_icon
+        .expect("Failed to get default player show_icon")
 }
 
 fn default_player_allow_streaming() -> bool {
-    DEFAULT_PLAYER_ALLOW_STREAMING
+    get_default_config()
+        .player
+        .get("default")
+        .expect("Failed to get default player config")
+        .allow_streaming
+        .expect("Failed to get default player allow_streaming")
 }
 
 impl Default for PlayerConfig {
-    fn default() -> Self {
-        // Provide hardcoded defaults as a last resort
+    fn default() -> PlayerConfig {
         PlayerConfig {
-            ignore: DEFAULT_PLAYER_IGNORE,
-            app_id: DEFAULT_PLAYER_APP_ID,
-            icon: DEFAULT_PLAYER_ICON.to_string(),
-            show_icon: DEFAULT_PLAYER_SHOW_ICON,
-            allow_streaming: DEFAULT_PLAYER_ALLOW_STREAMING,
+            ignore: default_player_ignore(),
+            app_id: default_player_app_id(),
+            icon: default_player_icon(),
+            show_icon: default_player_show_icon(),
+            allow_streaming: default_player_allow_streaming(),
             override_activity_type: None,
         }
     }

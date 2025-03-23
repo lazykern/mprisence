@@ -1,6 +1,9 @@
 use std::{
     collections::HashMap,
-    sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     time::{Duration, Instant},
 };
 
@@ -40,8 +43,14 @@ impl PresenceManager {
 
         let config = get_config();
         let player_config = config.player_config(player_id.identity.as_str());
+        let app_id: u64 = player_config
+            .app_id
+            .parse()
+            .map_err(|e| PresenceError::Update(format!("Invalid app ID: {}", e)))?;
 
-        self.update_activity(player_id, activity, player_config.app_id).await
+        self.update_activity(player_id, activity, app_id).await?;
+
+        Ok(())
     }
 
     async fn update_activity(
@@ -61,8 +70,9 @@ impl PresenceManager {
 
             if client_state.is_ready.load(Ordering::Relaxed) {
                 if let Ok(mut client) = client_state.client.lock() {
-                    client.set_activity(|_| activity)
-                        .map_err(|e| PresenceError::Update(format!("Failed to update presence: {}", e)))?;
+                    client.set_activity(|_| activity).map_err(|e| {
+                        PresenceError::Update(format!("Failed to update presence: {}", e))
+                    })?;
                 }
             }
         }
@@ -86,51 +96,63 @@ impl PresenceManager {
         Ok(())
     }
 
-    fn create_client_state(&self, app_id: u64, initial_activity: Activity) -> Result<DiscordClientState, PresenceError> {
+    fn create_client_state(
+        &self,
+        app_id: u64,
+        initial_activity: Activity,
+    ) -> Result<DiscordClientState, PresenceError> {
         debug!("Creating new Discord client with app_id: {}", app_id);
 
         let client = Arc::new(Mutex::new(DiscordClient::new(app_id)));
         let is_ready = Arc::new(AtomicBool::new(false));
-        
+
         // Setup handlers - just handle state changes
         if let Ok(mut discord_client) = client.lock() {
-            discord_client.on_ready({
-                let ready_flag = is_ready.clone();
-                let client_for_ready = client.clone();
-                let activity = initial_activity;
-                move |ctx| {
-                    info!("Discord client ready: {:?}", ctx);
-                    ready_flag.store(true, Ordering::Release);
-                    
-                    // Apply initial activity immediately when ready
-                    debug!("Applying initial activity");
-                    if let Ok(mut client) = client_for_ready.lock() {
-                        if let Err(e) = client.set_activity(|_| activity.clone()) {
-                            error!("Failed to apply initial activity: {}", e);
+            discord_client
+                .on_ready({
+                    let ready_flag = is_ready.clone();
+                    let client_for_ready = client.clone();
+                    let activity = initial_activity;
+                    move |ctx| {
+                        info!("Discord client ready: {:?}", ctx);
+                        ready_flag.store(true, Ordering::Release);
+
+                        // Apply initial activity immediately when ready
+                        debug!("Applying initial activity");
+                        if let Ok(mut client) = client_for_ready.lock() {
+                            if let Err(e) = client.set_activity(|_| activity.clone()) {
+                                error!("Failed to apply initial activity: {}", e);
+                            }
                         }
                     }
-                }
-            }).persist();
+                })
+                .persist();
 
-            discord_client.on_connected(|ctx| {
-                info!("Discord client connected: {:?}", ctx);
-            }).persist();
+            discord_client
+                .on_connected(|ctx| {
+                    info!("Discord client connected: {:?}", ctx);
+                })
+                .persist();
 
-            discord_client.on_disconnected({
-                let ready_flag = is_ready.clone();
-                move |_| {
-                    info!("Discord client disconnected");
-                    ready_flag.store(false, Ordering::Release);
-                }
-            }).persist();
+            discord_client
+                .on_disconnected({
+                    let ready_flag = is_ready.clone();
+                    move |_| {
+                        info!("Discord client disconnected");
+                        ready_flag.store(false, Ordering::Release);
+                    }
+                })
+                .persist();
 
-            discord_client.on_error({
-                let ready_flag = is_ready.clone();
-                move |ctx| {
-                    error!("Discord error: {:?}", ctx);
-                    ready_flag.store(false, Ordering::Release);
-                }
-            }).persist();
+            discord_client
+                .on_error({
+                    let ready_flag = is_ready.clone();
+                    move |ctx| {
+                        error!("Discord error: {:?}", ctx);
+                        ready_flag.store(false, Ordering::Release);
+                    }
+                })
+                .persist();
 
             discord_client.start();
         }
@@ -147,7 +169,8 @@ impl PresenceManager {
         let timeout = self.client_timeout;
 
         // Only remove clients that are both inactive AND have no activity
-        let to_remove: Vec<_> = self.discord_clients
+        let to_remove: Vec<_> = self
+            .discord_clients
             .iter()
             .filter(|(player_id, state)| {
                 let is_inactive = now.duration_since(state.last_used) > timeout;
@@ -159,7 +182,10 @@ impl PresenceManager {
 
         // Remove each inactive client that has no activity
         for id in to_remove {
-            debug!("Cleaning up inactive Discord client for {} (no activity)", id);
+            debug!(
+                "Cleaning up inactive Discord client for {} (no activity)",
+                id
+            );
             // No need to clear activity since we only remove clients without activity
             self.discord_clients.remove(&id);
         }
