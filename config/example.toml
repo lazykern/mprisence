@@ -10,8 +10,28 @@ interval = 2000
 # ------------------
 # Display Template
 # ------------------
-# Available variables at the end of file template
 [template]
+# Available template variables:
+#
+# Track Info (Available through MPRIS):
+#   {{{title}}}           - Track title
+#   {{{artists}}}         - Track artists
+#   {{{album_name}}}      - Album name
+#   {{{album_artists}}}   - Album artists
+#   {{{track_number}}}    - Track position in album
+#   {{{disc_number}}}     - Disc number
+#   {{{genre}}}           - Track genre (if provided by player)
+#   {{{composer}}}        - Track composer (if provided by player)
+#
+# Player Status (Available):
+#   {{{player}}}          - Media player name
+#   {{{status}}}          - Player status (Playing/Paused/Stopped)
+#   {{{position}}}        - Current position (MM:SS)
+#   {{{length}}}          - Track length (MM:SS)
+#
+# Note: Some metadata fields (like technical info and extended metadata) are not
+# available through MPRIS to maintain compatibility with streaming services.
+
 # What appears on the first line of Discord presence
 detail = "{{{title}}}"
 
@@ -117,37 +137,3 @@ allow_streaming = false
 
 # [player.brave]
 # ignore = true
-
-# ------------------
-# Available Template Variables Reference
-# ------------------
-# Track Info:
-#   {{{title}}}           - Track title
-#   {{{artists}}}         - Track artists
-#   {{{album_name}}}      - Album name
-#   {{{genre}}}           - Track genre
-#   {{{year}}}            - Release year
-#   {{{composer}}}        - Track composer
-#   {{{conductor}}}       - Track conductor
-#   {{{album_artists}}}   - Album artists
-#   {{{track_number}}}    - Track position in album
-#   {{{track_total}}}     - Total tracks in album
-#   {{{disc_number}}}     - Disc number
-#   {{{disc_total}}}      - Total discs
-#   {{{bpm}}}             - Beats per minute
-#   {{{label}}}           - Record label
-#   {{{publisher}}}       - Publisher
-#   {{{recording_date}}}  - Recording date
-
-# Player Status:
-#   {{{player}}}          - Media player name
-#   {{{status}}}          - Player status
-#   {{{position}}}        - Current position (MM:SS)
-#   {{{length}}}          - Track length (MM:SS)
-
-# Technical Info:
-#   {{{sample_rate}}}     - Sample rate
-#   {{{audio_bitrate}}}   - Audio bitrate
-#   {{{channels}}}        - Number of channels
-#   {{{bit_depth}}}       - Bit depth
-#   {{{overall_bitrate}}} - Overall bitrate
