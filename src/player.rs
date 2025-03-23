@@ -7,9 +7,8 @@ use std::{
 use log::{debug, error, info, warn};
 use mpris::{Metadata, PlaybackStatus, Player, PlayerFinder};
 use smol_str::SmolStr;
-use tokio::sync::mpsc;
 
-use crate::{config::{get_config}, error::PlayerError, event::Event};
+use crate::{config::get_config, error::PlayerError};
 
 #[derive(Debug, Clone)]
 pub enum PlayerStateChange {
@@ -158,11 +157,10 @@ pub struct PlayerManager {
     player_finder: PlayerFinder,
     players: HashMap<PlayerId, Player>, // Store actual players for metadata access
     player_states: HashMap<PlayerId, PlayerState>,
-    event_tx: mpsc::Sender<Event>,
 }
 
 impl PlayerManager {
-    pub fn new(event_tx: mpsc::Sender<Event>) -> Result<Self, PlayerError> {
+    pub fn new() -> Result<Self, PlayerError> {
         info!("Initializing PlayerManager");
         let finder = PlayerFinder::new().map_err(PlayerError::DBus)?;
 
@@ -170,7 +168,6 @@ impl PlayerManager {
             player_finder: finder,
             players: HashMap::new(),
             player_states: HashMap::new(),
-            event_tx,
         })
     }
 

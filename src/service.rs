@@ -42,9 +42,7 @@ impl Service {
         let template_manager = template::TemplateManager::new(&config)?;
 
         debug!("Creating player manager");
-        let player_manager = Arc::new(Mutex::new(PlayerManager::new(
-            event_tx.clone(),
-        )?));
+        let player_manager = Arc::new(Mutex::new(PlayerManager::new()?));
 
         debug!("Creating presence manager");
         let presence_manager = presence::PresenceManager::new()?;

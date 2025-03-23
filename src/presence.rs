@@ -13,7 +13,6 @@ pub struct DiscordClientState {
     client: Arc<Mutex<DiscordClient>>,
     is_ready: Arc<AtomicBool>,
     last_used: Instant,
-    pending_activity: Arc<Mutex<Option<Activity>>>,
 }
 
 pub struct PresenceManager {
@@ -55,25 +54,17 @@ impl PresenceManager {
 
         // Get or create the Discord client
         if !self.discord_clients.contains_key(player_id) {
-            let client_state = self.create_client_state(app_id)?;
+            let client_state = self.create_client_state(app_id, activity.clone())?;
             self.discord_clients.insert(player_id.clone(), client_state);
-        }
+        } else if let Some(client_state) = self.discord_clients.get_mut(player_id) {
+            client_state.last_used = Instant::now();
 
-        let client_state = self.discord_clients.get_mut(player_id)
-            .ok_or_else(|| PresenceError::Update("Client unexpectedly missing".to_string()))?;
-
-        client_state.last_used = Instant::now();
-
-        if client_state.is_ready.load(Ordering::Relaxed) {
-            debug!("Client is ready, setting activity");
-            if let Ok(mut client) = client_state.client.lock() {
-                client.set_activity(|_| activity)
-                    .map_err(|e| PresenceError::Update(format!("Failed to update presence: {}", e)))?;
-            }
-        } else {
-            debug!("Client is not ready, storing activity for later");
-            if let Ok(mut pending) = client_state.pending_activity.lock() {
-                *pending = Some(activity);
+            if client_state.is_ready.load(Ordering::Relaxed) {
+                debug!("Client is ready, setting activity");
+                if let Ok(mut client) = client_state.client.lock() {
+                    client.set_activity(|_| activity)
+                        .map_err(|e| PresenceError::Update(format!("Failed to update presence: {}", e)))?;
+                }
             }
         }
 
@@ -96,7 +87,7 @@ impl PresenceManager {
         Ok(())
     }
 
-    fn create_client_state(&self, app_id: &str) -> Result<DiscordClientState, PresenceError> {
+    fn create_client_state(&self, app_id: &str, initial_activity: Activity) -> Result<DiscordClientState, PresenceError> {
         debug!("Creating new Discord client with app_id: {}", app_id);
 
         let app_id_u64 = app_id
@@ -105,46 +96,45 @@ impl PresenceManager {
 
         let client = Arc::new(Mutex::new(DiscordClient::new(app_id_u64)));
         let is_ready = Arc::new(AtomicBool::new(false));
-        let pending_activity = Arc::new(Mutex::new(None));
-
-        // Clone Arc once for each handler
-        let ready_on_ready = is_ready.clone();
-        let ready_on_disconnect = is_ready.clone();
-        let ready_on_error = is_ready.clone();
-        let pending_on_ready = pending_activity.clone();
-        let client_for_ready = client.clone();
-
+        
         // Setup handlers - just handle state changes
         if let Ok(mut discord_client) = client.lock() {
-            discord_client.on_ready(move |ctx| {
-                info!("Discord client ready: {:?}", ctx);
-                ready_on_ready.store(true, Ordering::Release);
-                
-                // Apply any pending activity
-                if let Ok(mut pending) = pending_on_ready.lock() {
-                    if let Some(pending_activity) = pending.take() {
-                        debug!("Applying pending activity");
-                        if let Ok(mut client) = client_for_ready.lock() {
-                            if let Err(e) = client.set_activity(|_| pending_activity) {
-                                error!("Failed to apply pending activity: {}", e);
-                            }
+            discord_client.on_ready({
+                let ready_flag = is_ready.clone();
+                let client_for_ready = client.clone();
+                let activity = initial_activity;
+                move |ctx| {
+                    info!("Discord client ready: {:?}", ctx);
+                    ready_flag.store(true, Ordering::Release);
+                    
+                    // Apply initial activity immediately when ready
+                    debug!("Applying initial activity");
+                    if let Ok(mut client) = client_for_ready.lock() {
+                        if let Err(e) = client.set_activity(|_| activity.clone()) {
+                            error!("Failed to apply initial activity: {}", e);
                         }
                     }
                 }
             }).persist();
 
-            discord_client.on_connected(move |ctx| {
+            discord_client.on_connected(|ctx| {
                 info!("Discord client connected: {:?}", ctx);
             }).persist();
 
-            discord_client.on_disconnected(move |_| {
-                info!("Discord client disconnected");
-                ready_on_disconnect.store(false, Ordering::Release);
+            discord_client.on_disconnected({
+                let ready_flag = is_ready.clone();
+                move |_| {
+                    info!("Discord client disconnected");
+                    ready_flag.store(false, Ordering::Release);
+                }
             }).persist();
 
-            discord_client.on_error(move |ctx| {
-                error!("Discord error: {:?}", ctx);
-                ready_on_error.store(false, Ordering::Release);
+            discord_client.on_error({
+                let ready_flag = is_ready.clone();
+                move |ctx| {
+                    error!("Discord error: {:?}", ctx);
+                    ready_flag.store(false, Ordering::Release);
+                }
             }).persist();
 
             discord_client.start();
@@ -154,7 +144,6 @@ impl PresenceManager {
             client,
             is_ready,
             last_used: Instant::now(),
-            pending_activity,
         })
     }
 
