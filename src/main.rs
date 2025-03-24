@@ -1,11 +1,11 @@
 use clap::Parser;
 use log::info;
 
-
 mod cli;
 mod config;
 mod cover;
 mod error;
+mod mprisence;
 mod utils;
 
 use std::alloc::System;
@@ -14,9 +14,8 @@ use std::alloc::System;
 static GLOBAL: System = System;
 
 mod player;
-mod presence;
-mod template;
 mod service;
+mod template;
 
 use crate::{cli::Cli, service::Service};
 

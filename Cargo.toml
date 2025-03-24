@@ -31,7 +31,6 @@ url = "2.5.4"
 blake3 = "1.7.0"
 async-trait = "0.1.88"
 discord-presence = { version = "1.5.0", features = ["activity_type"] }
-chrono = "0.4.40"
 reqwest = "0.12.15"
 musicbrainz_rs = { version = "0.9.0", features = ["async"] }
 imgbb = "1.3.0"

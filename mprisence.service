@@ -1,0 +1,15 @@
+[Unit]
+Description=Discord Rich Presence for MPRIS media players
+Documentation=https://github.com/lazykern/mprisence
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/mprisence
+Restart=on-failure
+RestartSec=5
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=default.target

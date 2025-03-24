@@ -37,6 +37,9 @@ pub enum ServiceInitError {
 
     #[error("Presence error: {0}")]
     Presence(#[from] PresenceError),
+
+    #[error("Failed to create player finder")]
+    DBus(#[from] DBusError),
 }
 
 #[derive(Error, Debug)]

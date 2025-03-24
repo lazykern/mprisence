@@ -33,24 +33,20 @@ pub struct PresenceManager {
 
 impl DiscordClientState {
     fn set_activity(&self, activity: Activity) -> Result<(), PresenceError> {
-        // Always store the activity, whether we can apply it now or not
-        if let Ok(mut current_activity) = self.activity.lock() {
-            *current_activity = Some(activity.clone());
-        }
-
         if self.got_ready_event.load(Ordering::Relaxed) {
             if let Ok(mut client) = self.client.lock() {
-                debug!("Setting activity immediately");
                 let payload = client.set_activity(|_| activity.clone()).map_err(|e| {
                     PresenceError::Update(format!("Failed to update presence: {}", e))
                 })?;
+                if let Ok(mut current_activity) = self.activity.lock() {
+                    *current_activity = payload.data;
+                }
                 Ok(())
             } else {
                 Err(PresenceError::Update("Failed to lock client".to_string()))
             }
         } else {
             // Store as pending activity if client is not ready
-            debug!("Storing activity as pending");
             if let Ok(mut pending) = self.pending_activity.lock() {
                 *pending = Some(activity);
                 Ok(())
@@ -184,70 +180,30 @@ impl DiscordClientState {
                     let activity = activity.clone();
                     let got_ready_event = got_ready_event.clone();
                     let reconnect_attempts = reconnect_attempts.clone();
-                    let connected = connected.clone();
                     move |ctx| {
                         info!("Discord client ready: {:?}", ctx);
                         got_ready_event.store(true, Ordering::Release);
                         error_occurred.store(false, Ordering::Release);
                         reconnect_attempts.store(0, Ordering::Release);
-                        connected.store(true, Ordering::Release);
 
-                        // First try to apply any pending activity
-                        let mut activity_to_apply = None;
+                        // Apply pending activity if any
                         if let Ok(mut pending_guard) = pending_activity.lock() {
-                            activity_to_apply = pending_guard.take();
-                        }
-
-                        // If no pending activity, try to use the last known activity
-                        if activity_to_apply.is_none() {
-                            if let Ok(current_activity) = activity.lock() {
-                                activity_to_apply = current_activity.clone();
-                            }
-                        }
-
-                        // Apply the activity if we have one
-                        if let Some(activity_to_apply) = activity_to_apply {
-                            debug!("Applying activity after ready event");
-                            if let Ok(mut client) = client.lock() {
-                                match client.set_activity(|_| activity_to_apply.clone()) {
-                                    Ok(payload) => {
-                                        if let Ok(mut current_activity) = activity.lock() {
-                                            *current_activity = payload.data;
+                            if let Some(pending_activity) = pending_guard.take() {
+                                debug!("Applying pending activity");
+                                if let Ok(mut client) = client.lock() {
+                                    match client.set_activity(|_| pending_activity.clone()) {
+                                        Ok(payload) => {
+                                            if let Ok(mut current_activity) = activity.lock() {
+                                                *current_activity = payload.data;
+                                            }
                                         }
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to apply activity after ready: {}", e);
+                                        Err(e) => {
+                                            error!("Failed to apply pending activity: {}", e);
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                })
-                .persist();
-
-            discord_client
-                .on_connected({
-                    let connected = connected.clone();
-                    let connecting = connecting.clone();
-                    let got_ready_event = got_ready_event.clone();
-                    move |ctx| {
-                        info!("Discord connected event: {:?}", ctx);
-                        connected.store(true, Ordering::Release);
-                        connecting.store(false, Ordering::Release);
-                    }
-                })
-                .persist();
-
-            discord_client
-                .on_disconnected({
-                    let connected = connected.clone();
-                    let connecting = connecting.clone();
-                    let got_ready_event = got_ready_event.clone();
-                    move |_| {
-                        info!("Discord disconnected event");
-                        connected.store(false, Ordering::Release);
-                        connecting.store(false, Ordering::Release);
-                        got_ready_event.store(false, Ordering::Release);
                     }
                 })
                 .persist();
@@ -268,6 +224,32 @@ impl DiscordClientState {
                         if let Ok(mut last_error) = last_error.lock() {
                             *last_error = Instant::now();
                         }
+                    }
+                })
+                .persist();
+
+            discord_client
+                .on_connected({
+                    let connected = connected.clone();
+                    let connecting = connecting.clone();
+                    move |ctx| {
+                        info!("Discord connected event: {:?}", ctx);
+                        connected.store(true, Ordering::Release);
+                        connecting.store(false, Ordering::Release);
+                    }
+                })
+                .persist();
+
+            discord_client
+                .on_disconnected({
+                    let connected = connected.clone();
+                    let connecting = connecting.clone();
+                    let got_ready_event = got_ready_event.clone();
+                    move |_| {
+                        info!("Discord disconnected event");
+                        connected.store(false, Ordering::Release);
+                        connecting.store(false, Ordering::Release);
+                        got_ready_event.store(false, Ordering::Release);
                     }
                 })
                 .persist();

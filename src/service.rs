@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -7,17 +8,18 @@ use crate::{
     config::{self, get_config},
     cover::CoverArtManager,
     error::{ServiceInitError, ServiceRuntimeError},
+    mprisence::Mprisence,
     player::{PlayerId, PlayerManager, PlayerState, PlayerStateChange},
-    presence, template, utils,
+    template, utils,
 };
 use discord_presence::models::Activity;
 use log::{debug, error, info, trace, warn};
-use mpris::{Metadata, PlaybackStatus};
+use mpris::{Metadata, PlaybackStatus, PlayerFinder};
 use tokio::sync::Mutex;
 
 pub struct Service {
-    player_manager: Arc<Mutex<PlayerManager>>,
-    presence_manager: presence::PresenceManager,
+    player_finder: PlayerFinder,
+    mprisences: HashMap<PlayerId, Mprisence>,
     template_manager: template::TemplateManager,
     cover_art_manager: CoverArtManager,
     config_rx: config::ConfigChangeReceiver,
@@ -34,78 +36,20 @@ impl Service {
         debug!("Creating player manager");
         let player_manager = Arc::new(Mutex::new(PlayerManager::new()?));
 
-        debug!("Creating presence manager");
-        let presence_manager = presence::PresenceManager::new()?;
-
         debug!("Creating cover art manager");
         let cover_art_manager = CoverArtManager::new(&config)?;
 
+        debug!("Creating player finder");
+        let player_finder = PlayerFinder::new()?;
+
         info!("Service initialization complete");
         Ok(Self {
-            player_manager,
-            presence_manager,
+            player_finder,
+            mprisences: HashMap::new(),
             template_manager,
             cover_art_manager,
             config_rx: get_config().subscribe(),
         })
-    }
-
-    async fn check_players(&mut self) -> Result<(), ServiceRuntimeError> {
-        let mut player_manager = self.player_manager.lock().await;
-        let state_changes = player_manager.check_players().await?;
-
-        // Process state changes
-        for change in state_changes {
-            match change {
-                PlayerStateChange::Updated(id, state) => {
-                    // Check if we should clear on pause
-                    if state.playback_status == PlaybackStatus::Paused
-                        && get_config().clear_on_pause()
-                    {
-                        if let Err(e) = self.presence_manager.clear_activity(&id) {
-                            error!("Failed to clear activity: {}", e);
-                        }
-                        continue;
-                    }
-
-                    // Skip empty activities for stopped players
-                    if state.playback_status == PlaybackStatus::Stopped {
-                        debug!("Skipping stopped player: {}", id);
-                        continue;
-                    }
-
-                    // Get full metadata
-                    let metadata = player_manager.get_metadata(&id)?;
-
-                    // Create activity
-                    let activity = self.create_activity(&id, &state, &metadata).await?;
-
-                    // Update presence with activity only if it contains data
-                    if activity.details.is_some()
-                        || activity.state.is_some()
-                        || activity.assets.is_some()
-                    {
-                        if let Err(e) = self.presence_manager.update_presence(&id, activity).await {
-                            error!("Failed to update presence: {}", e);
-                        }
-                    } else {
-                        debug!("Skipping empty activity for player: {}", id);
-                    }
-                }
-                PlayerStateChange::Removed(id) => {
-                    if let Err(e) = self.presence_manager.remove_presence(&id) {
-                        error!("Failed to remove presence: {}", e);
-                    }
-                }
-                PlayerStateChange::Cleared(id) => {
-                    if let Err(e) = self.presence_manager.clear_activity(&id) {
-                        error!("Failed to clear activity: {}", e);
-                    }
-                }
-            }
-        }
-
-        Ok(())
     }
 
     async fn handle_config_change(&mut self) -> Result<(), ServiceRuntimeError> {
@@ -116,7 +60,8 @@ impl Service {
         }
 
         // Update all active players to reflect new config
-        self.check_players().await
+        // self.check_players().await
+        Ok(())
     }
 
     async fn create_activity(
@@ -240,25 +185,48 @@ impl Service {
         Ok(activity)
     }
 
+    pub async fn update(&mut self) {
+        debug!("Updating Discord presence");
+        let mut current_ids = std::collections::HashSet::new();
+
+        trace!("Finding players");
+        for player in self.player_finder.iter_players().unwrap() {
+            let player = player.unwrap();
+            let id = PlayerId::from(&player);
+            current_ids.insert(id.clone());
+
+            debug!("Updating player {}", id);
+            if let Some(mprisence) = self.mprisences.get_mut(&id) {
+                if let Err(e) = mprisence.update(player) {
+                    debug!("Failed to update player {}: {}", id.identity, e);
+                }
+            } else {
+                debug!("New player added: {}", id.identity);
+                self.mprisences.insert(id, Mprisence::new(player));
+            }
+        }
+
+        // Now remove players that no longer exist
+        self.mprisences.retain(|id, mprisence| {
+            let keep = current_ids.contains(id);
+            if !keep {
+                debug!("Player removed: {}", id.identity);
+                let _ = mprisence.destroy();
+            }
+            keep
+        });
+    }
+
     pub async fn run(&mut self) -> Result<(), ServiceRuntimeError> {
         info!("Starting service main loop");
 
         let mut interval = tokio::time::interval(Duration::from_millis(get_config().interval()));
-        let mut client_check_interval = tokio::time::interval(Duration::from_secs(5)); // Check more frequently
 
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    trace!("Checking players");
-                    if let Err(e) = self.check_players().await {
-                        error!("Error checking players: {}", e);
-                    }
+                  self.update().await;
                 },
-
-                _ = client_check_interval.tick() => {
-                    self.presence_manager.check_clients().await;
-                },
-
                 Ok(change) = self.config_rx.recv() => {
                     match change {
                         config::ConfigChange::Updated | config::ConfigChange::Reloaded => {

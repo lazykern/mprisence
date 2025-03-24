@@ -171,7 +171,7 @@ impl PlayerManager {
         })
     }
 
-    pub async fn check_players(&mut self) -> Result<Vec<PlayerStateChange>, PlayerError> {
+    pub async fn get_changes(&mut self) -> Result<Vec<PlayerStateChange>, PlayerError> {
         let config = get_config();
         let polling_interval = config.interval();
 
