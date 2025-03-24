@@ -244,7 +244,7 @@ impl Service {
         info!("Starting service main loop");
 
         let mut interval = tokio::time::interval(Duration::from_millis(get_config().interval()));
-        let mut client_check_interval = tokio::time::interval(Duration::from_secs(10)); // Check more frequently
+        let mut client_check_interval = tokio::time::interval(Duration::from_secs(5)); // Check more frequently
 
         loop {
             tokio::select! {
