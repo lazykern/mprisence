@@ -74,9 +74,6 @@ pub enum PlayerError {
 
 #[derive(Error, Debug)]
 pub enum PresenceError {
-    #[error("Discord error: {0}")]
-    Discord(#[from] discord_presence::DiscordError),
-
     #[error("Invalid app ID: {0}")]
     InvalidAppId(String),
 

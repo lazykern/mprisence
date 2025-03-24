@@ -276,11 +276,11 @@ impl Default for CoverProviderConfig {
 pub struct ImgBBConfig {
     // API key for ImgBB service
     pub api_key: Option<String>,
-    
+
     // Optional expiration time in seconds (0 = no expiration)
     #[serde(default)]
     pub expiration: Option<u64>,
-    
+
     // Optional default name for uploaded images
     #[serde(default)]
     pub default_name: Option<String>,
@@ -301,7 +301,7 @@ impl Default for ActivityType {
     }
 }
 
-impl From<ActivityType> for discord_presence::models::ActivityType {
+impl From<ActivityType> for discord_rich_presence::activity::ActivityType {
     fn from(activity_type: ActivityType) -> Self {
         match activity_type {
             ActivityType::Listening => Self::Listening,

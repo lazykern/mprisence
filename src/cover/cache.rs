@@ -4,7 +4,6 @@ use mpris::Metadata;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{
-    collections::HashMap,
     fs, io,
     path::PathBuf,
     time::{Duration, SystemTime},

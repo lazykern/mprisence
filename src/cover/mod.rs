@@ -11,25 +11,25 @@ pub mod sources;
 
 use cache::CoverCache;
 use providers::CoverArtProvider;
-use sources::{ArtSource, extract_from_metadata, load_file};
+use sources::{extract_from_metadata, load_file, ArtSource};
 
 /// Main manager for cover art retrieval
-pub struct CoverArtManager {
+pub struct CoverManager {
     providers: Vec<Box<dyn CoverArtProvider>>,
     cache: CoverCache,
 }
 
-impl CoverArtManager {
+impl CoverManager {
     pub fn new(config: &Arc<config::ConfigManager>) -> Result<Self, error::CoverArtError> {
         debug!("Creating CoverArtManager");
         let cover_config = config.cover_config();
-        
+
         // Initialize cache with 24-hour TTL by default
         let cache = CoverCache::new(Duration::from_secs(24 * 60 * 60))?;
-        
+
         // Initialize providers based on config
         let mut providers: Vec<Box<dyn CoverArtProvider>> = Vec::new();
-        
+
         for provider_name in &cover_config.provider.provider {
             debug!("Adding provider: {}", provider_name);
             match provider_name.as_str() {
@@ -46,13 +46,16 @@ impl CoverArtManager {
                                 default_name: imgbb_config.default_name.clone(),
                                 // Add default timeout and user agent
                                 timeout: Some(30), // 30 seconds timeout
-                                user_agent: Some(format!("mprisence/{}", env!("CARGO_PKG_VERSION"))),
+                                user_agent: Some(format!(
+                                    "mprisence/{}",
+                                    env!("CARGO_PKG_VERSION")
+                                )),
                             };
-                            
-                            providers.push(Box::new(
-                                providers::imgbb::ImgbbProvider::with_config(provider_config)
-                            ));
-                            
+
+                            providers.push(Box::new(providers::imgbb::ImgbbProvider::with_config(
+                                provider_config,
+                            )));
+
                             debug!("Added ImgBB provider with API key");
                         } else {
                             warn!("ImgBB provider is disabled (no API key configured)");
@@ -64,7 +67,7 @@ impl CoverArtManager {
                 unknown => warn!("Unknown cover art provider: {}", unknown),
             }
         }
-        
+
         if providers.is_empty() {
             warn!("No cover art providers configured");
         }
@@ -78,16 +81,16 @@ impl CoverArtManager {
         metadata: &Metadata,
     ) -> Result<Option<String>, error::CoverArtError> {
         debug!("Starting cover art retrieval process");
-        
+
         // First check cache
         if let Some(url) = self.cache.get(metadata)? {
             debug!("Using cached URL: {}", url);
             return Ok(Some(url));
         }
-        
+
         // Extract source from metadata
         let source = extract_from_metadata(metadata)?;
-        
+
         match source {
             Some(ArtSource::DirectUrl(url)) => {
                 // Direct URL can be used as-is
@@ -117,7 +120,7 @@ impl CoverArtManager {
             }
         }
     }
-    
+
     /// Process a source through available providers
     async fn process_with_providers(
         &self,
@@ -127,7 +130,7 @@ impl CoverArtManager {
         for provider in &self.providers {
             if provider.supports_source_type(&source) {
                 info!("Trying provider: {}", provider.name());
-                
+
                 match provider.process(source.clone(), metadata).await {
                     Ok(Some(result)) => {
                         info!("Got URL from provider: {}", provider.name());
@@ -144,7 +147,7 @@ impl CoverArtManager {
                 }
             }
         }
-        
+
         info!("No cover art found from any provider");
         Ok(None)
     }
@@ -153,16 +156,16 @@ impl CoverArtManager {
 /// Clean up cache periodically
 pub async fn clean_cache() -> Result<(), error::CoverArtError> {
     info!("Starting cache cleanup");
-    
+
     // Create cache instance with 24-hour TTL (same as CoverArtManager)
     let cache = CoverCache::new(Duration::from_secs(24 * 60 * 60))?;
-    
+
     let cleaned = cache.clean()?;
     if cleaned > 0 {
         info!("Cleaned {} expired cache entries", cleaned);
     } else {
         debug!("No expired cache entries found");
     }
-    
+
     Ok(())
-} 
+}

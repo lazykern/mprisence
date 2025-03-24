@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use imgbb::{ImgBB, ImgBBBuilder, model::Response};
+use imgbb::{ImgBB, model::Response};
 use log::{debug, error, info, warn};
 use mpris::Metadata;
 use std::{borrow::Cow, time::Duration};
