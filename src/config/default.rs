@@ -53,6 +53,7 @@ pub struct RawCoverConfig {
 pub struct CoverProviderConfig {
     pub provider: Vec<String>,
     pub imgbb: Option<ImgBBConfig>,
+    pub expiration: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

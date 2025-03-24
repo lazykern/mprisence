@@ -161,7 +161,6 @@ impl Presence {
         let playback_status = player.get_playback_status().unwrap();
         let config = get_config();
 
-        // Early return cases: stopped or paused (when clear_on_pause is enabled)
         if playback_status == PlaybackStatus::Stopped
             || (config.clear_on_pause() && playback_status == PlaybackStatus::Paused)
         {
@@ -184,7 +183,6 @@ impl Presence {
         let player_config = config.player_config(player.identity());
         let as_elapsed = config.time_config().as_elapsed;
 
-        // Calculate timestamps if playing
         let (start_s, end_s) = if playback_status == PlaybackStatus::Playing {
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -208,10 +206,8 @@ impl Presence {
             (None, None)
         };
 
-        // Get activity texts from templates
         let activity_texts = self.template_manager.render_activity_texts(player)?;
 
-        // Get cover art URL
         let cover_art_url = match self.cover_manager.get_cover_art(&metadata).await {
             Ok(Some(url)) => {
                 info!("Found cover art URL for Discord");
@@ -231,7 +227,6 @@ impl Presence {
             }
         };
 
-        // Build the activity
         let activity_type = self.determine_activity_type(
             &config.activity_type_config(),
             &player_config,
@@ -240,7 +235,6 @@ impl Presence {
 
         let mut activity = Activity::default().activity_type(activity_type.into());
 
-        // Set details and state if available
         if !activity_texts.details.is_empty() {
             activity = activity.details(&activity_texts.details);
         }
@@ -249,7 +243,6 @@ impl Presence {
             activity = activity.state(&activity_texts.state);
         }
 
-        // Set timestamps
         if let Some(start) = start_s {
             activity = activity.timestamps({
                 let ts = Timestamps::default().start(start as i64);
@@ -261,10 +254,8 @@ impl Presence {
             });
         }
 
-        // Set assets (images and hover texts)
         let mut assets = Assets::default();
 
-        // Add cover art if available
         if let Some(img_url) = &cover_art_url {
             debug!("Setting Discord large image to: {}", img_url);
             assets = assets.large_image(img_url);
@@ -273,7 +264,6 @@ impl Presence {
             }
         }
 
-        // Add player icon if enabled
         if player_config.show_icon {
             debug!(
                 "Setting Discord small image to player icon: {}",
@@ -287,7 +277,6 @@ impl Presence {
 
         activity = activity.assets(assets);
 
-        // Set the activity
         self.discord_client
             .lock()
             .set_activity(activity)

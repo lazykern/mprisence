@@ -1,5 +1,4 @@
 use log::warn;
-use mime_guess::{mime, Mime};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -258,10 +257,17 @@ pub struct CoverProviderConfig {
 
     #[serde(default)]
     pub imgbb: Option<ImgBBConfig>,
+
+    #[serde(default)]
+    pub expiration: u64,
 }
 
 fn default_cover_providers() -> Vec<String> {
     get_default_config().cover.provider.provider.clone()
+}
+
+fn default_cover_expiration() -> u64 {
+    get_default_config().cover.provider.expiration
 }
 
 impl Default for CoverProviderConfig {
@@ -269,22 +275,16 @@ impl Default for CoverProviderConfig {
         CoverProviderConfig {
             provider: default_cover_providers(),
             imgbb: None,
+            expiration: default_cover_expiration(),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ImgBBConfig {
-    // API key for ImgBB service
     pub api_key: Option<String>,
-
-    // Optional expiration time in seconds (0 = no expiration)
     #[serde(default)]
     pub expiration: Option<u64>,
-
-    // Optional default name for uploaded images
-    #[serde(default)]
-    pub default_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Copy)]

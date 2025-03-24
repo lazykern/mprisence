@@ -22,8 +22,9 @@ file_names = ["cover", "folder", "front", "album", "art"]
 [cover.provider]
 provider = ["musicbrainz", "imgbb"]
 
-# [cover.provider.imgbb]
+[cover.provider.imgbb]
 # api_key = "<YOUR API KEY>"
+expiration = 86400 # 1 day
 
 [player]
 default = { ignore = false, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false }

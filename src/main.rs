@@ -123,11 +123,19 @@ impl Mprisence {
         info!("Starting service main loop");
 
         let mut interval = tokio::time::interval(Duration::from_millis(get_config().interval()));
+        // Add cache cleanup interval - run every 6 hours
+        let mut cache_cleanup_interval = tokio::time::interval(Duration::from_secs(6 * 60 * 60));
 
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                  self.update().await;
+                    self.update().await;
+                },
+                _ = cache_cleanup_interval.tick() => {
+                    debug!("Running periodic cache cleanup");
+                    if let Err(e) = cover::clean_cache().await {
+                        warn!("Cache cleanup failed: {}", e);
+                    }
                 },
                 Ok(change) = self.config_rx.recv() => {
                     match change {
@@ -146,7 +154,6 @@ impl Mprisence {
                         }
                     }
                 },
-
                 else => {
                     warn!("All event sources have closed, shutting down");
                     break;

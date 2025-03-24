@@ -106,6 +106,7 @@ provider = ["musicbrainz", "imgbb"]
 [cover.provider.imgbb]
 # Your ImgBB API key for cover art hosting
 # api_key = "YOUR_IMGBB_API_KEY"
+expiration = 86400 # 1 day
 
 # ------------------
 # Player Settings

@@ -19,9 +19,9 @@ pub enum CoverArtError {
     #[error("Cache error: {0}")]
     Cache(std::io::Error),
     
-    /// MusicBrainz API error
-    #[error("MusicBrainz error: {0}")]
-    MusicBrainz(#[from] musicbrainz_rs::Error),
+    /// Network error
+    #[error("Network error: {0}")]
+    NetworkError(String),
     
     /// Config error
     #[error("Config error: {0}")]

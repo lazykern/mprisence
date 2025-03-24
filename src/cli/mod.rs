@@ -42,26 +42,14 @@ impl Command {
     pub async fn execute(self) -> Result<(), Error> {
         match self {
             Command::Status => {
-                // Should show:
-                // - If service is running
-                // - Active players
-                // - Current playback if any
                 println!("TODO");
             }
 
             Command::Config { path, set } => {
-                // Should handle:
-                // - Show full config when no path
-                // - Show specific config value when path provided
-                // - Set config value when --set provided
                 println!("TODO");
             }
 
             Command::Players { name, set } => {
-                // Should handle:
-                // - List all detected players when no name
-                // - Show player details when name provided
-                // - Update player config when --set provided
                 println!("TODO");
             }
         }
