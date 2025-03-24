@@ -256,36 +256,45 @@ pub struct CoverProviderConfig {
     pub provider: Vec<String>,
 
     #[serde(default)]
-    pub imgbb: Option<ImgBBConfig>,
-
-    #[serde(default)]
-    pub expiration: u64,
+    pub imgbb: ImgBBConfig,
 }
 
 fn default_cover_providers() -> Vec<String> {
     get_default_config().cover.provider.provider.clone()
 }
 
-fn default_cover_expiration() -> u64 {
-    get_default_config().cover.provider.expiration
-}
 
 impl Default for CoverProviderConfig {
     fn default() -> Self {
         CoverProviderConfig {
             provider: default_cover_providers(),
-            imgbb: None,
-            expiration: default_cover_expiration(),
+            imgbb: ImgBBConfig::default(),
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImgBBConfig {
-    pub api_key: Option<String>,
     #[serde(default)]
-    pub expiration: Option<u64>,
+    pub api_key: Option<String>,
+    pub expiration: u64,
 }
+
+fn default_cover_imgbb_expiration() -> u64 {
+    get_default_config().cover.provider.imgbb.expiration
+}
+
+impl Default for ImgBBConfig {
+    fn default() -> Self {
+        Self {
+            api_key: None,
+            expiration: default_cover_imgbb_expiration(),
+        }
+    }
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Copy)]
 #[serde(rename_all = "lowercase")]

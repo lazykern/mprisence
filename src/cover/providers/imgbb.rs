@@ -8,39 +8,24 @@ use imgbb::ImgBB;
 
 use crate::cover::error::CoverArtError;
 use crate::cover::sources::ArtSource as ExternalArtSource;
+use crate::config::schema::ImgBBConfig;
 use super::{CoverArtProvider, CoverResult};
 
 // Discord Rich Presence optimized constants
 const THUMBNAIL_SIZE: u32 = 500; // Discord displays ~300-400px
 const JPEG_QUALITY: u8 = 85;
 
-/// Configuration options for ImgBB provider
-#[derive(Clone, Debug)]
-pub struct ImgbbConfig {
-    /// API key for ImgBB service
-    pub api_key: String,
-    /// Expiration time in seconds (0 = no expiration)
-    pub expiration: Option<u64>,
-}
-
-impl Default for ImgbbConfig {
-    fn default() -> Self {
-        Self {
-            api_key: String::new(),
-            expiration: None,
-        }
-    }
-}
 pub struct ImgbbProvider {
-    config: ImgbbConfig,
+    config: ImgBBConfig,
     client: Arc<ImgBB>,
 }
 
 impl ImgbbProvider {
-    pub fn with_config(config: ImgbbConfig) -> Self {
+    pub fn with_config(config: ImgBBConfig) -> Self {
         debug!("Creating ImgBB provider with custom config");
+        let api_key = config.api_key.clone().expect("API key must be provided");
         Self { 
-            client: Arc::new(ImgBB::new(config.api_key.clone())),
+            client: Arc::new(ImgBB::new(api_key)),
             config,
         }
     }
@@ -103,7 +88,7 @@ impl ImgbbProvider {
 
     /// Process different types of art sources and upload to ImgBB
     async fn upload_art_source<'a>(&self, source: &'a ImgbbArtSource<'a>, metadata: &Metadata) -> Result<Option<String>, CoverArtError> {
-        if self.config.api_key.is_empty() {
+        if self.config.api_key.is_none() {
             return Err(CoverArtError::provider_error(
                 "imgbb", 
                 "API key not configured"
@@ -113,22 +98,19 @@ impl ImgbbProvider {
         let image_name = self.generate_image_name(metadata);
         info!("Uploading to ImgBB with name: {}", image_name);
 
-        // Process and upload image based on source type
         let response = match source {
             ImgbbArtSource::Bytes(data) => {
                 info!("Processing binary data: {} bytes", data.len());
                 let processed_data = self.resize_if_needed(data)?;
                 info!("Uploading processed data: {} bytes with name: {}", processed_data.len(), image_name);
                 
-                // Configure uploader with all options
                 let mut builder = self.client.upload_builder()
                     .name(&image_name);
                 
-                if let Some(exp) = self.config.expiration.filter(|&exp| exp > 0) {
-                    builder = builder.expiration(exp);
+                if self.config.expiration > 0 {
+                    builder = builder.expiration(self.config.expiration);
                 }
                 
-                // Set the data and upload
                 builder.bytes(&processed_data)
                     .upload()
                     .await
@@ -142,22 +124,19 @@ impl ImgbbProvider {
                 let encoded = STANDARD.encode(&processed_data);
                 info!("Uploading processed base64 data with name: {}", image_name);
                 
-                // Configure uploader with all options
                 let mut builder = self.client.upload_builder()
                     .name(&image_name);
                 
-                if let Some(exp) = self.config.expiration.filter(|&exp| exp > 0) {
-                    builder = builder.expiration(exp);
+                if self.config.expiration > 0 {
+                    builder = builder.expiration(self.config.expiration);
                 }
                 
-                // Set the data and upload
                 builder.data(&encoded)
                     .upload()
                     .await
             }
         }.map_err(|e| CoverArtError::provider_error("imgbb", &format!("Upload failed: {}", e)))?;
 
-        // Extract URL from response
         let url = if let Some(data) = response.data {
             data.url.or(data.display_url)
         } else {
@@ -198,13 +177,11 @@ impl CoverArtProvider for ImgbbProvider {
     }
     
     async fn process(&self, source: ExternalArtSource, metadata: &Metadata) -> Result<Option<CoverResult>, CoverArtError> {
-        // Skip processing if API key is not configured
-        if self.config.api_key.is_empty() {
+        if self.config.api_key.is_none() {
             warn!("ImgBB provider is disabled (no API key configured)");
             return Ok(None);
         }
         
-        // Convert external source to our internal representation
         let internal_source = match source {
             ExternalArtSource::Bytes(data) => {
                 ImgbbArtSource::Bytes(Cow::Owned(data))
@@ -218,15 +195,14 @@ impl CoverArtProvider for ImgbbProvider {
             }
         };
         
-        // Upload the image and get URL
         match self.upload_art_source(&internal_source, metadata).await? {
             Some(url) => {
-                // Calculate expiration from configuration
-                let expiration = self.config.expiration
-                    .filter(|&exp| exp > 0)
-                    .map(|seconds| Duration::from_secs(seconds));
+                let expiration = if self.config.expiration > 0 {
+                    Some(Duration::from_secs(self.config.expiration))
+                } else {
+                    None
+                };
                 
-                // Create result with URL and expiration
                 let result = CoverResult {
                     url,
                     provider: self.name().to_string(),

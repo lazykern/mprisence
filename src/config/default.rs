@@ -46,20 +46,19 @@ pub struct RawTimeConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawCoverConfig {
     pub file_names: Vec<String>,
-    pub provider: CoverProviderConfig,
+    pub provider: RawCoverProviderConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CoverProviderConfig {
+pub struct RawCoverProviderConfig {
     pub provider: Vec<String>,
-    pub imgbb: Option<ImgBBConfig>,
-    pub expiration: u64,
+    pub imgbb: RawImgBBConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ImgBBConfig {
+pub struct RawImgBBConfig {
     pub api_key: Option<String>,
-    pub expiration: Option<u64>,
+    pub expiration: u64,
     pub default_name: Option<String>,
 }
 

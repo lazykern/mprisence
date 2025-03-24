@@ -34,23 +34,14 @@ impl CoverManager {
                     providers.push(Box::new(providers::musicbrainz::MusicbrainzProvider::new()));
                 }
                 "imgbb" => {
-                    if let Some(imgbb_config) = &cover_config.provider.imgbb {
-                        if let Some(api_key) = &imgbb_config.api_key {
-                            let provider_config = providers::imgbb::ImgbbConfig {
-                                api_key: api_key.clone(),
-                                expiration: imgbb_config.expiration,
-                            };
-
-                            providers.push(Box::new(providers::imgbb::ImgbbProvider::with_config(
-                                provider_config,
+                    let imgbb_config = &cover_config.provider.imgbb;
+                    if let Some(_) = &imgbb_config.api_key {
+                        debug!("Adding ImgBB provider with API key");
+                        providers.push(Box::new(providers::imgbb::ImgbbProvider::with_config(
+                                imgbb_config.clone(),
                             )));
-
-                            debug!("Added ImgBB provider with API key");
-                        } else {
-                            warn!("ImgBB provider is disabled (no API key configured)");
-                        }
                     } else {
-                        warn!("ImgBB provider is disabled (no configuration)");
+                        warn!("ImgBB provider is disabled (no API key configured)");
                     }
                 }
                 unknown => warn!("Unknown cover art provider: {}", unknown),
