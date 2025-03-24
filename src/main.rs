@@ -5,7 +5,7 @@ mod cli;
 mod config;
 mod cover;
 mod error;
-mod mprisence;
+mod presence;
 mod utils;
 
 use std::alloc::System;

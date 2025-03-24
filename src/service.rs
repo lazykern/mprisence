@@ -7,9 +7,9 @@ use std::{
 use crate::{
     config::{self, get_config},
     cover::CoverManager,
-    error::{ServiceInitError, ServiceRuntimeError},
-    mprisence::Mprisence,
-    player::PlayerId,
+    error::ServiceError,
+    presence::Presence,
+    player::PlayerIdentifier,
     template,
 };
 use log::{debug, error, info, trace, warn};
@@ -17,14 +17,14 @@ use mpris::PlayerFinder;
 
 pub struct Service {
     player_finder: PlayerFinder,
-    mprisences: HashMap<PlayerId, Mprisence>,
+    presences: HashMap<PlayerIdentifier, Presence>,
     template_manager: Arc<template::TemplateManager>,
     cover_manager: Arc<CoverManager>,
     config_rx: config::ConfigChangeReceiver,
 }
 
 impl Service {
-    pub fn new() -> Result<Self, ServiceInitError> {
+    pub fn new() -> Result<Self, ServiceError> {
         info!("Initializing service components");
 
         debug!("Creating template manager");
@@ -40,14 +40,14 @@ impl Service {
         info!("Service initialization complete");
         Ok(Self {
             player_finder,
-            mprisences: HashMap::new(),
+            presences: HashMap::new(),
             template_manager,
             cover_manager,
             config_rx: get_config().subscribe(),
         })
     }
 
-    async fn handle_config_change(&mut self) -> Result<(), ServiceRuntimeError> {
+    async fn handle_config_change(&mut self) -> Result<(), ServiceError> {
         Ok(())
     }
 
@@ -58,19 +58,19 @@ impl Service {
         trace!("Finding players");
         for player in self.player_finder.iter_players().unwrap() {
             let player = player.unwrap();
-            let id = PlayerId::from(&player);
+            let id = PlayerIdentifier::from(&player);
             current_ids.insert(id.clone());
 
             debug!("Updating player {}", id);
-            if let Some(mprisence) = self.mprisences.get_mut(&id) {
-                if let Err(e) = mprisence.update(player).await {
+            if let Some(presence) = self.presences.get_mut(&id) {
+                if let Err(e) = presence.update(player).await {
                     debug!("Failed to update player {}: {}", id.identity, e);
                 }
             } else {
                 debug!("New player added: {}", id.identity);
-                self.mprisences.insert(
+                self.presences.insert(
                     id,
-                    Mprisence::new(
+                    Presence::new(
                         player,
                         self.template_manager.clone(),
                         self.cover_manager.clone(),
@@ -80,17 +80,17 @@ impl Service {
         }
 
         // Now remove players that no longer exist
-        self.mprisences.retain(|id, mprisence| {
+        self.presences.retain(|id, presence| {
             let keep = current_ids.contains(id);
             if !keep {
                 debug!("Player removed: {}", id.identity);
-                let _ = mprisence.destroy();
+                let _ = presence.destroy();
             }
             keep
         });
     }
 
-    pub async fn run(&mut self) -> Result<(), ServiceRuntimeError> {
+    pub async fn run(&mut self) -> Result<(), ServiceError> {
         info!("Starting service main loop");
 
         let mut interval = tokio::time::interval(Duration::from_millis(get_config().interval()));

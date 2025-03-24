@@ -1,15 +1,12 @@
 use crate::config;
 use crate::cover;
-use mpris::{DBusError, FindingError};
+use mpris::DBusError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Service initialization error: {0}")]
-    ServiceInit(#[from] ServiceInitError),
-
-    #[error("Service runtime error: {0}")]
-    ServiceRuntime(#[from] ServiceRuntimeError),
+    #[error("Service error: {0}")]
+    Service(#[from] ServiceError),
 
     #[error("CLI error: {0}")]
     Cli(#[from] clap::Error),
@@ -22,10 +19,7 @@ pub enum Error {
 }
 
 #[derive(Error, Debug)]
-pub enum ServiceInitError {
-    #[error("Failed to initialize player: {0}")]
-    Player(#[from] PlayerError),
-
+pub enum ServiceError {
     #[error("Failed to initialize template: {0}")]
     Template(#[from] TemplateError),
 
@@ -35,73 +29,30 @@ pub enum ServiceInitError {
     #[error("Failed to initialize cover art: {0}")]
     CoverArt(#[from] cover::error::CoverArtError),
 
-    #[error("Presence error: {0}")]
-    Presence(#[from] PresenceError),
-
     #[error("Failed to create player finder")]
     DBus(#[from] DBusError),
 }
 
 #[derive(Error, Debug)]
-pub enum ServiceRuntimeError {
-    #[error("Player error: {0}")]
-    Player(#[from] PlayerError),
+pub enum MprisenceError {
+    #[error("Invalid player: {0}")]
+    InvalidPlayer(String),
 
-    #[error("Presence error: {0}")]
-    Presence(#[from] PresenceError),
+    #[error("Discord error: {0}")]
+    Discord(String),
+
+    #[error("Failed to create player finder")]
+    DBus(#[from] DBusError),
 
     #[error("Template error: {0}")]
     Template(#[from] TemplateError),
-
-    #[error("Config error: {0}")]
-    Config(#[from] config::ConfigError),
-}
-
-#[derive(Error, Debug)]
-pub enum PlayerError {
-    #[error("DBus error: {0}")]
-    DBus(#[from] DBusError),
-
-    #[error("Finding error: {0}")]
-    Finding(#[from] FindingError),
-
-    #[error("Config access error: {0}")]
-    Config(#[from] config::ConfigError),
-
-    #[error("General error: {0}")]
-    General(String),
-}
-
-#[derive(Error, Debug)]
-pub enum PresenceError {
-    #[error("Invalid app ID: {0}")]
-    InvalidAppId(String),
-
-    #[error("Failed to update presence: {0}")]
-    Update(String),
-
-    #[error("Config access error: {0}")]
-    Config(#[from] config::ConfigError),
 }
 
 #[derive(Error, Debug)]
 pub enum TemplateError {
     #[error("Template render error: {0}")]
-    Render(#[from] handlebars::RenderError),
+    HandlebarsRender(#[from] handlebars::RenderError),
 
     #[error("Template error: {0}")]
-    Template(#[from] handlebars::TemplateError),
-}
-
-// Provide some convenience conversions for common error situations
-impl From<String> for PlayerError {
-    fn from(msg: String) -> Self {
-        PlayerError::General(msg)
-    }
-}
-
-impl From<&str> for PlayerError {
-    fn from(msg: &str) -> Self {
-        PlayerError::General(msg.to_string())
-    }
+    HandlebarsTemplate(#[from] handlebars::TemplateError),
 }

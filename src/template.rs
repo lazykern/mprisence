@@ -1,11 +1,11 @@
-use log::{debug, info};
+use log::info;
 use std::sync::Arc;
 
 use handlebars::{handlebars_helper, Handlebars};
 use mpris::{PlaybackStatus, Player};
 
 use crate::{
-    config::{get_config, ConfigManager},
+    config::ConfigManager,
     error::TemplateError,
     utils::format_duration,
 };
@@ -43,23 +43,6 @@ impl TemplateManager {
         Ok(Self { handlebars })
     }
 
-    pub fn reload(&mut self, config: &Arc<ConfigManager>) -> Result<(), TemplateError> {
-        debug!("Reloading templates");
-        let template_config = config.template_config();
-
-        // Reregister all templates without recreating Handlebars instance
-        self.handlebars
-            .register_template_string("detail", &template_config.detail)?;
-        self.handlebars
-            .register_template_string("state", &template_config.state)?;
-        self.handlebars
-            .register_template_string("large_text", &template_config.large_text)?;
-        self.handlebars
-            .register_template_string("small_text", &template_config.small_text)?;
-
-        Ok(())
-    }
-
     pub fn render(
         &self,
         template_name: &str,
@@ -90,8 +73,6 @@ impl TemplateManager {
 
     pub fn create_data(player: Player) -> BTreeMap<String, String> {
         let mut data = BTreeMap::new();
-        let config = get_config();
-        let template_config = config.template_config();
 
         // Player information
         data.insert("player".to_string(), player.identity().to_string());

@@ -10,51 +10,27 @@ use discord_rich_presence::{
     activity::{Activity, Assets, Timestamps},
     DiscordIpc, DiscordIpcClient,
 };
-use log::{debug, error, info, trace, warn};
-use mpris::{DBusError, PlaybackStatus, Player};
+use log::{debug, info, trace, warn};
+use mpris::{PlaybackStatus, Player};
 use parking_lot::Mutex;
-use thiserror::Error;
 
 use crate::{
-    config::get_config, cover::CoverManager, error::TemplateError, player::PlayerState,
+    config::get_config, cover::CoverManager, error::MprisenceError, player::PlaybackState,
     template::TemplateManager, utils,
 };
 
-#[derive(Error, Debug)]
-pub enum MprisenceError {
-    #[error("Invalid player: {0}")]
-    InvalidPlayer(String),
 
-    #[error("Player not found")]
-    PlayerNotFound,
-
-    #[error("Player metadata error: {0}")]
-    MetadataError(String),
-
-    #[error("Configuration error: {0}")]
-    ConfigError(String),
-
-    #[error("Discord error: {0}")]
-    DiscordError(String),
-
-    #[error("Failed to create player finder")]
-    DBus(#[from] DBusError),
-
-    #[error("Template error: {0}")]
-    Template(#[from] TemplateError),
-}
-
-pub struct Mprisence {
+pub struct Presence {
     player: Player,
     template_manager: Arc<TemplateManager>,
     cover_manager: Arc<CoverManager>,
-    last_player_state: Option<PlayerState>,
+    last_player_state: Option<PlaybackState>,
     discord_client: Arc<Mutex<DiscordIpcClient>>,
     should_connect: AtomicBool,
     should_reconnect: AtomicBool,
 }
 
-impl Mprisence {
+impl Presence {
     pub fn new(
         player: Player,
         template_manager: Arc<TemplateManager>,
@@ -87,27 +63,25 @@ impl Mprisence {
             )));
         }
 
-        println!("Updating presence for player: {}", player.identity());
-
         if self.should_connect.load(Ordering::Relaxed) {
             if let Err(err) = self.discord_client.lock().connect() {
-                return Err(MprisenceError::DiscordError(err.to_string()));
+                return Err(MprisenceError::Discord(err.to_string()));
             }
             self.should_connect.store(false, Ordering::Relaxed);
         }
 
         if self.should_reconnect.load(Ordering::Relaxed) {
             if let Err(err) = self.discord_client.lock().reconnect() {
-                return Err(MprisenceError::DiscordError(err.to_string()));
+                return Err(MprisenceError::Discord(err.to_string()));
             }
             self.should_reconnect.store(false, Ordering::Relaxed);
         }
 
-        let new_state = PlayerState::from(&player);
+        let new_state = PlaybackState::from(&player);
 
         let should_update = match &self.last_player_state {
             Some(previous_state) => {
-                let has_relevant_changes = new_state.has_metadata_changes(previous_state);
+                let has_relevant_changes = new_state.has_significant_changes(previous_state);
                 let has_position_jump = new_state.has_position_jump(
                     previous_state,
                     Duration::from_millis(get_config().interval()),
@@ -128,10 +102,10 @@ impl Mprisence {
 
         if let Err(err) = self.update_activity(player).await {
             match err {
-                MprisenceError::DiscordError(err) => {
+                MprisenceError::Discord(err) => {
                     self.last_player_state = None;
                     self.should_reconnect.store(true, Ordering::Relaxed);
-                    return Err(MprisenceError::DiscordError(err.to_string()));
+                    return Err(MprisenceError::Discord(err.to_string()));
                 }
                 _ => (),
             }
@@ -150,7 +124,7 @@ impl Mprisence {
         if player.get_playback_status().unwrap() == PlaybackStatus::Stopped {
             debug!("Player is stopped, returning empty activity");
             if let Err(err) = self.discord_client.lock().clear_activity() {
-                return Err(MprisenceError::DiscordError(err.to_string()));
+                return Err(MprisenceError::Discord(err.to_string()));
             }
             return Ok(());
         }
@@ -162,7 +136,7 @@ impl Mprisence {
         if config.clear_on_pause() && playback_status == PlaybackStatus::Paused {
             debug!("Player is paused, clearing activity");
             if let Err(err) = self.discord_client.lock().clear_activity() {
-                return Err(MprisenceError::DiscordError(err.to_string()));
+                return Err(MprisenceError::Discord(err.to_string()));
             }
             return Ok(());
         }
@@ -274,7 +248,7 @@ impl Mprisence {
         });
 
         if let Err(err) = self.discord_client.lock().set_activity(activity) {
-            return Err(MprisenceError::DiscordError(err.to_string()));
+            return Err(MprisenceError::Discord(err.to_string()));
         }
         Ok(())
     }
