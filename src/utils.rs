@@ -1,3 +1,4 @@
+use mime_guess::Mime;
 use url::Url;
 
 pub fn to_snake_case(input: &str) -> String {
@@ -42,15 +43,12 @@ pub fn format_duration(seconds: u64) -> String {
     format!("{:02}:{:02}", seconds / 60, seconds % 60)
 }
 
-/// Try to determine content type from metadata
-pub fn get_content_type_from_metadata(url: &str) -> Option<String> {
-    // Check if we have a URL that might indicate content type
-    // Try to parse it as a URL first
+pub fn get_content_type_from_metadata(url: &str) -> Option<Mime> {
     if let Ok(parsed_url) = Url::parse(url) {
         let path = parsed_url.path();
         let guess = mime_guess::from_path(path);
         if let Some(mime_type) = guess.first() {
-            return Some(mime_type.to_string());
+            return Some(mime_type);
         }
     }
 

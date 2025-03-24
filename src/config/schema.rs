@@ -1,4 +1,5 @@
 use log::warn;
+use mime_guess::{mime, Mime};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -390,33 +391,5 @@ impl Default for PlayerConfig {
             allow_streaming: default_player_allow_streaming(),
             override_activity_type: None,
         }
-    }
-}
-
-impl PlayerConfig {
-    pub fn activity_type(&self, content_type: Option<&str>) -> ActivityType {
-        // First check if there's an override specifically for this player
-        if let Some(override_type) = &self.override_activity_type {
-            return *override_type;
-        }
-
-        // If there's no override and content type detection is enabled,
-        // determine based on content type
-        let config = get_default_config();
-        if config.activity_type.use_content_type {
-            if let Some(content) = content_type {
-                // Avoid allocations by not using to_lowercase() on every call
-                if content.starts_with("audio/") {
-                    return ActivityType::Listening;
-                } else if content.starts_with("video/") {
-                    return ActivityType::Watching;
-                } else if content.starts_with("image/") {
-                    return ActivityType::Watching;
-                }
-            }
-        }
-
-        // Fallback to default
-        config.activity_type.default
     }
 }

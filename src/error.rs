@@ -5,8 +5,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Service error: {0}")]
-    Service(#[from] ServiceError),
+    #[error("Mprisence error: {0}")]
+    Mprisence(#[from] MprisenceError),
 
     #[error("CLI error: {0}")]
     Cli(#[from] clap::Error),
@@ -19,7 +19,7 @@ pub enum Error {
 }
 
 #[derive(Error, Debug)]
-pub enum ServiceError {
+pub enum MprisenceError {
     #[error("Failed to initialize template: {0}")]
     Template(#[from] TemplateError),
 
@@ -31,18 +31,27 @@ pub enum ServiceError {
 
     #[error("Failed to create player finder")]
     DBus(#[from] DBusError),
+
+    #[error("Discord error: {0}")]
+    Discord(#[from] DiscordError),
 }
 
 #[derive(Error, Debug)]
-pub enum MprisenceError {
+pub enum DiscordError {
+    #[error("Failed to connect to Discord: {0}")]
+    ConnectionError(String),
+
+    #[error("Failed to set activity: {0}")]
+    ActivityError(String),
+
+    #[error("Failed to clear activity: {0}")]
+    ClearActivityError(String),
+
+    #[error("Failed to reconnect: {0}")]
+    ReconnectionError(String),
+
     #[error("Invalid player: {0}")]
     InvalidPlayer(String),
-
-    #[error("Discord error: {0}")]
-    Discord(String),
-
-    #[error("Failed to create player finder")]
-    DBus(#[from] DBusError),
 
     #[error("Template error: {0}")]
     Template(#[from] TemplateError),

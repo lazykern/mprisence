@@ -11,14 +11,21 @@ use discord_rich_presence::{
     DiscordIpc, DiscordIpcClient,
 };
 use log::{debug, info, trace, warn};
+use mime_guess::mime;
 use mpris::{PlaybackStatus, Player};
 use parking_lot::Mutex;
 
 use crate::{
-    config::get_config, cover::CoverManager, error::MprisenceError, player::PlaybackState,
-    template::TemplateManager, utils,
+    config::{
+        get_config,
+        schema::{ActivityType, ActivityTypesConfig, PlayerConfig},
+    },
+    cover::CoverManager,
+    error::DiscordError,
+    player::PlaybackState,
+    template::TemplateManager,
+    utils,
 };
-
 
 pub struct Presence {
     player: Player,
@@ -51,99 +58,131 @@ impl Presence {
         }
     }
 
-    pub async fn update(&mut self, player: Player) -> Result<(), MprisenceError> {
+    pub async fn update(&mut self, player: Player) -> Result<(), DiscordError> {
+        self.validate_player(&player)?;
+
+        self.ensure_connection()?;
+
+        let new_state = PlaybackState::from(&player);
+        let should_update = self
+            .last_player_state
+            .as_ref()
+            .map(|previous_state| {
+                new_state.has_significant_changes(previous_state)
+                    || new_state.has_position_jump(
+                        previous_state,
+                        Duration::from_millis(get_config().interval()),
+                    )
+            })
+            .unwrap_or(true);
+
+        if !should_update {
+            trace!("Skipping update due to no relevant changes");
+            self.last_player_state = Some(new_state);
+            return Ok(());
+        }
+
+        self.last_player_state = Some(new_state);
+        self.update_activity(player).await.map_err(|err| {
+            if matches!(
+                err,
+                DiscordError::ConnectionError(_) | DiscordError::ReconnectionError(_)
+            ) {
+                self.last_player_state = None;
+                self.should_reconnect.store(true, Ordering::Relaxed);
+            }
+            err
+        })
+    }
+
+    fn validate_player(&self, player: &Player) -> Result<(), DiscordError> {
         if player.identity() != self.player.identity()
             || player.bus_name() != self.player.bus_name()
             || player.unique_name() != self.player.unique_name()
         {
-            return Err(MprisenceError::InvalidPlayer(format!(
+            return Err(DiscordError::InvalidPlayer(format!(
                 "Expected {}, got {}",
                 self.player.identity(),
                 player.identity()
             )));
         }
+        Ok(())
+    }
 
+    fn ensure_connection(&self) -> Result<(), DiscordError> {
         if self.should_connect.load(Ordering::Relaxed) {
-            if let Err(err) = self.discord_client.lock().connect() {
-                return Err(MprisenceError::Discord(err.to_string()));
-            }
+            self.discord_client
+                .lock()
+                .connect()
+                .map_err(|err| DiscordError::ConnectionError(err.to_string()))?;
             self.should_connect.store(false, Ordering::Relaxed);
         }
 
         if self.should_reconnect.load(Ordering::Relaxed) {
-            if let Err(err) = self.discord_client.lock().reconnect() {
-                return Err(MprisenceError::Discord(err.to_string()));
-            }
+            self.discord_client
+                .lock()
+                .reconnect()
+                .map_err(|err| DiscordError::ReconnectionError(err.to_string()))?;
             self.should_reconnect.store(false, Ordering::Relaxed);
-        }
-
-        let new_state = PlaybackState::from(&player);
-
-        let should_update = match &self.last_player_state {
-            Some(previous_state) => {
-                let has_relevant_changes = new_state.has_significant_changes(previous_state);
-                let has_position_jump = new_state.has_position_jump(
-                    previous_state,
-                    Duration::from_millis(get_config().interval()),
-                );
-
-                has_relevant_changes || has_position_jump
-            }
-            None => true, // Always update if there's no previous state
-        };
-
-        if !should_update {
-            trace!("Skipping update due to no relevant changes");
-            self.last_player_state = Some(new_state); // Still update the state even if we don't update Discord
-            return Ok(());
-        }
-
-        self.last_player_state = Some(new_state);
-
-        if let Err(err) = self.update_activity(player).await {
-            match err {
-                MprisenceError::Discord(err) => {
-                    self.last_player_state = None;
-                    self.should_reconnect.store(true, Ordering::Relaxed);
-                    return Err(MprisenceError::Discord(err.to_string()));
-                }
-                _ => (),
-            }
         }
         Ok(())
     }
 
-    pub fn destroy(&mut self) -> Result<(), MprisenceError> {
+    pub fn destroy(&mut self) -> Result<(), DiscordError> {
         self.discord_client.lock().close().unwrap();
         Ok(())
     }
 
-    async fn update_activity(&self, player: Player) -> Result<(), MprisenceError> {
-        let playback_status = player.get_playback_status().unwrap();
-
-        if player.get_playback_status().unwrap() == PlaybackStatus::Stopped {
-            debug!("Player is stopped, returning empty activity");
-            if let Err(err) = self.discord_client.lock().clear_activity() {
-                return Err(MprisenceError::Discord(err.to_string()));
-            }
-            return Ok(());
+    fn determine_activity_type(
+        &self,
+        activity_type_config: &ActivityTypesConfig,
+        player_config: &PlayerConfig,
+        metadata_url: Option<&str>,
+    ) -> ActivityType {
+        if let Some(override_type) = player_config.override_activity_type {
+            return override_type;
         }
 
-        let config = get_config();
-        let player_config = config.player_config(player.identity());
-        let as_elapsed = config.time_config().as_elapsed;
-
-        if config.clear_on_pause() && playback_status == PlaybackStatus::Paused {
-            debug!("Player is paused, clearing activity");
-            if let Err(err) = self.discord_client.lock().clear_activity() {
-                return Err(MprisenceError::Discord(err.to_string()));
+        if activity_type_config.use_content_type && metadata_url.is_some() {
+            if let Some(content_type) = metadata_url.and_then(utils::get_content_type_from_metadata)
+            {
+                match content_type.type_() {
+                    mime::AUDIO => return ActivityType::Listening,
+                    mime::VIDEO | mime::IMAGE => return ActivityType::Watching,
+                    _ => {}
+                }
             }
+        }
+
+        activity_type_config.default
+    }
+
+    async fn update_activity(&self, player: Player) -> Result<(), DiscordError> {
+        let playback_status = player.get_playback_status().unwrap();
+        let config = get_config();
+
+        // Early return cases: stopped or paused (when clear_on_pause is enabled)
+        if playback_status == PlaybackStatus::Stopped
+            || (config.clear_on_pause() && playback_status == PlaybackStatus::Paused)
+        {
+            debug!(
+                "Player is {}, clearing activity",
+                if playback_status == PlaybackStatus::Stopped {
+                    "stopped"
+                } else {
+                    "paused"
+                }
+            );
+            self.discord_client
+                .lock()
+                .clear_activity()
+                .map_err(|err| DiscordError::ClearActivityError(err.to_string()))?;
             return Ok(());
         }
 
         let metadata = player.get_metadata().unwrap();
-
-        let length = metadata.length().unwrap_or_default();
+        let player_config = config.player_config(player.identity());
+        let as_elapsed = config.time_config().as_elapsed;
 
         // Calculate timestamps if playing
         let (start_s, end_s) = if playback_status == PlaybackStatus::Playing {
@@ -151,56 +190,28 @@ impl Presence {
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards");
 
-            let start_dur = now
-                .checked_sub(player.get_position().unwrap_or_default())
-                .unwrap_or_default();
-            let start_s = start_dur.as_secs() as i64;
+            let position = player.get_position().unwrap_or_default();
+            let start_dur = now.checked_sub(position).unwrap_or_default();
+            let start_s = Some(start_dur.as_secs() as u64);
 
-            let mut end_s = None;
-            if !as_elapsed && !length.is_zero() {
-                let end = start_dur.checked_add(length).unwrap_or_default();
-                end_s = Some(end.as_secs() as i64);
-            }
+            let length = metadata.length().unwrap_or_default();
+            let end_s = if !as_elapsed && !length.is_zero() {
+                start_dur
+                    .checked_add(length)
+                    .map(|end| end.as_secs() as u64)
+            } else {
+                None
+            };
 
-            (Some(start_s as u64), end_s.map(|s| s as u64))
+            (start_s, end_s)
         } else {
             (None, None)
         };
 
-        let mut activity = Activity::default();
-
-        if let Some(url) = metadata.url() {
-            let content_type = utils::get_content_type_from_metadata(url);
-            let activity_type = player_config.activity_type(content_type.as_deref());
-
-            activity = activity.activity_type(activity_type.into());
-        } else {
-            let activity_type = player_config.activity_type(None);
-            activity = activity.activity_type(activity_type.into());
-        }
-
+        // Get activity texts from templates
         let activity_texts = self.template_manager.render_activity_texts(player)?;
 
-        if !activity_texts.details.is_empty() {
-            activity = activity.details(&activity_texts.details);
-        }
-
-        if !activity_texts.state.is_empty() {
-            activity = activity.state(&activity_texts.state);
-        }
-
-        if let Some(start) = start_s {
-            activity = activity.timestamps({
-                let ts = Timestamps::default();
-                if let Some(end) = end_s {
-                    ts.start(start as i64).end(end as i64)
-                } else {
-                    ts.start(start as i64)
-                }
-            });
-        }
-
-        // Get cover art URL using cover art manager
+        // Get cover art URL
         let cover_art_url = match self.cover_manager.get_cover_art(&metadata).await {
             Ok(Some(url)) => {
                 info!("Found cover art URL for Discord");
@@ -220,36 +231,68 @@ impl Presence {
             }
         };
 
-        activity = activity.assets({
-            let mut assets = Assets::default();
+        // Build the activity
+        let activity_type = self.determine_activity_type(
+            &config.activity_type_config(),
+            &player_config,
+            metadata.url(),
+        );
 
-            // Set large image (album art) if available
-            if let Some(img_url) = &cover_art_url {
-                debug!("Setting Discord large image to: {}", img_url);
-                assets = assets.large_image(img_url);
-                if !activity_texts.large_text.is_empty() {
-                    assets = assets.large_text(&activity_texts.large_text);
-                }
-            }
+        let mut activity = Activity::default().activity_type(activity_type.into());
 
-            // Set small image (player icon) if enabled
-            if player_config.show_icon {
-                debug!(
-                    "Setting Discord small image to player icon: {}",
-                    player_config.icon
-                );
-                assets = assets.small_image(player_config.icon.as_str());
-                if !activity_texts.small_text.is_empty() {
-                    assets = assets.small_text(&activity_texts.small_text);
-                }
-            }
-
-            assets
-        });
-
-        if let Err(err) = self.discord_client.lock().set_activity(activity) {
-            return Err(MprisenceError::Discord(err.to_string()));
+        // Set details and state if available
+        if !activity_texts.details.is_empty() {
+            activity = activity.details(&activity_texts.details);
         }
+
+        if !activity_texts.state.is_empty() {
+            activity = activity.state(&activity_texts.state);
+        }
+
+        // Set timestamps
+        if let Some(start) = start_s {
+            activity = activity.timestamps({
+                let ts = Timestamps::default().start(start as i64);
+                if let Some(end) = end_s {
+                    ts.end(end as i64)
+                } else {
+                    ts
+                }
+            });
+        }
+
+        // Set assets (images and hover texts)
+        let mut assets = Assets::default();
+
+        // Add cover art if available
+        if let Some(img_url) = &cover_art_url {
+            debug!("Setting Discord large image to: {}", img_url);
+            assets = assets.large_image(img_url);
+            if !activity_texts.large_text.is_empty() {
+                assets = assets.large_text(&activity_texts.large_text);
+            }
+        }
+
+        // Add player icon if enabled
+        if player_config.show_icon {
+            debug!(
+                "Setting Discord small image to player icon: {}",
+                player_config.icon
+            );
+            assets = assets.small_image(player_config.icon.as_str());
+            if !activity_texts.small_text.is_empty() {
+                assets = assets.small_text(&activity_texts.small_text);
+            }
+        }
+
+        activity = activity.assets(assets);
+
+        // Set the activity
+        self.discord_client
+            .lock()
+            .set_activity(activity)
+            .map_err(|err| DiscordError::ActivityError(err.to_string()))?;
+
         Ok(())
     }
 }

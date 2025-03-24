@@ -45,7 +45,6 @@ impl ConfigManager {
         })
     }
 
-    // Simple getters that handle RwLock errors internally
     pub fn interval(&self) -> u64 {
         self.config
             .read()
@@ -58,6 +57,14 @@ impl ConfigManager {
             .read()
             .expect("Failed to read config: RwLock poisoned")
             .clear_on_pause
+    }
+
+    pub fn activity_type_config(&self) -> schema::ActivityTypesConfig {
+        self.config
+            .read()
+            .expect("Failed to read config: RwLock poisoned")
+            .activity_type
+            .clone()
     }
 
     pub fn player_config(&self, identity: &str) -> schema::PlayerConfig {
