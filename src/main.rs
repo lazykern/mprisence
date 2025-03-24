@@ -6,6 +6,18 @@ use log::{debug, info, trace, warn, error};
 use mpris::PlayerFinder;
 use player::PlayerIdentifier;
 use presence::Presence;
+use std::{
+    alloc::System,
+    collections::HashMap,
+    sync::Arc,
+    time::Duration,
+    fs::File,
+    path::PathBuf,
+};
+use fs2::FileExt;
+
+#[global_allocator]
+static GLOBAL: System = System;
 
 mod cli;
 mod config;
@@ -13,21 +25,41 @@ mod cover;
 mod error;
 mod presence;
 mod utils;
-
-use std::{alloc::System, collections::HashMap, sync::Arc, time::Duration};
-
-#[global_allocator]
-static GLOBAL: System = System;
-
 mod player;
 mod template;
 
 use crate::cli::Cli;
 
+fn get_lock_file() -> PathBuf {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/tmp"));
+    runtime_dir.join("mprisence.lock")
+}
+
+fn acquire_lock() -> Result<File, error::Error> {
+    let lock_path = get_lock_file();
+    let lock_file = File::create(&lock_path)?;
+    
+    match lock_file.try_lock_exclusive() {
+        Ok(_) => {
+            debug!("Successfully acquired lock file at {}", lock_path.display());
+            Ok(lock_file)
+        }
+        Err(e) => {
+            error!("Another instance is already running");
+            Err(error::Error::Other(format!(
+                "Another instance of mprisence is already running: {}",
+                e
+            )))
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), error::Error> {
     env_logger::init();
-
+    
     config::initialize()?;
 
     let cli = Cli::parse();
@@ -35,6 +67,7 @@ async fn main() -> Result<(), error::Error> {
     match cli.command {
         Some(cmd) => cmd.execute().await?,
         None => {
+            let _lock = acquire_lock()?;
             let mut mprisence = Mprisence::new()?;
             mprisence.run().await?;
         }
@@ -42,7 +75,6 @@ async fn main() -> Result<(), error::Error> {
 
     Ok(())
 }
-
 
 pub struct Mprisence {
     player_finder: PlayerFinder,

@@ -16,6 +16,7 @@ clap = { version = "4.5.32", features = ["derive"] }
 dirs = "6.0.0"
 env_logger = "0.11.7"
 figment = { version = "0.10.19", features = ["toml"] }
+fs2 = "0.4.3"
 handlebars = "6.3.2"
 handlebars_misc_helpers = { version = "0.17.0", features = ["string"] }
 log = "0.4.26"
