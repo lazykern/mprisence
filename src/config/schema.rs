@@ -2,12 +2,34 @@ use log::warn;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::utils::to_snake_case;
+use crate::utils::normalize_player_identity;
 
-use super::default::get_default_config;
+// Hardcoded defaults from default.toml
+pub const DEFAULT_CLEAR_ON_PAUSE: bool = true;
+pub const DEFAULT_INTERVAL: u64 = 2000;
+pub const DEFAULT_USE_CONTENT_TYPE: bool = true;
+pub const DEFAULT_ACTIVITY_TYPE: ActivityType = ActivityType::Listening;
+pub const DEFAULT_TIME_SHOW: bool = true;
+pub const DEFAULT_TIME_AS_ELAPSED: bool = false;
+pub const DEFAULT_IMGBB_EXPIRATION: u64 = 86400;
 
-mod snake_case_string {
-    use crate::utils::to_snake_case;
+pub const DEFAULT_PLAYER_APP_ID: &str = "1121632048155742288";
+pub const DEFAULT_PLAYER_ICON: &str = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png";
+pub const DEFAULT_PLAYER_IGNORE: bool = false;
+pub const DEFAULT_PLAYER_SHOW_ICON: bool = false;
+pub const DEFAULT_PLAYER_ALLOW_STREAMING: bool = false;
+
+const DEFAULT_TEMPLATE_DETAIL: &str = "{{{title}}}";
+const DEFAULT_TEMPLATE_STATE: &str = "{{{artists}}}";
+const DEFAULT_TEMPLATE_LARGE_TEXT: &str = "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}";
+const DEFAULT_TEMPLATE_SMALL_TEXT: &str = "Playing on {{{player}}}";
+const DEFAULT_TEMPLATE_UNKNOWN_TEXT: &str = "";
+
+const DEFAULT_COVER_FILE_NAMES: [&str; 5] = ["cover", "folder", "front", "album", "art"];
+const DEFAULT_COVER_PROVIDERS: [&str; 2] = ["musicbrainz", "imgbb"];
+
+mod normalized_string {
+    use crate::utils::normalize_player_identity;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::collections::HashMap;
 
@@ -27,11 +49,50 @@ mod snake_case_string {
     where
         D: Deserializer<'de>,
     {
-        let map = HashMap::<String, super::PlayerConfig>::deserialize(deserializer)?;
-        Ok(map
-            .into_iter()
-            .map(|(k, v)| (to_snake_case(&k), v))
-            .collect())
+        let temp_map = HashMap::<String, super::PlayerConfig>::deserialize(deserializer)?;
+        
+        let mut final_map: HashMap<String, super::PlayerConfig> = HashMap::new();
+        
+        for (key, value) in temp_map {
+            let normalized_key = normalize_player_identity(&key);
+            
+            if let Some(existing) = final_map.get(&normalized_key).cloned() {
+                // If we have a duplicate key after normalization, merge the configs
+                log::debug!(
+                    "Merging duplicate player config for '{}' (from '{}')",
+                    normalized_key,
+                    key
+                );
+                
+                let merged = super::PlayerConfig {
+                    ignore: value.ignore,
+                    app_id: if value.app_id != super::DEFAULT_PLAYER_APP_ID {
+                        value.app_id
+                    } else {
+                        existing.app_id
+                    },
+                    icon: if value.icon != super::DEFAULT_PLAYER_ICON {
+                        value.icon
+                    } else {
+                        existing.icon
+                    },
+                    show_icon: value.show_icon,
+                    allow_streaming: value.allow_streaming,
+                    override_activity_type: value.override_activity_type.or(existing.override_activity_type),
+                };
+                
+                final_map.insert(normalized_key, merged);
+            } else {
+                log::debug!(
+                    "Normalizing player config key from '{}' to '{}'",
+                    key,
+                    normalized_key
+                );
+                final_map.insert(normalized_key, value);
+            }
+        }
+
+        Ok(final_map)
     }
 }
 
@@ -45,11 +106,11 @@ pub struct ActivityTypesConfig {
 }
 
 fn default_use_content_type() -> bool {
-    get_default_config().activity_type.use_content_type
+    DEFAULT_USE_CONTENT_TYPE
 }
 
 fn default_activity_type() -> ActivityType {
-    get_default_config().activity_type.default.clone()
+    DEFAULT_ACTIVITY_TYPE
 }
 
 impl Default for ActivityTypesConfig {
@@ -82,16 +143,16 @@ pub struct Config {
     pub activity_type: ActivityTypesConfig,
 
     #[serde(default)]
-    #[serde(with = "snake_case_string")]
+    #[serde(with = "normalized_string")]
     pub player: HashMap<String, PlayerConfig>,
 }
 
 fn default_clear_on_pause() -> bool {
-    get_default_config().clear_on_pause
+    DEFAULT_CLEAR_ON_PAUSE
 }
 
 fn default_interval() -> u64 {
-    get_default_config().interval
+    DEFAULT_INTERVAL
 }
 
 impl Default for Config {
@@ -109,15 +170,9 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Get the normalized (snake_case) name for a player identity
-    pub fn normalize_player_name(identity: &str) -> String {
-        to_snake_case(identity)
-    }
-
     /// Get player config by raw identity (will be normalized internally)
     pub fn get_player_config(&self, identity: &str) -> PlayerConfig {
-        let normalized = Self::normalize_player_name(identity);
-        self.get_player_config_normalized(&normalized)
+        self.get_player_config_normalized(normalize_player_identity(identity).as_str())
     }
 
     /// Get player config by pre-normalized identity
@@ -155,39 +210,23 @@ pub struct TemplateConfig {
 }
 
 fn default_template_detail() -> Box<str> {
-    get_default_config()
-        .template
-        .detail
-        .clone()
-        .into_boxed_str()
+    DEFAULT_TEMPLATE_DETAIL.into()
 }
 
 fn default_template_state() -> Box<str> {
-    get_default_config().template.state.clone().into_boxed_str()
+    DEFAULT_TEMPLATE_STATE.into()
 }
 
 fn default_template_large_text() -> Box<str> {
-    get_default_config()
-        .template
-        .large_text
-        .clone()
-        .into_boxed_str()
+    DEFAULT_TEMPLATE_LARGE_TEXT.into()
 }
 
 fn default_template_small_text() -> Box<str> {
-    get_default_config()
-        .template
-        .small_text
-        .clone()
-        .into_boxed_str()
+    DEFAULT_TEMPLATE_SMALL_TEXT.into()
 }
 
 fn default_template_unknown_text() -> Box<str> {
-    get_default_config()
-        .template
-        .unknown_text
-        .clone()
-        .into_boxed_str()
+    DEFAULT_TEMPLATE_UNKNOWN_TEXT.into()
 }
 
 impl Default for TemplateConfig {
@@ -212,11 +251,11 @@ pub struct TimeConfig {
 }
 
 fn default_time_show() -> bool {
-    get_default_config().time.show
+    DEFAULT_TIME_SHOW
 }
 
 fn default_time_as_elapsed() -> bool {
-    get_default_config().time.as_elapsed
+    DEFAULT_TIME_AS_ELAPSED
 }
 
 impl Default for TimeConfig {
@@ -238,7 +277,7 @@ pub struct CoverConfig {
 }
 
 fn default_cover_file_names() -> Vec<String> {
-    get_default_config().cover.file_names.clone()
+    DEFAULT_COVER_FILE_NAMES.iter().map(|&s| s.to_string()).collect()
 }
 
 impl Default for CoverConfig {
@@ -260,9 +299,8 @@ pub struct CoverProviderConfig {
 }
 
 fn default_cover_providers() -> Vec<String> {
-    get_default_config().cover.provider.provider.clone()
+    DEFAULT_COVER_PROVIDERS.iter().map(|&s| s.to_string()).collect()
 }
-
 
 impl Default for CoverProviderConfig {
     fn default() -> Self {
@@ -273,17 +311,16 @@ impl Default for CoverProviderConfig {
     }
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImgBBConfig {
     #[serde(default)]
     pub api_key: Option<String>,
+    #[serde(default = "default_cover_imgbb_expiration")]
     pub expiration: u64,
 }
 
 fn default_cover_imgbb_expiration() -> u64 {
-    get_default_config().cover.provider.imgbb.expiration
+    DEFAULT_IMGBB_EXPIRATION
 }
 
 impl Default for ImgBBConfig {
@@ -294,7 +331,6 @@ impl Default for ImgBBConfig {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Copy)]
 #[serde(rename_all = "lowercase")]
@@ -344,50 +380,23 @@ pub struct PlayerConfig {
 }
 
 fn default_player_ignore() -> bool {
-    get_default_config()
-        .player
-        .get("default")
-        .expect("Failed to get default player config")
-        .ignore
-        .expect("Failed to get default player ignore")
+    DEFAULT_PLAYER_IGNORE
 }
 
 fn default_player_app_id() -> String {
-    get_default_config()
-        .player
-        .get("default")
-        .expect("Failed to get default player config")
-        .app_id
-        .clone()
-        .expect("Failed to get default player app_id")
+    DEFAULT_PLAYER_APP_ID.to_string()
 }
 
 fn default_player_icon() -> String {
-    get_default_config()
-        .player
-        .get("default")
-        .expect("Failed to get default player config")
-        .icon
-        .clone()
-        .expect("Failed to get default player icon")
+    DEFAULT_PLAYER_ICON.to_string()
 }
 
 fn default_player_show_icon() -> bool {
-    get_default_config()
-        .player
-        .get("default")
-        .expect("Failed to get default player config")
-        .show_icon
-        .expect("Failed to get default player show_icon")
+    DEFAULT_PLAYER_SHOW_ICON
 }
 
 fn default_player_allow_streaming() -> bool {
-    get_default_config()
-        .player
-        .get("default")
-        .expect("Failed to get default player config")
-        .allow_streaming
-        .expect("Failed to get default player allow_streaming")
+    DEFAULT_PLAYER_ALLOW_STREAMING
 }
 
 impl Default for PlayerConfig {

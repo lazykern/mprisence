@@ -1,5 +1,5 @@
 use blake3::Hasher;
-use log::{debug, info, warn};
+use log::{debug, info, trace, warn, error};
 use mpris::Metadata;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -25,18 +25,21 @@ pub struct CoverCache {
 
 impl CoverCache {
     pub fn new(ttl: Duration) -> Result<Self, CoverArtError> {
+        trace!("Creating new cover cache instance with TTL: {}s", ttl.as_secs());
         let cache_dir = Self::get_cache_directory()?;
         
         Self::ensure_directory(&cache_dir)?;
-        debug!("Using cache directory: {:?}", cache_dir);
+        debug!("Initialized cover cache in directory: {:?}", cache_dir);
 
         Ok(Self { cache_dir, ttl })
     }
 
     pub fn get_cache_directory() -> Result<PathBuf, CoverArtError> {
+        trace!("Determining cache directory path");
         dirs::cache_dir()
             .map(|dir| dir.join("mprisence").join("cover_art"))
             .ok_or_else(|| {
+                error!("Failed to determine system cache directory");
                 let err = io::Error::new(
                     io::ErrorKind::NotFound,
                     "Could not determine cache directory",
@@ -53,12 +56,13 @@ impl CoverCache {
         if !dir.exists() {
             debug!("Creating cache directory: {:?}", dir);
             fs::create_dir_all(dir).map_err(|e| {
-                warn!("Failed to create cache directory: {:?} - {}", dir, e);
+                error!("Failed to create cache directory: {:?} - {}", dir, e);
                 e
             })?;
         }
 
         if !dir.is_dir() {
+            error!("Cache path exists but is not a directory: {:?}", dir);
             return Err(CoverArtError::from(io::Error::new(
                 io::ErrorKind::AlreadyExists,
                 format!("Cache path exists but is not a directory: {:?}", dir),
@@ -69,16 +73,18 @@ impl CoverCache {
             return Ok(());
         }
 
+        trace!("Verifying cache directory is writable");
         let test_file = dir.join(".write_test");
         match fs::write(&test_file, b"test") {
             Ok(_) => {
                 if let Err(e) = fs::remove_file(&test_file) {
-                    debug!("Note: Failed to remove test file: {}", e);
+                    debug!("Note: Failed to remove write test file: {}", e);
                 }
+                trace!("Cache directory write verification successful");
                 Ok(())
             }
             Err(e) => {
-                warn!("Cache directory is not writable: {:?} - {}", dir, e);
+                error!("Cache directory is not writable: {:?} - {}", dir, e);
                 Err(CoverArtError::from(io::Error::new(
                     io::ErrorKind::PermissionDenied,
                     format!("Cache directory is not writable: {:?}", dir),
@@ -89,9 +95,11 @@ impl CoverCache {
 
     pub fn get(&self, metadata: &Metadata) -> Result<Option<String>, CoverArtError> {
         let key = self.generate_key(metadata);
+        trace!("Looking up cache entry with key: {}", key);
         let path = self.cache_dir.join(key);
 
         if !path.exists() {
+            trace!("No cache entry found");
             return Ok(None);
         }
 
@@ -100,19 +108,17 @@ impl CoverCache {
                 Ok(entry) => {
                     let now = SystemTime::now();
                     if now > entry.expires_at {
-                        debug!("Cache entry expired, removing");
+                        debug!("Cache entry expired, removing file");
                         let _ = fs::remove_file(&path);
                         return Ok(None);
                     }
 
-                    info!(
-                        "Found cached cover art URL from provider: {}",
-                        entry.provider
-                    );
+                    debug!("Found valid cache entry from provider: {}", entry.provider);
+                    trace!("Cached URL: {}", entry.url);
                     Ok(Some(entry.url))
                 }
                 Err(e) => {
-                    warn!("Failed to deserialize cache entry: {}", e);
+                    warn!("Failed to deserialize cache entry, removing corrupt file: {}", e);
                     let _ = fs::remove_file(&path);
                     Ok(None)
                 }
@@ -131,6 +137,7 @@ impl CoverCache {
         url: &str,
     ) -> Result<(), CoverArtError> {
         let key = self.generate_key(metadata);
+        trace!("Storing cache entry with key: {}", key);
         let path = self.cache_dir.join(key);
 
         let entry = CacheEntry {
@@ -139,9 +146,18 @@ impl CoverCache {
             expires_at: SystemTime::now() + self.ttl,
         };
 
-        let data = serde_json::to_vec(&entry).map_err(|e| CoverArtError::json_error(e))?;
-        fs::write(&path, data)?;
-        debug!("Stored URL in cache from provider: {}", provider);
+        let data = serde_json::to_vec(&entry).map_err(|e| {
+            error!("Failed to serialize cache entry: {}", e);
+            CoverArtError::json_error(e)
+        })?;
+
+        fs::write(&path, data).map_err(|e| {
+            error!("Failed to write cache entry to disk: {}", e);
+            e
+        })?;
+
+        debug!("Successfully stored cache entry from provider: {}", provider);
+        trace!("Cache entry will expire at: {:?}", entry.expires_at);
 
         Ok(())
     }
@@ -150,23 +166,28 @@ impl CoverCache {
         let mut cleaned = 0;
         let now = SystemTime::now();
 
+        trace!("Starting cache cleanup scan");
         for entry in fs::read_dir(&self.cache_dir)? {
             if let Ok(entry) = entry {
                 let path = entry.path();
                 if path.is_dir() {
+                    trace!("Skipping directory: {:?}", path);
                     continue;
                 }
 
+                trace!("Checking cache file: {:?}", path);
                 if let Ok(data) = fs::read(&path) {
                     if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&data) {
                         if now > entry.expires_at {
                             debug!("Removing expired cache entry: {:?}", path);
                             if fs::remove_file(&path).is_ok() {
                                 cleaned += 1;
+                            } else {
+                                warn!("Failed to remove expired cache file: {:?}", path);
                             }
                         }
                     } else {
-                        debug!("Removing invalid cache entry: {:?}", path);
+                        warn!("Removing invalid cache entry: {:?}", path);
                         if fs::remove_file(&path).is_ok() {
                             cleaned += 1;
                         }
@@ -175,13 +196,16 @@ impl CoverCache {
             }
         }
 
+        debug!("Cache cleanup completed, removed {} entries", cleaned);
         Ok(cleaned)
     }
 
     fn generate_key(&self, metadata: &Metadata) -> String {
+        trace!("Generating cache key from metadata");
         let mut hasher = Hasher::new();
 
         if let Some(album) = metadata.album_name() {
+            trace!("Using album information for cache key");
             hasher.update(b"album:");
             hasher.update(album.as_bytes());
 
@@ -191,6 +215,7 @@ impl CoverCache {
                 }
             }
         } else {
+            trace!("Using track information for cache key");
             hasher.update(b"track:");
 
             if let Some(id) = metadata.track_id() {
@@ -206,6 +231,8 @@ impl CoverCache {
             }
         }
 
-        hasher.finalize().to_hex().to_string()
+        let key = hasher.finalize().to_hex().to_string();
+        trace!("Generated cache key: {}", key);
+        key
     }
 } 

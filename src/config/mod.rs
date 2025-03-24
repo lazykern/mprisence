@@ -6,19 +6,21 @@ use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 
-mod default;
 mod error;
 pub mod schema;
 
 pub use error::ConfigError;
-pub use schema::Config;
+pub use schema::{Config, PlayerConfig};
+use schema::{
+    DEFAULT_CLEAR_ON_PAUSE, DEFAULT_IMGBB_EXPIRATION, DEFAULT_INTERVAL,
+    DEFAULT_PLAYER_APP_ID, DEFAULT_PLAYER_ICON,
+};
 
 pub type ConfigChangeReceiver = broadcast::Receiver<ConfigChange>;
 type ConfigChangeSender = broadcast::Sender<ConfigChange>;
 
 #[derive(Debug, Clone)]
 pub enum ConfigChange {
-    Updated,
     Reloaded,
     Error(String),
 }
@@ -235,28 +237,17 @@ fn ensure_config_exists(path: &Path) -> Result<(), ConfigError> {
 
 fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     log::info!("Loading configuration from {}", path.display());
-    // Use a static cache for the default config to avoid parsing it multiple times
-    static DEFAULT_CONFIG: OnceLock<Config> = OnceLock::new();
+    
+    // Create figment with default config
+    let mut figment = Figment::new()
+        .merge(Toml::string(include_str!("../../config/default.toml")));
 
-    // Get or initialize default config
-    let default_config = DEFAULT_CONFIG.get_or_init(|| {
-        Figment::new()
-            .merge(Toml::string(include_str!("../../config/default.toml")))
-            .extract()
-            .expect("Failed to parse default config")
-    });
-
-    // If user config exists, merge it with the default
+    // Merge user config if it exists
     if path.exists() {
-        // Start with default config and merge user config on top
-        let figment = Figment::new()
-            .merge(Toml::string(include_str!("../../config/default.toml")))
-            .merge(Toml::file(path));
-
-        // Extract merged config
-        figment.extract().map_err(ConfigError::Figment)
-    } else {
-        // Return a clone of the default config
-        Ok(default_config.clone())
+        log::debug!("Merging user config from {}", path.display());
+        figment = figment.merge(Toml::file(path));
     }
+
+    // Extract the merged config
+    figment.extract().map_err(ConfigError::Figment)
 }

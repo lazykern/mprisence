@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use log::{debug, info, warn};
+use log::{debug, info, trace, warn, error};
 use mpris::Metadata;
 use reqwest::Client;
 use serde::Deserialize;
@@ -42,23 +42,6 @@ struct ReleaseGroup {
     score: u8,
 }
 
-#[derive(Debug, Deserialize)]
-struct CoverArtResponse {
-    images: Vec<CoverArtImage>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CoverArtImage {
-    front: bool,
-    thumbnails: CoverArtThumbnails,
-}
-
-#[derive(Debug, Deserialize)]
-struct CoverArtThumbnails {
-    #[serde(rename = "500")]
-    large: String,
-}
-
 #[derive(Clone)]
 pub struct MusicbrainzProvider {
     client: Client,
@@ -68,89 +51,65 @@ impl MusicbrainzProvider {
     // Add constant for minimum score threshold
     const MIN_SCORE: u8 = 90; // Only accept matches with 90% or higher confidence
     
-    // Default to 500px thumbnails as a good balance between quality and size
-    // Can be changed to 250 for smaller thumbnails or 1200 for high quality
-    const THUMBNAIL_SIZE: u16 = 500;
+    // Thumbnail sizes to try in order of preference
+    const THUMBNAIL_SIZES: [u16; 3] = [500, 250, 1200];
 
     pub fn new() -> Self {
-        debug!("Creating new MusicBrainz provider");
+        info!("Initializing MusicBrainz provider");
+        trace!("Creating HTTP client for MusicBrainz API");
         Self {
             client: create_shared_client(),
         }
     }
 
     async fn get_cover_art(&self, entity_type: &str, mbid: &str) -> Result<Option<String>, CoverArtError> {
-        // Try primary size first
-        let primary_url = format!("{}/{}/{}/front-{}", COVERART_API, entity_type, mbid, Self::THUMBNAIL_SIZE);
-        debug!("Attempting to fetch cover art from: {} ({}px)", primary_url, Self::THUMBNAIL_SIZE);
+        trace!("Attempting to fetch cover art for {} ({})", entity_type, mbid);
         
-        match self.client.get(&primary_url).send().await {
-            Ok(response) => {
-                let status = response.status();
-                if status.is_success() {
-                    debug!("Successfully found cover art for {} ({}) at {}px", entity_type, mbid, Self::THUMBNAIL_SIZE);
-                    return Ok(Some(primary_url));
-                }
-                
-                // If primary size fails with 404, try fallback sizes in order: 500 -> 250 -> 1200
-                if status.as_u16() == 404 {
-                    debug!("{}px thumbnail not available, trying fallback sizes", Self::THUMBNAIL_SIZE);
-                    
-                    // Fixed fallback chain: 500 -> 250 -> 1200
-                    let fallback_sizes = vec![250, 1200];
-                    
-                    // Try each fallback size
-                    for size in fallback_sizes {
-                        let fallback_url = format!("{}/{}/{}/front-{}", COVERART_API, entity_type, mbid, size);
-                        debug!("Trying fallback size: {}px", size);
-                        
-                        match self.client.get(&fallback_url).send().await {
-                            Ok(fallback_response) => {
-                                if fallback_response.status().is_success() {
-                                    debug!("Successfully found cover art at fallback size: {}px", size);
-                                    return Ok(Some(fallback_url));
-                                }
-                            }
-                            Err(e) => {
-                                warn!("Error trying fallback size {}px: {}", size, e);
-                            }
-                        }
+        // Try each thumbnail size in order
+        for size in Self::THUMBNAIL_SIZES {
+            let url = format!("{}/{}/{}/front-{}", COVERART_API, entity_type, mbid, size);
+            debug!("Requesting cover art from: {} ({}px)", url, size);
+            
+            match self.client.get(&url).send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        debug!("Successfully found cover art for {} at {}px", mbid, size);
+                        return Ok(Some(url));
                     }
                 }
-                
-                debug!("No cover art found for {} ({}) at any size - Status: {}", entity_type, mbid, status);
-                Ok(None)
-            }
-            Err(e) => {
-                if e.is_timeout() {
-                    warn!("Cover art request timed out for {} ({})", entity_type, mbid);
-                    Ok(None)
-                } else {
+                Err(e) => {
+                    if e.is_timeout() {
+                        warn!("Cover art request timed out for {} ({})", entity_type, mbid);
+                        return Ok(None);
+                    }
                     warn!("Network error fetching cover art for {} ({}): {}", entity_type, mbid, e);
-                    Err(CoverArtError::NetworkError(e.to_string()))
+                    continue;
                 }
             }
         }
+        
+        debug!("No suitable cover art found for {} ({})", entity_type, mbid);
+        Ok(None)
     }
 
     async fn try_cover_art_sources(&self, sources: Vec<(String, String)>) -> Result<Option<String>, CoverArtError> {
         let source_count = sources.len();
-        debug!("Trying {} cover art sources in priority order", source_count);
+        debug!("Processing {} cover art sources in priority order", source_count);
         
-        // Try sources sequentially to respect MusicBrainz's relevance ordering
         for (idx, (entity_type, id)) in sources.into_iter().enumerate() {
-            debug!("Trying source {} of {}: {} ({})", idx + 1, source_count, entity_type, id);
+            trace!("Trying source {}/{}: {} ({})", idx + 1, source_count, entity_type, id);
             match self.get_cover_art(&entity_type, &id).await {
                 Ok(Some(url)) => {
-                    info!("Found valid cover art URL from source {}: {}", idx + 1, url);
+                    info!("Found valid cover art URL from source {}/{}", idx + 1, source_count);
+                    trace!("Cover art URL: {}", url);
                     return Ok(Some(url));
                 }
                 Ok(None) => {
-                    debug!("No cover art found for source {}", idx + 1);
+                    trace!("No cover art found for source {}/{}", idx + 1, source_count);
                     continue;
                 }
                 Err(e) => {
-                    warn!("Error fetching cover art for source {}: {}", idx + 1, e);
+                    warn!("Error fetching cover art from source {}/{}: {}", idx + 1, source_count, e);
                     continue;
                 }
             }
@@ -165,7 +124,7 @@ impl MusicbrainzProvider {
         album: S,
         artists: &[S],
     ) -> Result<Option<String>, CoverArtError> {
-        info!("Searching MusicBrainz for album: {} by [{}]", 
+        debug!("Searching MusicBrainz for album: {} by [{}]", 
             album.as_ref(),
             artists.iter().map(|a| a.as_ref()).collect::<Vec<_>>().join(", ")
         );
@@ -176,15 +135,15 @@ impl MusicbrainzProvider {
         }
 
         let encoded_query = urlencoding::encode(&query);
-        debug!("Encoded query: {}", encoded_query);
+        trace!("Encoded MusicBrainz query: {}", encoded_query);
         
-        // Fetch both release groups and releases in parallel, with minimum score
+        // Fetch both release groups and releases in parallel
         let (release_groups, releases) = futures::join!(
-            self.client.get(&format!("{}/release-group?query={}&limit=2&fmt=json&score={}", 
-                MUSICBRAINZ_API, encoded_query, Self::MIN_SCORE))
+            self.client.get(&format!("{}/release-group?query={}&limit=5&fmt=json", 
+                MUSICBRAINZ_API, encoded_query))
                 .send(),
-            self.client.get(&format!("{}/release?query={}&limit=2&fmt=json&score={}", 
-                MUSICBRAINZ_API, encoded_query, Self::MIN_SCORE))
+            self.client.get(&format!("{}/release?query={}&limit=5&fmt=json", 
+                MUSICBRAINZ_API, encoded_query))
                 .send()
         );
 
@@ -193,11 +152,12 @@ impl MusicbrainzProvider {
         // Process release groups
         if let Ok(response) = release_groups {
             if let Ok(data) = response.json::<MusicBrainzResponse<ReleaseGroup>>().await {
-                debug!("Found {} release groups (limited to 2)", data.count);
+                debug!("Found {} release groups (filtering by score >= {})", data.count, Self::MIN_SCORE);
                 cover_sources.extend(
                     data.entities.iter()
+                        .filter(|group| group.score >= Self::MIN_SCORE)
                         .map(|group| {
-                            debug!("Adding release group: {} (score: {})", group.id, group.score);
+                            trace!("Adding release group to sources: {} (score: {})", group.id, group.score);
                             ("release-group".to_string(), group.id.clone())
                         })
                 );
@@ -207,15 +167,22 @@ impl MusicbrainzProvider {
         // Process releases
         if let Ok(response) = releases {
             if let Ok(data) = response.json::<MusicBrainzResponse<Release>>().await {
-                debug!("Found {} releases (limited to 2)", data.count);
+                debug!("Found {} releases (filtering by score >= {})", data.count, Self::MIN_SCORE);
                 cover_sources.extend(
                     data.entities.iter()
+                        .filter(|release| release.score >= Self::MIN_SCORE)
                         .map(|release| {
-                            debug!("Adding release: {} (score: {})", release.id, release.score);
+                            trace!("Adding release to sources: {} (score: {})", release.id, release.score);
                             ("release".to_string(), release.id.clone())
                         })
                 );
             }
+        }
+
+        if cover_sources.is_empty() {
+            debug!("No sources found meeting minimum score threshold of {}", Self::MIN_SCORE);
+        } else {
+            debug!("Found {} potential cover art sources", cover_sources.len());
         }
 
         self.try_cover_art_sources(cover_sources).await
@@ -227,7 +194,7 @@ impl MusicbrainzProvider {
         artists: &[S],
         duration_ms: Option<u128>,
     ) -> Result<Option<String>, CoverArtError> {
-        info!("Searching MusicBrainz for track: {} by [{}]", 
+        debug!("Searching MusicBrainz for track: {} by [{}]", 
             track.as_ref(),
             artists.iter().map(|a| a.as_ref()).collect::<Vec<_>>().join(", ")
         );
@@ -245,36 +212,41 @@ impl MusicbrainzProvider {
                 duration + 3000
             );
             query.push_str(&duration_range);
-            debug!("Added duration range to query: {}", duration_range);
+            trace!("Added duration range to query: {}", duration_range);
         }
 
         let encoded_query = urlencoding::encode(&query);
-        debug!("Encoded query: {}", encoded_query);
+        trace!("Encoded MusicBrainz query: {}", encoded_query);
 
         let url = format!(
-            "{}/recording?query={}&limit=2&fmt=json&score={}",
+            "{}/recording?query={}&limit=5&fmt=json",
             MUSICBRAINZ_API,
-            encoded_query,
-            Self::MIN_SCORE
+            encoded_query
         );
 
         if let Ok(response) = self.client.get(&url).send().await {
             if let Ok(data) = response.json::<MusicBrainzResponse<Recording>>().await {
-                debug!("Found {} recordings (limited to 2)", data.count);
+                debug!("Found {} recordings (filtering by score >= {})", data.count, Self::MIN_SCORE);
                 let mut cover_sources = Vec::new();
 
-                for (idx, recording) in data.entities.iter().enumerate() {
-                    debug!("Processing recording {} (id: {}, score: {})", idx + 1, recording.id, recording.score);
+                for recording in data.entities.iter().filter(|r| r.score >= Self::MIN_SCORE) {
+                    trace!("Processing recording: {} (score: {})", recording.id, recording.score);
                     if let Some(releases) = &recording.releases {
-                        for (release_idx, release) in releases.iter().take(2).enumerate() {
-                            debug!("Processing release {} (id: {}, score: {})", release_idx + 1, release.id, release.score);
+                        for release in releases.iter().take(2) {
+                            trace!("Adding release to sources: {} (score: {})", release.id, release.score);
                             cover_sources.push(("release".to_string(), release.id.clone()));
                             if let Some(group) = &release.release_group {
-                                debug!("Adding release group: {} (score: {})", group.id, group.score);
+                                trace!("Adding release group to sources: {} (score: {})", group.id, group.score);
                                 cover_sources.push(("release-group".to_string(), group.id.clone()));
                             }
                         }
                     }
+                }
+
+                if cover_sources.is_empty() {
+                    debug!("No sources found meeting minimum score threshold of {}", Self::MIN_SCORE);
+                } else {
+                    debug!("Found {} potential cover art sources", cover_sources.len());
                 }
 
                 return self.try_cover_art_sources(cover_sources).await;
@@ -301,9 +273,9 @@ impl CoverArtProvider for MusicbrainzProvider {
         _source: ArtSource,
         metadata: &Metadata,
     ) -> Result<Option<CoverResult>, CoverArtError> {
-        info!("MusicBrainz provider processing metadata");
-        debug!(
-            "Full metadata: album={:?}, title={:?}, artists={:?}, album_artists={:?}, length={:?}",
+        info!("Processing metadata with MusicBrainz provider");
+        trace!(
+            "Metadata details: album={:?}, title={:?}, artists={:?}, album_artists={:?}, length={:?}",
             metadata.album_name(),
             metadata.title(),
             metadata.artists(),
@@ -317,17 +289,18 @@ impl CoverArtProvider for MusicbrainzProvider {
         // Try album search first
         if let Some(album) = metadata.album_name() {
             let search_artists = if !album_artists.is_empty() {
-                debug!("Using album artists for search: {:?}", album_artists);
+                trace!("Using album artists for search: {:?}", album_artists);
                 album_artists.as_slice()
             } else {
-                debug!("Using track artists for search: {:?}", artists);
+                trace!("Using track artists for search: {:?}", artists);
                 artists.as_slice()
             };
 
             if !search_artists.is_empty() {
-                debug!("Attempting album search for '{}' with artists {:?}", album, search_artists);
+                debug!("Attempting album-based search for '{}' with artists", album);
                 if let Some(url) = self.search_album(album, search_artists).await? {
-                    info!("Found cover art via album search: {}", url);
+                    info!("Successfully found cover art via album search");
+                    trace!("Cover art URL: {}", url);
                     return Ok(Some(CoverResult {
                         url,
                         provider: self.name().to_string(),
@@ -344,13 +317,15 @@ impl CoverArtProvider for MusicbrainzProvider {
         if let Some(title) = metadata.title() {
             if !artists.is_empty() {
                 let duration = metadata.length().map(|d| d.as_millis());
-                debug!("Attempting track search for '{}' with artists {:?} and duration {:?}ms", title, artists, duration);
+                debug!("Attempting track-based search for '{}' with artists", title);
+                trace!("Track duration: {:?}ms", duration);
 
                 if let Some(url) = self
                     .search_track(title, artists.as_slice(), duration)
                     .await?
                 {
-                    info!("Found cover art via track search: {}", url);
+                    info!("Successfully found cover art via track search");
+                    trace!("Cover art URL: {}", url);
                     return Ok(Some(CoverResult {
                         url,
                         provider: self.name().to_string(),
@@ -363,7 +338,7 @@ impl CoverArtProvider for MusicbrainzProvider {
             }
         }
 
-        info!("MusicBrainz provider found no cover art");
+        debug!("MusicBrainz provider found no suitable cover art");
         Ok(None)
     }
 }
