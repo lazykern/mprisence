@@ -11,6 +11,20 @@ interval = 2000
 # Display Template
 # ------------------
 [template]
+# First line in Discord presence for all activity types
+detail = "{{{title}}}"
+
+# Second line in Discord presence for all activity types
+state = "{{{artist_display}}}"
+
+# Text shown when hovering over the large image
+# For "listening" activity type: Shows as third line
+large_text = "{{#if album}}{{{album}}}{{else}}{{{artist_display}}}{{/if}}"
+
+# Text shown when hovering over the small image (player icon)
+# Only visible when show_icon = true
+small_text = "Playing on {{{player}}} ({{{bitrate_display}}})"
+
 # Available template variables:
 #
 # Core Metadata:
@@ -46,31 +60,40 @@ interval = 2000
 #   {{{player}}}             - Media player name
 #   {{{player_bus_name}}}    - Player bus name
 #   {{{status}}}             - Playback status
-#   {{{status_icon}}}        - Status as icon
+#   {{{status_icon}}}        - Status as icon (▶, ⏸, ⏹)
 #   {{{volume}}}             - Player volume
 #
+# Additional IDs:
+#   {{{isrc}}}               - International Standard Recording Code
+#   {{{barcode}}}            - Release barcode
+#   {{{catalog_number}}}     - Release catalog number
+#   {{{label}}}              - Record label
+#   {{{musicbrainz_track_id}}} - MusicBrainz track ID
+#   {{{musicbrainz_album_id}}} - MusicBrainz album ID
+#   {{{musicbrainz_artist_id}}} - MusicBrainz artist ID
+#   {{{musicbrainz_album_artist_id}}} - MusicBrainz album artist ID
+#   {{{musicbrainz_release_group_id}}} - MusicBrainz release group ID
+#
 # Available Handlebars Helpers:
-# For more details, see:
 # - Built-in Helpers: https://handlebarsjs.com/guide/builtin-helpers.html
-
-# What appears on the first line of Discord presence
-detail = "{{{title}}}"
-
-# What appears on the second line of Discord presence
-state = "{{{artist_display}}}"
-
-# Text shown when hovering over the large image
-large_text = "{{#if album}}{{{album}}}{{else}}{{{artist_display}}}{{/if}}"
-
-# Text shown when hovering over the small image
-small_text = "Playing on {{{player}}} ({{{bitrate_display}}})"
+# - eq: Compare two values for equality
+#   Example: {{#if (eq status "playing")}}Playing{{/if}}
 
 # ------------------
 # Activity Types
 # ------------------
-# Available activity types: "listening", "watching", "playing", "competing"
 [activity_type]
+# Automatically determine activity type based on media content
+# audio -> "listening", video -> "watching", etc.
 use_content_type = true
+
+# Default activity type when content type detection is disabled
+# or when the type cannot be determined
+# Available types:
+#   "listening" - Shows as "Listening to ..."
+#   "watching"  - Shows as "Watching ..."
+#   "playing"   - Shows as "Playing ..."
+#   "competing" - Shows as "Competing in ..."
 default = "listening"
 
 # ------------------
@@ -78,11 +101,14 @@ default = "listening"
 # ------------------
 [time]
 # Enable/disable time progress in Discord
+# When enabled:
+# - For "listening": Shows as progress bar
+# - For other types: Shows as elapsed/remaining time
 show = true
 
 # Time display mode:
-# true = show elapsed time
-# false = show remaining time
+# true = show elapsed time (e.g., 1:23)
+# false = show remaining time (e.g., -1:23)
 as_elapsed = false
 
 # ------------------
@@ -90,48 +116,48 @@ as_elapsed = false
 # ------------------
 [cover]
 # Local cover art files to look for (if cover art is not found in the tag)
+# Searches in the same directory as the media file
 file_names = ["cover", "folder", "front", "album", "art"]
 
 [cover.provider]
 # Cover art providers (in order of preference)
+# "musicbrainz" - Fetch from MusicBrainz database
+# "imgbb"      - Upload and host on ImgBB
 provider = ["musicbrainz", "imgbb"]
 
 [cover.provider.imgbb]
 # Your ImgBB API key for cover art hosting
+# Get one at: https://api.imgbb.com/
 # api_key = "YOUR_IMGBB_API_KEY"
-expiration = 86400 # 1 day
+
+# How long to keep uploaded images (in seconds)
+# Default: 1 day (86400 seconds)
+expiration = 86400
 
 # ------------------
 # Player Settings
 # ------------------
-# Default settings for all players
-[player.default]
-
-# Whether to ignore the player
-ignore = false
-
-# Discord application ID https://support-dev.discord.com/hc/en-us/articles/360028717192-Where-can-I-find-my-Application-Team-Server-ID
-app_id = "1121632048155742288"
-
-# Player icon URL
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png"
-
-# Show player icon in Discord (as small image)
-show_icon = false
-
-# Show discord rich presence for http/https streaming media
-allow_streaming = false
-
-# Override media type based activity types
-# override_activity_type = "listening"
+[player]
+# Default configuration for all players
+# Fields:
+#   ignore: Don't show rich presence for this player
+#   app_id: Discord application ID (get yours at: https://discord.com/developers/docs/quick-start/overview-of-apps)
+#   icon: Player icon URL (shown as small image)
+#   show_icon: Show player icon in Discord (as small image)
+#   allow_streaming: Enable Discord rich presence for web-based media (browsers, streaming services)
+#   override_activity_type: Will always show this activity type regardless of media content type
+default = { ignore = false, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false }
 
 # ------------------
 # Example Player-Specific Settings
 # ------------------
-# VLC Example
-# [player.vlc_media_player]
-# app_id = "1124968989538402334"
-# icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/VLC_Icon.svg/1200px-VLC_Icon.svg.png"
-# show_icon = false
-# allow_streaming = true
+# Each player can override any of the default settings above
+# Example for VLC Media Player:
+[player.vlc_media_player]
+app_id = "1124968989538402334"
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/VLC_Icon.svg/1200px-VLC_Icon.svg.png"
+show_icon = true
+allow_streaming = true
 # override_activity_type = "watching"
+
+# For more examples of player configurations, see config.default.toml
