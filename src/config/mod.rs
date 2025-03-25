@@ -5,16 +5,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
+use std::collections::HashMap;
 
 mod error;
 pub mod schema;
 
 pub use error::ConfigError;
-pub use schema::{Config, PlayerConfig};
-use schema::{
-    DEFAULT_CLEAR_ON_PAUSE, DEFAULT_IMGBB_EXPIRATION, DEFAULT_INTERVAL,
-    DEFAULT_PLAYER_APP_ID, DEFAULT_PLAYER_ICON,
-};
+pub use schema::Config;
 
 pub type ConfigChangeReceiver = broadcast::Receiver<ConfigChange>;
 type ConfigChangeSender = broadcast::Sender<ConfigChange>;
@@ -69,12 +66,11 @@ impl ConfigManager {
             .clone()
     }
 
-    pub fn player_config(&self, identity: &str) -> schema::PlayerConfig {
+    pub fn get_player_config(&self, identity: &str) -> schema::PlayerConfig {
         self.config
             .read()
             .expect("Failed to read config: RwLock poisoned")
             .get_player_config(identity)
-            .clone()
     }
 
     pub fn time_config(&self) -> schema::TimeConfig {
@@ -101,6 +97,17 @@ impl ConfigManager {
             .clone()
     }
 
+    pub fn player_configs(&self) -> HashMap<String, schema::PlayerConfig> {
+        self.config
+            .read()
+            .expect("Failed to read config: RwLock poisoned")
+            .player
+            .clone()
+    }
+
+    pub fn config_path(&self) -> PathBuf {
+        self.path.clone()
+    }
 
     // Direct read/write access for more complex operations
     pub fn read(&self) -> Result<impl std::ops::Deref<Target = Config> + '_, ConfigError> {
@@ -131,9 +138,14 @@ impl ConfigManager {
     // Reload config from file
     pub fn reload(&self) -> Result<(), ConfigError> {
         log::info!("Reloading configuration from {}", self.path.display());
+        
+        // Use the same loading logic as initial load
         let new_config = load_config_from_file(&self.path)?;
+        
+        // Update the config
         let mut config = self.write()?;
         *config = new_config;
+        
         let _ = self.change_tx.send(ConfigChange::Reloaded);
         Ok(())
     }

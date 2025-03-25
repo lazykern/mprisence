@@ -2,9 +2,47 @@ clear_on_pause = true
 interval = 2000
 
 [template]
+# Available template variables:
+#
+# Core Metadata:
+#   {{{title}}}              - Track title
+#   {{{artists}}}            - Track artists (as array)
+#   {{{artist_display}}}     - Track artists (comma separated)
+#   {{{album}}}              - Album name
+#   {{{album_artists}}}      - Album artists (as array)
+#   {{{album_artist_display}}} - Album artists (comma separated)
+#   {{{track_number}}}       - Track number
+#   {{{track_total}}}        - Total tracks in album
+#   {{{track_display}}}      - Track number as "X/Y"
+#   {{{disc_number}}}        - Disc number
+#   {{{disc_total}}}         - Total discs
+#   {{{disc_display}}}       - Disc number as "X/Y"
+#   {{{genre}}}              - Track genre
+#   {{{year}}}               - Release year
+#
+# Additional Metadata:
+#   {{{duration_secs}}}      - Duration in seconds
+#   {{{duration_display}}}   - Duration as "MM:SS"
+#   {{{initial_key}}}        - Musical key
+#   {{{bpm}}}                - Beats per minute
+#   {{{mood}}}               - Track mood
+#
+# Audio Properties:
+#   {{{bitrate_display}}}    - e.g. "320 kbps"
+#   {{{sample_rate_display}}} - e.g. "44.1 kHz"
+#   {{{bit_depth_display}}}  - e.g. "16-bit"
+#   {{{channels_display}}}   - e.g. "Stereo"
+#
+# Player Status:
+#   {{{player}}}             - Media player name
+#   {{{player_bus_name}}}    - Player bus name
+#   {{{status}}}             - Playback status
+#   {{{status_icon}}}        - Status as icon
+#   {{{volume}}}             - Player volume
+
 detail = "{{{title}}}"
-state = "{{{artists}}}"
-large_text = "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}"
+state = "{{{artist_display}}}"
+large_text = "{{#if album}}{{{album}}}{{else}}{{{artist_display}}}{{/if}}"
 small_text = "Playing on {{{player}}}"
 unknown_text = ""
 

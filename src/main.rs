@@ -1,20 +1,17 @@
+#[cfg(not(target_os = "linux"))]
+compile_error!("mprisence only supports Linux systems as it relies on MPRIS (Media Player Remote Interfacing Specification)");
+
 use clap::Parser;
 use config::{get_config, ConfigManager};
 use cover::CoverManager;
 use error::MprisenceError;
-use log::{debug, info, trace, warn, error};
+use log::{debug, error, info, trace, warn};
 use mpris::PlayerFinder;
 use player::PlayerIdentifier;
 use presence::Presence;
 use std::{
-    alloc::System,
-    collections::HashMap,
-    sync::Arc,
-    time::Duration,
-    fs::File,
-    path::PathBuf,
+    alloc::System, collections::HashMap, sync::Arc, time::Duration,
 };
-use fs2::FileExt;
 
 #[global_allocator]
 static GLOBAL: System = System;
@@ -22,44 +19,27 @@ static GLOBAL: System = System;
 mod cli;
 mod config;
 mod cover;
+mod discord;
 mod error;
-mod presence;
-mod utils;
+mod metadata;
 mod player;
+mod presence;
 mod template;
+mod utils;
 
 use crate::cli::Cli;
 
-fn get_lock_file() -> PathBuf {
-    let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/tmp"));
-    runtime_dir.join("mprisence.lock")
-}
-
-fn acquire_lock() -> Result<File, error::Error> {
-    let lock_path = get_lock_file();
-    let lock_file = File::create(&lock_path)?;
-    
-    match lock_file.try_lock_exclusive() {
-        Ok(_) => {
-            debug!("Successfully acquired lock file at {}", lock_path.display());
-            Ok(lock_file)
-        }
-        Err(e) => {
-            error!("Another instance is already running");
-            Err(error::Error::Other(format!(
-                "Another instance of mprisence is already running: {}",
-                e
-            )))
-        }
-    }
-}
-
+/// mprisence - Discord Rich Presence for MPRIS-compatible media players
+/// 
+/// This application only works on Linux systems as it relies on MPRIS
+/// (Media Player Remote Interfacing Specification), which is a standard
+/// D-Bus interface for controlling media players on Linux/Unix systems.
 #[tokio::main]
 async fn main() -> Result<(), error::Error> {
     env_logger::init();
-    
+
+    info!("Starting mprisence");
+
     config::initialize()?;
 
     let cli = Cli::parse();
@@ -67,7 +47,6 @@ async fn main() -> Result<(), error::Error> {
     match cli.command {
         Some(cmd) => cmd.execute().await?,
         None => {
-            let _lock = acquire_lock()?;
             let mut mprisence = Mprisence::new()?;
             mprisence.run().await?;
         }
@@ -77,8 +56,8 @@ async fn main() -> Result<(), error::Error> {
 }
 
 pub struct Mprisence {
-    player_finder: PlayerFinder,
-    presences: HashMap<PlayerIdentifier, Presence>,
+    mpris_finder: PlayerFinder,
+    media_players: HashMap<PlayerIdentifier, Presence>,
     template_manager: Arc<template::TemplateManager>,
     cover_manager: Arc<CoverManager>,
     config_rx: config::ConfigChangeReceiver,
@@ -97,13 +76,13 @@ impl Mprisence {
         trace!("Creating cover manager");
         let cover_manager = Arc::new(CoverManager::new(&config)?);
 
-        trace!("Creating player finder");
-        let player_finder = PlayerFinder::new()?;
+        trace!("Creating MPRIS finder");
+        let mpris_finder = PlayerFinder::new()?;
 
         debug!("Service initialization complete");
         Ok(Self {
-            player_finder,
-            presences: HashMap::new(),
+            mpris_finder,
+            media_players: HashMap::new(),
             template_manager,
             cover_manager,
             config_rx: config.subscribe(),
@@ -125,55 +104,93 @@ impl Mprisence {
         self.cover_manager = Arc::new(CoverManager::new(&self.config)?);
         debug!("Cover manager updated successfully");
 
-        // Update all presences with new managers
-        trace!("Updating all presences with new managers");
-        for presence in self.presences.values_mut() {
-            presence.update_managers(
-                self.template_manager.clone(),
-                self.cover_manager.clone(),
-                self.config.clone(),
-            );
-        }
-        debug!("All presences updated with new configuration");
+        // Check for players that need to be removed due to ignore settings
+        trace!("Checking for players affected by configuration changes");
+        self.media_players.retain(|id, presence| {
+            let player_config = self.config.get_player_config(&id.identity);
+            let keep = !player_config.ignore;
+            if !keep {
+                debug!("Removing player due to ignore setting: {}", id.identity);
+                let _ = presence.destroy_discord_client();
+            } else {
+                // Update managers for kept players
+                presence.update_managers(
+                    self.template_manager.clone(),
+                    self.cover_manager.clone(),
+                    self.config.clone(),
+                );
+            }
+            keep
+        });
 
+        debug!("All media players updated with new configuration");
         Ok(())
     }
 
     pub async fn update(&mut self) {
         trace!("Starting Discord presence update cycle");
+
+        // Check if Discord is running
+        let discord_running = discord::is_discord_running();
+        if !discord_running {
+            trace!("Discord is not running, destroying all Discord clients");
+            // Destroy all Discord clients when Discord is not running
+            for presence in self.media_players.values_mut() {
+                let _ = presence.destroy_discord_client();
+            }
+            return;
+        }
+
         let mut current_ids = std::collections::HashSet::new();
 
         trace!("Scanning for active media players");
-        for player in self.player_finder.iter_players().unwrap() {
+        for player in self.mpris_finder.iter_players().unwrap() {
             let player = player.unwrap();
             let id = PlayerIdentifier::from(&player);
+
+            // Check if player should be ignored
+            let player_config = self.config.get_player_config(&id.identity);
+            if player_config.ignore {
+                trace!("Skipping ignored player: {}", id.identity);
+                continue;
+            }
+
             current_ids.insert(id.clone());
 
             trace!("Processing player {}", id);
-            if let Some(presence) = self.presences.get_mut(&id) {
-                if let Err(e) = presence.update(player).await {
-                    warn!("Failed to update player {}: {}", id.identity, e);
-                }
+            if let Some(presence) = self.media_players.get_mut(&id) {
+                // Initialize Discord client if needed
+                let _ = presence.initialize_discord_client();
+                let _ = presence.update(player).await;
             } else {
                 debug!("New media player detected: {}", id.identity);
-                self.presences.insert(
-                    id,
-                    Presence::new(
-                        player,
-                        self.template_manager.clone(),
-                        self.cover_manager.clone(),
-                        self.config.clone(),
-                    ),
+                let mut presence = Presence::new(
+                    player,
+                    self.template_manager.clone(),
+                    self.cover_manager.clone(),
+                    self.config.clone(),
                 );
+                // Initialize Discord client for new presence
+                let _ = presence.initialize_discord_client();
+                self.media_players.insert(id, presence);
             }
         }
 
-        // Now remove players that no longer exist
-        self.presences.retain(|id, presence| {
-            let keep = current_ids.contains(id);
+        // Now remove players that no longer exist or are now ignored
+        self.media_players.retain(|id, presence| {
+            let player_config = self.config.get_player_config(&id.identity);
+            let keep = current_ids.contains(id) && !player_config.ignore;
             if !keep {
-                debug!("Media player removed from tracking: {}", id.identity);
-                let _ = presence.destroy();
+                let reason = if !current_ids.contains(id) {
+                    "player no longer exists"
+                } else {
+                    "player is now ignored"
+                };
+                debug!(
+                    "Media player removed from tracking: {} ({})",
+                    id.identity, reason
+                );
+                let _ = presence.destroy_discord_client();
             }
             keep
         });

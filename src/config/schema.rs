@@ -23,7 +23,7 @@ const DEFAULT_TEMPLATE_DETAIL: &str = "{{{title}}}";
 const DEFAULT_TEMPLATE_STATE: &str = "{{{artists}}}";
 const DEFAULT_TEMPLATE_LARGE_TEXT: &str = "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}";
 const DEFAULT_TEMPLATE_SMALL_TEXT: &str = "Playing on {{{player}}}";
-const DEFAULT_TEMPLATE_UNKNOWN_TEXT: &str = "";
+const DEFAULT_TEMPLATE_UNKNOWN_TEXT: &str = "Unknown";  // Default text for missing/unknown values
 
 const DEFAULT_COVER_FILE_NAMES: [&str; 5] = ["cover", "folder", "front", "album", "art"];
 const DEFAULT_COVER_PROVIDERS: [&str; 2] = ["musicbrainz", "imgbb"];
@@ -205,6 +205,8 @@ pub struct TemplateConfig {
     #[serde(default = "default_template_small_text")]
     pub small_text: Box<str>,
 
+    /// Text to display when a metadata field is missing or unknown.
+    /// This provides a consistent fallback for template rendering.
     #[serde(default = "default_template_unknown_text")]
     pub unknown_text: Box<str>,
 }

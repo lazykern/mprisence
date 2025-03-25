@@ -13,61 +13,57 @@ interval = 2000
 [template]
 # Available template variables:
 #
-# Track Info (Available through MPRIS):
-#   {{{title}}}           - Track title
-#   {{{artists}}}         - Track artists
-#   {{{album_name}}}      - Album name
-#   {{{album_artists}}}   - Album artists
-#   {{{track_number}}}    - Track position in album
-#   {{{disc_number}}}     - Disc number
-#   {{{genre}}}           - Track genre (if provided by player)
-#   {{{composer}}}        - Track composer (if provided by player)
+# Core Metadata:
+#   {{{title}}}              - Track title
+#   {{{artists}}}            - Track artists (as array)
+#   {{{artist_display}}}     - Track artists (comma separated)
+#   {{{album}}}              - Album name
+#   {{{album_artists}}}      - Album artists (as array)
+#   {{{album_artist_display}}} - Album artists (comma separated)
+#   {{{track_number}}}       - Track number
+#   {{{track_total}}}        - Total tracks in album
+#   {{{track_display}}}      - Track number as "X/Y"
+#   {{{disc_number}}}        - Disc number
+#   {{{disc_total}}}         - Total discs
+#   {{{disc_display}}}       - Disc number as "X/Y"
+#   {{{genre}}}              - Track genre
+#   {{{year}}}               - Release year
 #
-# Player Status (Available):
-#   {{{player}}}          - Media player name
-#   {{{status}}}          - Player status (Playing/Paused/Stopped)
-#   {{{position}}}        - Current position (MM:SS)
-#   {{{length}}}          - Track length (MM:SS)
+# Additional Metadata:
+#   {{{duration_secs}}}      - Duration in seconds
+#   {{{duration_display}}}   - Duration as "MM:SS"
+#   {{{initial_key}}}        - Musical key
+#   {{{bpm}}}                - Beats per minute
+#   {{{mood}}}               - Track mood
+#
+# Audio Properties:
+#   {{{bitrate_display}}}    - e.g. "320 kbps"
+#   {{{sample_rate_display}}} - e.g. "44.1 kHz"
+#   {{{bit_depth_display}}}  - e.g. "16-bit"
+#   {{{channels_display}}}   - e.g. "Stereo"
+#
+# Player Status:
+#   {{{player}}}             - Media player name
+#   {{{player_bus_name}}}    - Player bus name
+#   {{{status}}}             - Playback status
+#   {{{status_icon}}}        - Status as icon
+#   {{{volume}}}             - Player volume
 #
 # Available Handlebars Helpers:
 # For more details, see:
-# - Handlebars Documentation: https://docs.rs/handlebars/latest/handlebars/
-# - Built-in Helpers Source: https://docs.rs/handlebars/latest/src/handlebars/helpers/helper_boolean.rs.html
-#
-# Built-in Helpers:
-#   {{#if value}}...{{else}}...{{/if}}     - Conditional block
-#   {{#unless value}}...{{/unless}}         - Negative conditional block
-#   {{#each array}}...{{/each}}            - Iterate over array/list
-#   {{#with obj}}...{{/with}}              - Change context
-#   {{lookup obj "key"}}                    - Access object property
-#   {{len value}}                          - Get length of array/string/object
-#   {{eq value1 value2}}                    - Compare values for equality
-#   {{gt value1 value2}}                    - Greater than comparison
-#   {{gte value1 value2}}                   - Greater than or equal comparison
-#   {{lt value1 value2}}                    - Less than comparison
-#   {{lte value1 value2}}                   - Less than or equal comparison
-#   {{and value1 value2}}                   - Logical AND
-#   {{or value1 value2}}                    - Logical OR
-#   {{not value}}                          - Logical NOT
-#
-# Helper Usage Examples:
-#   {{#if title}}{{{title}}}{{else}}Unknown Title{{/if}}
-#   {{#unless status}}No playback{{/unless}}
-#   {{#if (eq status "Playing")}}Now Playing{{/if}}
-#   {{#if (and title artists)}}{{title}} by {{artists}}{{/if}}
-#   {{#if (gt track_number 0)}}Track {{track_number}}{{/if}}
+# - Built-in Helpers: https://handlebarsjs.com/guide/builtin-helpers.html
 
 # What appears on the first line of Discord presence
 detail = "{{{title}}}"
 
 # What appears on the second line of Discord presence
-state = "{{{artists}}}"
+state = "{{{artist_display}}}"
 
 # Text shown when hovering over the large image
-large_text = "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}"
+large_text = "{{#if album}}{{{album}}}{{else}}{{{artist_display}}}{{/if}}"
 
 # Text shown when hovering over the small image
-small_text = "Playing on {{{player}}}"
+small_text = "Playing on {{{player}}} ({{{bitrate_display}}})"
 
 # Text shown when value is not found
 unknown_text = ""
@@ -142,24 +138,3 @@ allow_streaming = false
 # show_icon = false
 # allow_streaming = true
 # override_activity_type = "watching"
-
-# CMUS Example
-# [player.cmus]
-# icon = "https://i.ibb.co/3zDHM1z/cmus.png"
-# show_icon = true
-
-# ------------------
-# Browser Settings
-# ------------------
-# Commonly ignored browser media players
-# [player.chrome]
-# ignore = true
-
-# [player."Mozilla Firefox"]
-# ignore = true
-
-# [player.mozilla_zen]
-# ignore = true
-
-# [player.brave]
-# ignore = true

@@ -1,5 +1,5 @@
 use blake3::Hasher;
-use log::{debug, info, trace, warn, error};
+use log::{debug, trace, warn, error};
 use mpris::Metadata;
 use serde::{Deserialize, Serialize};
 use serde_json;

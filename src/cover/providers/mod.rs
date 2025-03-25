@@ -19,6 +19,7 @@ const USER_AGENT: &str = concat!(
 );
 
 /// Result from a cover art provider
+#[derive(Debug)]
 pub struct CoverResult {
     /// The URL where the cover art can be accessed
     pub url: String,

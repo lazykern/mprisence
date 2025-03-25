@@ -1,15 +1,53 @@
-use log::{debug, info, trace, warn, error};
+use log::{debug, info, trace, error};
 use std::sync::Arc;
 
 use handlebars::{handlebars_helper, Handlebars};
-use mpris::{PlaybackStatus, Player};
+use mpris::Player;
+use serde::Serialize;
 
 use crate::{
     config::ConfigManager,
     error::TemplateError,
-    utils::format_duration,
+    metadata::MediaMetadata,
+    utils::format_playback_status_icon,
 };
-use std::collections::BTreeMap;
+
+/// A comprehensive struct containing all variables available for template rendering,
+/// including player state and media metadata.
+#[derive(Debug, Clone, Serialize)]
+pub struct RenderContext {
+    // Player information
+    pub player: String,
+    pub player_bus_name: String,
+    pub status: Option<String>,
+    pub status_icon: Option<String>,
+    pub volume: Option<f64>,
+
+    // Metadata fields (from MediaMetadata)
+    #[serde(flatten)]
+    pub metadata: MediaMetadata,
+}
+
+impl RenderContext {
+    pub fn new(player: &Player, metadata: MediaMetadata) -> Self {
+        let status = player.get_playback_status()
+            .map(|s| format!("{:?}", s)).ok();
+
+        let status_icon = player.get_playback_status()
+            .map(format_playback_status_icon)
+            .map(String::from)
+            .ok();
+
+        Self {
+            player: player.identity().to_string(),
+            player_bus_name: player.bus_name_player_name_part().to_string(),
+            status,
+            status_icon,
+            volume: player.get_volume().ok(),
+            metadata,
+        }
+    }
+}
 
 pub struct TemplateManager {
     handlebars: Handlebars<'static>,
@@ -68,29 +106,29 @@ impl TemplateManager {
     pub fn render(
         &self,
         template_name: &str,
-        data: &BTreeMap<String, String>,
+        context: &RenderContext,
     ) -> Result<String, TemplateError> {
         trace!("Rendering template: {}", template_name);
-        self.handlebars.render(template_name, data).map_err(|e| {
+        self.handlebars.render(template_name, context).map_err(|e| {
             error!("Failed to render template '{}': {}", template_name, e);
             e.into()
         })
     }
 
     /// Create a complete Activity object from player state and metadata
-    pub fn render_activity_texts(&self, player: Player) -> Result<ActivityTexts, TemplateError> {
+    pub fn render_activity_texts(&self, player: Player, metadata: MediaMetadata) -> Result<ActivityTexts, TemplateError> {
         trace!("Creating activity texts for player: {}", player.identity());
         
-        // Create template data with metadata fields
-        debug!("Gathering player metadata and state for templates");
-        let template_data = Self::create_data(player);
+        // Create render context with player and metadata information
+        debug!("Creating render context with player and metadata information");
+        let render_context = RenderContext::new(&player, metadata);
 
-        // Render templates with full metadata
+        // Render templates with full context
         trace!("Rendering all activity text templates");
-        let details = self.render("detail", &template_data)?;
-        let state_text = self.render("state", &template_data)?;
-        let large_text = self.render("large_text", &template_data)?;
-        let small_text = self.render("small_text", &template_data)?;
+        let details = self.render("detail", &render_context)?;
+        let state_text = self.render("state", &render_context)?;
+        let large_text = self.render("large_text", &render_context)?;
+        let small_text = self.render("small_text", &render_context)?;
 
         trace!("Activity text rendering completed successfully");
         Ok(ActivityTexts {
@@ -99,88 +137,5 @@ impl TemplateManager {
             large_text,
             small_text,
         })
-    }
-
-    pub fn create_data(player: Player) -> BTreeMap<String, String> {
-        trace!("Creating template data for player: {}", player.identity());
-        let mut data = BTreeMap::new();
-
-        // Player information
-        trace!("Adding player identity information");
-        data.insert("player".to_string(), player.identity().to_string());
-        data.insert(
-            "player_bus_name".to_string(),
-            player.bus_name_player_name_part().to_string(),
-        );
-
-        // Playback information
-        if let Ok(status) = player.get_playback_status() {
-            trace!("Adding playback status: {:?}", status);
-            data.insert("status".to_string(), format!("{:?}", status));
-
-            let status_icon = match status {
-                PlaybackStatus::Playing => "▶",
-                PlaybackStatus::Paused => "⏸️",
-                PlaybackStatus::Stopped => "⏹️",
-            };
-            data.insert("status_icon".to_string(), status_icon.to_string());
-        } else {
-            warn!("Failed to get playback status for player: {}", player.identity());
-        }
-
-        if let Ok(volume) = player.get_volume() {
-            trace!("Adding volume information: {}", volume);
-            data.insert("volume".to_string(), volume.to_string());
-        } else {
-            debug!("Volume information not available for player: {}", player.identity());
-        }
-
-        trace!("Processing player metadata");
-        if let Ok(metadata) = player.get_metadata() {
-            if let Some(title) = metadata.title() {
-                trace!("Adding title: {}", title);
-                data.insert("title".to_string(), title.to_string());
-            }
-
-            if let Some(artists) = metadata.artists() {
-                trace!("Adding artists: {}", artists.join(", "));
-                data.insert("artists".to_string(), artists.join(", "));
-            }
-
-            if let Some(url) = metadata.url().as_ref().map(|s| s.to_string()) {
-                trace!("Adding media URL");
-                data.insert("url".to_string(), url);
-            }
-
-            if let Some(length) = metadata.length() {
-                trace!("Adding media length: {}s", length.as_secs());
-                data.insert("length".to_string(), format_duration(length.as_secs()));
-            }
-
-            if let Some(track_number) = metadata.track_number() {
-                trace!("Adding track number: {}", track_number);
-                data.insert("track_number".to_string(), track_number.to_string());
-            }
-
-            if let Some(disc_number) = metadata.disc_number() {
-                trace!("Adding disc number: {}", disc_number);
-                data.insert("disc_number".to_string(), disc_number.to_string());
-            }
-
-            if let Some(album_name) = metadata.album_name() {
-                trace!("Adding album name: {}", album_name);
-                data.insert("album".to_string(), album_name.to_string());
-            }
-
-            if let Some(album_artists) = metadata.album_artists() {
-                trace!("Adding album artists: {}", album_artists.join(", "));
-                data.insert("album_artists".to_string(), album_artists.join(", "));
-            }
-        } else {
-            warn!("Failed to get metadata for player: {}", player.identity());
-        }
-
-        debug!("Template data creation completed with {} fields", data.len());
-        data
     }
 }

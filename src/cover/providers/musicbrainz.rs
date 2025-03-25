@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use log::{debug, info, trace, warn, error};
+use log::{debug, info, trace, warn};
 use mpris::Metadata;
 use reqwest::Client;
 use serde::Deserialize;
@@ -265,7 +265,7 @@ impl CoverArtProvider for MusicbrainzProvider {
     }
 
     fn supports_source_type(&self, _source: &ArtSource) -> bool {
-        true // Works with any source type
+        true // MusicBrainz can work with any source type as it uses metadata
     }
 
     async fn process(

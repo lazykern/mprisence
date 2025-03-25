@@ -1,20 +1,21 @@
-use log::{debug, info, warn};
+use log::{debug, info, warn, trace};
 use mpris::Metadata;
 use std::path::PathBuf;
 use url::Url;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use crate::cover::error::CoverArtError;
 
 /// Source of art data with different representations
 #[derive(Debug, Clone)]
 pub enum ArtSource {
-    /// HTTP(S) URL already suitable for Discord
-    DirectUrl(String),
-    /// Local file path (needs processing)
-    LocalFile(PathBuf),
+    /// Direct HTTP(S) URL for Discord
+    Url(String),
+    /// Local file path
+    File(PathBuf),
     /// Base64 encoded image data
     Base64(String),
-    /// Raw bytes (typically from file)
+    /// Raw bytes of image data
     Bytes(Vec<u8>),
 }
 
@@ -63,7 +64,7 @@ fn extract_url(url_str: &str) -> Result<Option<ArtSource>, CoverArtError> {
                 // HTTP(S) URLs can be used directly
                 "http" | "https" => {
                     debug!("Found direct HTTP(S) URL: {}", url_str);
-                    Ok(Some(ArtSource::DirectUrl(url_str.to_string())))
+                    Ok(Some(ArtSource::Url(url_str.to_string())))
                 }
                 // File URLs need to be converted to paths
                 "file" => {
@@ -71,7 +72,7 @@ fn extract_url(url_str: &str) -> Result<Option<ArtSource>, CoverArtError> {
                     if let Ok(path) = url.to_file_path() {
                         if path.exists() {
                             debug!("File exists at path: {:?}", path);
-                            Ok(Some(ArtSource::LocalFile(path)))
+                            Ok(Some(ArtSource::File(path)))
                         } else {
                             warn!("File does not exist: {:?}", path);
                             Ok(None)
@@ -105,6 +106,58 @@ pub async fn load_file(path: PathBuf) -> Result<Option<ArtSource>, CoverArtError
         Err(e) => {
             warn!("Failed to read file: {:?} ({})", path, e);
             Ok(None)
+        }
+    }
+}
+
+impl ArtSource {
+    /// Convert a string that may be a URL, file path, or base64 data into an ArtSource
+    pub fn from_art_url(url: &str) -> Option<Self> {
+        trace!("Converting art URL to source: {}", url);
+
+        // Handle base64 data URLs
+        if url.starts_with("data:image/") && url.contains("base64,") {
+            return url.split("base64,").nth(1)
+                .map(|data| {
+                    debug!("Detected base64 encoded image data");
+                    Self::Base64(data.to_string())
+                });
+        }
+
+        // Handle HTTP(S) URLs
+        if url.starts_with("http://") || url.starts_with("https://") {
+            debug!("Detected HTTP(S) URL");
+            return Some(Self::Url(url.to_string()));
+        }
+
+        // Handle file URLs and paths
+        let path = if url.starts_with("file://") {
+            url[7..].parse().ok()
+        } else {
+            url.parse().ok()
+        };
+
+        path.map(|p| {
+            debug!("Detected file path");
+            Self::File(p)
+        })
+    }
+
+    /// Create an ArtSource from raw bytes
+    pub fn from_bytes(data: Vec<u8>) -> Self {
+        trace!("Creating art source from {} bytes", data.len());
+        Self::Bytes(data)
+    }
+
+    /// Convert the art source to base64 if possible
+    pub fn to_base64(&self) -> Option<String> {
+        match self {
+            Self::Base64(data) => Some(data.clone()),
+            Self::Bytes(data) => {
+                trace!("Converting bytes to base64");
+                Some(STANDARD.encode(data))
+            }
+            _ => None
         }
     }
 } 

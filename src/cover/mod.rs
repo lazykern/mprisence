@@ -1,6 +1,7 @@
-use log::{debug, info, trace, warn, error};
+use log::{debug, info, trace, warn};
 use mpris::Metadata;
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
+use std::time::Duration;
 
 use crate::config;
 
@@ -10,8 +11,11 @@ pub mod providers;
 pub mod sources;
 
 use cache::CoverCache;
+use error::CoverArtError;
 use providers::CoverArtProvider;
-use sources::{extract_from_metadata, load_file, ArtSource};
+use sources::ArtSource;
+
+const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 24 hours
 
 /// Main manager for cover art retrieval
 pub struct CoverManager {
@@ -20,43 +24,35 @@ pub struct CoverManager {
 }
 
 impl CoverManager {
-    pub fn new(config: &Arc<config::ConfigManager>) -> Result<Self, error::CoverArtError> {
+    pub fn new(config: &Arc<config::ConfigManager>) -> Result<Self, CoverArtError> {
         info!("Initializing cover art manager");
         let cover_config = config.cover_config();
-
-        trace!("Creating cache with 24-hour TTL");
-        let cache = CoverCache::new(Duration::from_secs(24 * 60 * 60))?;
+        let cache = CoverCache::new(CACHE_TTL)?;
         let mut providers: Vec<Box<dyn CoverArtProvider>> = Vec::new();
 
-        debug!("Configuring cover art providers");
+        // Initialize configured providers
         for provider_name in &cover_config.provider.provider {
-            trace!("Processing provider configuration: {}", provider_name);
             match provider_name.as_str() {
                 "musicbrainz" => {
                     debug!("Adding MusicBrainz provider");
                     providers.push(Box::new(providers::musicbrainz::MusicbrainzProvider::new()));
                 }
                 "imgbb" => {
-                    let imgbb_config = &cover_config.provider.imgbb;
-                    if let Some(_) = &imgbb_config.api_key {
-                        debug!("Adding ImgBB provider with configured API key");
+                    if let Some(_) = &cover_config.provider.imgbb.api_key {
+                        debug!("Adding ImgBB provider");
                         providers.push(Box::new(providers::imgbb::ImgbbProvider::with_config(
-                                imgbb_config.clone(),
-                            )));
+                            cover_config.provider.imgbb.clone(),
+                        )));
                     } else {
                         warn!("Skipping ImgBB provider - no API key configured");
                     }
                 }
-                unknown => {
-                    warn!("Skipping unknown cover art provider: {}", unknown);
-                }
+                unknown => warn!("Skipping unknown provider: {}", unknown),
             }
         }
 
         if providers.is_empty() {
-            warn!("No cover art providers have been configured");
-        } else {
-            debug!("Successfully configured {} provider(s)", providers.len());
+            warn!("No cover art providers configured");
         }
 
         Ok(Self { providers, cache })
@@ -65,77 +61,38 @@ impl CoverManager {
     /// Get a cover art URL from available sources and providers
     pub async fn get_cover_art(
         &self,
+        source: ArtSource,
         metadata: &Metadata,
-    ) -> Result<Option<String>, error::CoverArtError> {
-        trace!("Starting cover art retrieval process");
-
+    ) -> Result<Option<String>, CoverArtError> {
         // Check cache first
         if let Some(url) = self.cache.get(metadata)? {
             debug!("Found cached cover art URL");
-            trace!("Using cached URL: {}", url);
             return Ok(Some(url));
         }
 
-        trace!("No cache hit, extracting art source from metadata");
-        let source = extract_from_metadata(metadata)?;
-
-        match source {
-            Some(ArtSource::DirectUrl(url)) => {
-                debug!("Using direct URL from metadata");
-                trace!("Direct URL: {}", url);
-                self.cache.store(metadata, "direct", &url)?;
-                Ok(Some(url))
-            }
-            Some(ArtSource::LocalFile(path)) => {
-                debug!("Found local file cover art");
-                trace!("Attempting to load file: {:?}", path);
-                if let Some(bytes) = load_file(path).await? {
-                    debug!("Successfully loaded local file, processing with providers");
-                    self.process_with_providers(bytes, metadata).await
-                } else {
-                    warn!("Failed to load local cover art file");
-                    Ok(None)
-                }
-            }
-            Some(source) => {
-                debug!("Processing cover art source with available providers");
-                self.process_with_providers(source, metadata).await
-            }
-            None => {
-                debug!("No cover art source found in metadata");
-                Ok(None)
-            }
+        // Direct URLs can be used immediately
+        if let ArtSource::Url(url) = &source {
+            debug!("Using direct URL from source");
+            self.cache.store(metadata, "direct", url)?;
+            return Ok(Some(url.clone()));
         }
-    }
 
-    /// Process a source through available providers
-    async fn process_with_providers(
-        &self,
-        source: ArtSource,
-        metadata: &Metadata,
-    ) -> Result<Option<String>, error::CoverArtError> {
-        trace!("Processing cover art with {} provider(s)", self.providers.len());
-
+        // Process through providers
         for provider in &self.providers {
-            if provider.supports_source_type(&source) {
-                debug!("Attempting cover art retrieval with provider: {}", provider.name());
-
-                match provider.process(source.clone(), metadata).await {
-                    Ok(Some(result)) => {
-                        info!("Successfully retrieved cover art from {}", provider.name());
-                        trace!("Cover art URL: {}", result.url);
-                        self.cache.store(metadata, &result.provider, &result.url)?;
-                        return Ok(Some(result.url));
-                    }
-                    Ok(None) => {
-                        debug!("Provider {} found no cover art", provider.name());
-                    }
-                    Err(e) => {
-                        warn!("Provider {} failed to process cover art: {}", provider.name(), e);
-                    }
-                }
-            } else {
+            if !provider.supports_source_type(&source) {
                 trace!("Provider {} does not support source type", provider.name());
+                continue;
+            }
+
+            debug!("Attempting cover art retrieval with {}", provider.name());
+            match provider.process(source.clone(), metadata).await {
+                Ok(Some(result)) => {
+                    info!("Successfully retrieved cover art from {}", provider.name());
+                    self.cache.store(metadata, &result.provider, &result.url)?;
+                    return Ok(Some(result.url));
+                }
+                Ok(None) => debug!("Provider {} found no cover art", provider.name()),
+                Err(e) => warn!("Provider {} failed: {}", provider.name(), e),
             }
         }
 
@@ -145,16 +102,13 @@ impl CoverManager {
 }
 
 /// Clean up cache periodically
-pub async fn clean_cache() -> Result<(), error::CoverArtError> {
+pub async fn clean_cache() -> Result<(), CoverArtError> {
     info!("Starting periodic cache cleanup");
-    trace!("Creating cache instance for cleanup");
-    let cache = CoverCache::new(Duration::from_secs(24 * 60 * 60))?;
-
+    let cache = CoverCache::new(CACHE_TTL)?;
+    
     let cleaned = cache.clean()?;
     if cleaned > 0 {
-        info!("Successfully cleaned {} expired cache entries", cleaned);
-    } else {
-        debug!("No expired cache entries found during cleanup");
+        info!("Cleaned {} expired cache entries", cleaned);
     }
 
     Ok(())

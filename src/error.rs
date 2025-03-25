@@ -1,6 +1,6 @@
 use crate::config;
 use crate::cover;
-use mpris::DBusError;
+use mpris::{DBusError, FindingError};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -19,6 +19,12 @@ pub enum Error {
 
     #[error("Instance error: {0}")]
     Other(String),
+
+    #[error("DBus error: {0}")]
+    DBus(#[from] DBusError),
+
+    #[error("Player finding error: {0}")]
+    PlayerFinding(#[from] FindingError),
 }
 
 #[derive(Error, Debug)]
@@ -44,11 +50,11 @@ pub enum DiscordError {
     #[error("Failed to connect to Discord: {0}")]
     ConnectionError(String),
 
+    #[error("Failed to close Discord: {0}")]
+    CloseError(String),
+
     #[error("Failed to set activity: {0}")]
     ActivityError(String),
-
-    #[error("Failed to clear activity: {0}")]
-    ClearActivityError(String),
 
     #[error("Failed to reconnect: {0}")]
     ReconnectionError(String),
