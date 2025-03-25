@@ -26,6 +26,7 @@ pub struct CoverResult {
     /// The name of the provider that generated this result
     pub provider: String,
     /// Optional expiration time for the URL
+    #[allow(dead_code)]
     pub expiration: Option<Duration>,
 }
 

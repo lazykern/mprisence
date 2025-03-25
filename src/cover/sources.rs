@@ -20,6 +20,7 @@ pub enum ArtSource {
 }
 
 /// Extract the art source from metadata
+#[allow(dead_code)]
 pub fn extract_from_metadata(metadata: &Metadata) -> Result<Option<ArtSource>, CoverArtError> {
     if let Some(url_str) = metadata.art_url() {
         debug!("Found art URL in metadata: {}", url_str);
@@ -37,6 +38,7 @@ pub fn extract_from_metadata(metadata: &Metadata) -> Result<Option<ArtSource>, C
 }
 
 /// Extract base64 encoded image data
+#[allow(dead_code)]
 fn extract_base64(url_str: &str) -> Result<Option<ArtSource>, CoverArtError> {
     // Extract image type for better logging
     let image_type = url_str
@@ -57,6 +59,7 @@ fn extract_base64(url_str: &str) -> Result<Option<ArtSource>, CoverArtError> {
 }
 
 /// Extract file path or direct URL
+#[allow(dead_code)]
 fn extract_url(url_str: &str) -> Result<Option<ArtSource>, CoverArtError> {
     match Url::parse(url_str) {
         Ok(url) => {
@@ -97,6 +100,7 @@ fn extract_url(url_str: &str) -> Result<Option<ArtSource>, CoverArtError> {
 }
 
 /// Load a file into bytes
+#[allow(dead_code)]
 pub async fn load_file(path: PathBuf) -> Result<Option<ArtSource>, CoverArtError> {
     match tokio::fs::read(&path).await {
         Ok(data) => {
@@ -144,12 +148,14 @@ impl ArtSource {
     }
 
     /// Create an ArtSource from raw bytes
+    #[allow(dead_code)]
     pub fn from_bytes(data: Vec<u8>) -> Self {
         trace!("Creating art source from {} bytes", data.len());
         Self::Bytes(data)
     }
 
     /// Convert the art source to base64 if possible
+    #[allow(dead_code)]
     pub fn to_base64(&self) -> Option<String> {
         match self {
             Self::Base64(data) => Some(data.clone()),

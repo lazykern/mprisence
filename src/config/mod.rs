@@ -110,6 +110,7 @@ impl ConfigManager {
     }
 
     // Direct read/write access for more complex operations
+    #[allow(dead_code)]
     pub fn read(&self) -> Result<impl std::ops::Deref<Target = Config> + '_, ConfigError> {
         self.config
             .read()
@@ -128,6 +129,7 @@ impl ConfigManager {
     }
 
     // Save config to file
+    #[allow(dead_code)]
     pub fn save(&self) -> Result<(), ConfigError> {
         let config = self.read()?;
         let config_str = toml::to_string_pretty(&*config).map_err(ConfigError::Serialize)?;

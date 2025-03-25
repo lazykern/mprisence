@@ -7,9 +7,9 @@ readme = "README.md"
 homepage = "https://github.com/lazykern/mprisence"
 repository = "https://github.com/lazykern/mprisence"
 license = "MIT"
-
-[profile.release]
-debug = true
+description = "Discord Rich Presence for MPRIS-compatible media players (Linux only)"
+keywords = ["discord", "mpris", "linux", "media", "rich-presence"]
+categories = ["multimedia", "command-line-utilities"]
 
 [dependencies]
 clap = { version = "4.5.32", features = ["derive"] }

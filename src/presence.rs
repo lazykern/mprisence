@@ -93,7 +93,7 @@ impl Presence {
         trace!("Updating presence for player: {}", player.identity());
         self.validate_player(&player)?;
 
-        let Some(discord_client) = &self.discord_client else {
+        let Some(_discord_client) = &self.discord_client else {
             return Ok(());
         };
 
@@ -207,6 +207,7 @@ impl Presence {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn force_reconnect(&mut self) {
         debug!("Forcing Discord reconnection for player: {}", self.player.identity());
         self.needs_reconnection.store(true, Ordering::Relaxed);

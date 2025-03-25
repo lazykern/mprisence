@@ -5,7 +5,6 @@ use lofty::{
     file::{AudioFile, TaggedFile, TaggedFileExt},
     prelude::*,
     properties::FileProperties,
-    tag::Accessor,
 };
 use log::trace;
 use mpris::Metadata;
@@ -317,10 +316,12 @@ impl MetadataSource {
     }
 
     // Raw metadata access
+    #[allow(dead_code)]
     pub fn mpris_metadata(&self) -> Option<&Metadata> {
         self.mpris_metadata.as_ref()
     }
 
+    #[allow(dead_code)]
     pub fn lofty_tag(&self) -> Option<&TaggedFile> {
         self.tagged_file.as_ref()
     }
