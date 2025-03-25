@@ -9,7 +9,7 @@ url="https://github.com/lazykern/mprisence"
 license=("MIT")
 depends=("gcc-libs")
 makedepends=("cargo")
-source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v1.0.0-beta1.tar.gz")
 sha256sums=('SKIP')
 
 prepare() {
