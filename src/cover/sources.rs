@@ -48,7 +48,6 @@ fn extract_base64(url_str: &str) -> Result<Option<ArtSource>, CoverArtError> {
     
     info!("Found base64 encoded {} image in metadata", image_type);
     
-    // Extract base64 data after the comma
     if let Some(base64_data) = url_str.split(";base64,").nth(1) {
         debug!("Successfully extracted base64 data ({} bytes)", base64_data.len());
         Ok(Some(ArtSource::Base64(base64_data.to_string())))
@@ -64,12 +63,10 @@ fn extract_url(url_str: &str) -> Result<Option<ArtSource>, CoverArtError> {
     match Url::parse(url_str) {
         Ok(url) => {
             match url.scheme() {
-                // HTTP(S) URLs can be used directly
                 "http" | "https" => {
                     debug!("Found direct HTTP(S) URL: {}", url_str);
                     Ok(Some(ArtSource::Url(url_str.to_string())))
                 }
-                // File URLs need to be converted to paths
                 "file" => {
                     debug!("Found file URL: {}", url_str);
                     if let Ok(path) = url.to_file_path() {
@@ -85,7 +82,6 @@ fn extract_url(url_str: &str) -> Result<Option<ArtSource>, CoverArtError> {
                         Ok(None)
                     }
                 }
-                // Other schemes are not supported
                 scheme => {
                     debug!("Unsupported URL scheme: {}", scheme);
                     Ok(None)
@@ -119,7 +115,6 @@ impl ArtSource {
     pub fn from_art_url(url: &str) -> Option<Self> {
         trace!("Converting art URL to source: {}", url);
 
-        // Handle base64 data URLs
         if url.starts_with("data:image/") && url.contains("base64,") {
             return url.split("base64,").nth(1)
                 .map(|data| {
@@ -128,13 +123,11 @@ impl ArtSource {
                 });
         }
 
-        // Handle HTTP(S) URLs
         if url.starts_with("http://") || url.starts_with("https://") {
             debug!("Detected HTTP(S) URL");
             return Some(Self::Url(url.to_string()));
         }
 
-        // Handle file URLs and paths
         let path = if url.starts_with("file://") {
             url[7..].parse().ok()
         } else {

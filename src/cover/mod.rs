@@ -64,20 +64,17 @@ impl CoverManager {
         source: ArtSource,
         metadata: &Metadata,
     ) -> Result<Option<String>, CoverArtError> {
-        // Check cache first
         if let Some(url) = self.cache.get(metadata)? {
             debug!("Found cached cover art URL");
             return Ok(Some(url));
         }
 
-        // Direct URLs can be used immediately
         if let ArtSource::Url(url) = &source {
             debug!("Using direct URL from source");
             self.cache.store(metadata, "direct", url)?;
             return Ok(Some(url.clone()));
         }
 
-        // Process through providers
         for provider in &self.providers {
             if !provider.supports_source_type(&source) {
                 trace!("Provider {} does not support source type", provider.name());

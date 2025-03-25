@@ -77,7 +77,6 @@ impl CoverArtProvider for ImgbbProvider {
             builder = builder.expiration(self.config.expiration);
         }
 
-        // Upload based on source type
         let response = match source {
             ArtSource::Base64(data) => builder.data(&data),
             ArtSource::Bytes(data) => builder.bytes(&data),
@@ -92,7 +91,6 @@ impl CoverArtProvider for ImgbbProvider {
             CoverArtError::provider_error("imgbb", &format!("Upload failed: {}", e))
         })?;
 
-        // Extract URL from response
         let url = response.data
             .and_then(|data| data.url.or(data.display_url));
 

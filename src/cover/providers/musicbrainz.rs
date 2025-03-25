@@ -137,7 +137,6 @@ impl MusicbrainzProvider {
         let encoded_query = urlencoding::encode(&query);
         trace!("Encoded MusicBrainz query: {}", encoded_query);
         
-        // Fetch both release groups and releases in parallel
         let (release_groups, releases) = futures::join!(
             self.client.get(&format!("{}/release-group?query={}&limit=5&fmt=json", 
                 MUSICBRAINZ_API, encoded_query))
@@ -149,7 +148,6 @@ impl MusicbrainzProvider {
 
         let mut cover_sources = Vec::new();
 
-        // Process release groups
         if let Ok(response) = release_groups {
             if let Ok(data) = response.json::<MusicBrainzResponse<ReleaseGroup>>().await {
                 debug!("Found {} release groups (filtering by score >= {})", data.count, Self::MIN_SCORE);
@@ -164,7 +162,6 @@ impl MusicbrainzProvider {
             }
         }
 
-        // Process releases
         if let Ok(response) = releases {
             if let Ok(data) = response.json::<MusicBrainzResponse<Release>>().await {
                 debug!("Found {} releases (filtering by score >= {})", data.count, Self::MIN_SCORE);
@@ -286,7 +283,6 @@ impl CoverArtProvider for MusicbrainzProvider {
         let artists = metadata.artists().unwrap_or_default();
         let album_artists = metadata.album_artists().unwrap_or_default();
 
-        // Try album search first
         if let Some(album) = metadata.album_name() {
             let search_artists = if !album_artists.is_empty() {
                 trace!("Using album artists for search: {:?}", album_artists);
@@ -313,7 +309,6 @@ impl CoverArtProvider for MusicbrainzProvider {
             }
         }
 
-        // Fall back to track search
         if let Some(title) = metadata.title() {
             if !artists.is_empty() {
                 let duration = metadata.length().map(|d| d.as_millis());

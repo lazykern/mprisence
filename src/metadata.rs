@@ -63,7 +63,6 @@ macro_rules! impl_metadata_getter {
 /// This struct is designed to be easily used with handlebars templates.
 #[derive(Debug, Clone, Serialize)]
 pub struct MediaMetadata {
-    // Core metadata
     pub title: Option<String>,
     pub artists: Vec<String>, // Keep as Vec since empty vec is semantically correct
     pub artist_display: Option<String>, // Comma-separated artists for easy template use
@@ -79,26 +78,22 @@ pub struct MediaMetadata {
     pub genre: Option<String>,
     pub year: Option<String>,
 
-    // Additional metadata
     pub duration_secs: Option<u64>,       // Raw duration in seconds
     pub duration_display: Option<String>, // Formatted as "mm:ss"
     pub initial_key: Option<String>,
     pub bpm: Option<String>,
     pub mood: Option<String>,
 
-    // Audio properties
     pub bitrate_display: Option<String>,     // "320 kbps"
     pub sample_rate_display: Option<String>, // "44.1 kHz"
     pub bit_depth_display: Option<String>,   // "16-bit"
     pub channels_display: Option<String>,    // "Stereo" or "5.1" etc.
 
-    // Identifiers
     pub isrc: Option<String>,
     pub barcode: Option<String>,
     pub catalog_number: Option<String>,
     pub label: Option<String>,
 
-    // MusicBrainz IDs
     pub musicbrainz_track_id: Option<String>,
     pub musicbrainz_album_id: Option<String>,
     pub musicbrainz_artist_id: Option<String>,
@@ -181,7 +176,6 @@ impl MetadataSource {
         Ok(tagged_file)
     }
 
-    // Core metadata getters using macro
     impl_metadata_getter!(title, "xesam:title", &ItemKey::TrackTitle);
     impl_metadata_getter!(album, "xesam:album", &ItemKey::AlbumTitle);
     impl_metadata_getter!(genre, "xesam:genre", &ItemKey::Genre);
@@ -189,7 +183,6 @@ impl MetadataSource {
     impl_metadata_getter!(bpm, "xesam:bpm", &ItemKey::Bpm);
     impl_metadata_getter!(mood, "xesam:mood", &ItemKey::Mood);
 
-    // Identifiers
     impl_metadata_getter!(isrc, "xesam:isrc", &ItemKey::Isrc);
     impl_metadata_getter!(barcode, "xesam:barcode", &ItemKey::Barcode);
     impl_metadata_getter!(
@@ -199,7 +192,6 @@ impl MetadataSource {
     );
     impl_metadata_getter!(label, "xesam:label", &ItemKey::Label);
 
-    // MusicBrainz IDs
     impl_metadata_getter!(
         musicbrainz_track_id,
         "xesam:musicbrainzTrackID",
@@ -226,7 +218,6 @@ impl MetadataSource {
         &ItemKey::MusicBrainzReleaseGroupId
     );
 
-    // Numeric getters using parse_u32 variant
     impl_metadata_getter!(
         track_number,
         "xesam:trackNumber",
@@ -330,7 +321,6 @@ impl MetadataSource {
     pub fn to_media_metadata(&self) -> MediaMetadata {
         let mut metadata = MediaMetadata::default();
 
-        // Fill in core metadata
         metadata.title = self.title();
 
         if let Some(artists) = self.artists() {
@@ -345,7 +335,6 @@ impl MetadataSource {
             metadata.album_artist_display = Some(album_artists.join(", "));
         }
 
-        // Track and disc numbers with totals
         metadata.track_number = self.track_number();
         metadata.track_total = self.track_total();
         if let Some(track_num) = metadata.track_number {
@@ -361,18 +350,15 @@ impl MetadataSource {
         metadata.genre = self.genre();
         metadata.year = self.year().map(|y| y.to_string());
 
-        // Duration
         if let Some(duration) = self.length() {
             metadata.duration_secs = Some(duration.as_secs());
             metadata.duration_display = Some(format_duration(duration.as_secs()));
         }
 
-        // Additional metadata
         metadata.initial_key = self.initial_key();
         metadata.bpm = self.bpm();
         metadata.mood = self.mood();
 
-        // Audio properties
         if let Some(props) = self.audio_properties() {
             if let Some(bitrate) = props.overall_bitrate() {
                 metadata.bitrate_display = Some(format_bitrate(bitrate));
@@ -388,13 +374,11 @@ impl MetadataSource {
             }
         }
 
-        // Identifiers
         metadata.isrc = self.isrc();
         metadata.barcode = self.barcode();
         metadata.catalog_number = self.catalog_number();
         metadata.label = self.label();
 
-        // MusicBrainz IDs
         metadata.musicbrainz_track_id = self.musicbrainz_track_id();
         metadata.musicbrainz_album_id = self.musicbrainz_album_id();
         metadata.musicbrainz_artist_id = self.musicbrainz_artist_id();

@@ -294,7 +294,6 @@ impl Presence {
         };
         trace!("Metadata: {:?}", metadata);
 
-        // Create MetadataSource from MPRIS metadata
         let metadata_source = metadata::MetadataSource::from_mpris(metadata.clone());
         let media_metadata = metadata_source.to_media_metadata();
 
@@ -326,7 +325,6 @@ impl Presence {
 
         let activity_texts = self.template_manager.render_activity_texts(player, media_metadata)?;
 
-        // Get art source from metadata and process with cover manager
         let cover_art_url = if let Some(art_source) = metadata_source.art_source() {
             match self.cover_manager.get_cover_art(art_source, &metadata).await {
                 Ok(Some(url)) => {

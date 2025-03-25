@@ -43,18 +43,14 @@ pub fn create_shared_client() -> Client {
     );
 
     Client::builder()
-        // Set reasonable timeouts
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
-        // Optimize connection pool
         .pool_max_idle_per_host(0)
         .pool_idle_timeout(Some(Duration::from_secs(30)))
-        // Minimize memory usage
         .tcp_keepalive(Some(Duration::from_secs(60)))
         .tcp_nodelay(true)
         .http2_initial_stream_window_size(Some(65535))
         .http2_initial_connection_window_size(Some(131072))
-        // Set default headers
         .default_headers(headers)
         .build()
         .expect("Failed to create HTTP client")

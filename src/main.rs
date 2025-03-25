@@ -94,17 +94,14 @@ impl Mprisence {
         info!("Configuration change detected, updating components");
         self.config = get_config();
 
-        // Update template manager
         trace!("Updating template manager");
         self.template_manager = Arc::new(template::TemplateManager::new(&self.config)?);
         debug!("Template manager updated successfully");
 
-        // Update cover manager
         trace!("Updating cover manager");
         self.cover_manager = Arc::new(CoverManager::new(&self.config)?);
         debug!("Cover manager updated successfully");
 
-        // Check for players that need to be removed due to ignore settings
         trace!("Checking for players affected by configuration changes");
         self.media_players.retain(|id, presence| {
             let player_config = self.config.get_player_config(&id.identity);
@@ -113,7 +110,6 @@ impl Mprisence {
                 debug!("Removing player due to ignore setting: {}", id.identity);
                 let _ = presence.destroy_discord_client();
             } else {
-                // Update managers for kept players
                 presence.update_managers(
                     self.template_manager.clone(),
                     self.cover_manager.clone(),
@@ -134,7 +130,6 @@ impl Mprisence {
         let discord_running = discord::is_discord_running();
         if !discord_running {
             trace!("Discord is not running, destroying all Discord clients");
-            // Destroy all Discord clients when Discord is not running
             for presence in self.media_players.values_mut() {
                 let _ = presence.destroy_discord_client();
             }
@@ -170,7 +165,6 @@ impl Mprisence {
                     self.cover_manager.clone(),
                     self.config.clone(),
                 );
-                // Initialize Discord client for new presence
                 let _ = presence.initialize_discord_client();
                 self.media_players.insert(id, presence);
             }

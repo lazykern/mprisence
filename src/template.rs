@@ -16,14 +16,12 @@ use crate::{
 /// including player state and media metadata.
 #[derive(Debug, Clone, Serialize)]
 pub struct RenderContext {
-    // Player information
     pub player: String,
     pub player_bus_name: String,
     pub status: Option<String>,
     pub status_icon: Option<String>,
     pub volume: Option<f64>,
 
-    // Metadata fields (from MediaMetadata)
     #[serde(flatten)]
     pub metadata: MediaMetadata,
 }
@@ -72,8 +70,6 @@ impl TemplateManager {
         trace!("Registering custom template helpers");
         handlebars.register_helper("eq", Box::new(eq));
 
-        debug!("Registering template strings");
-        // Register all templates
         handlebars
             .register_template_string("detail", &template_config.detail)
             .map_err(|e| {
@@ -119,11 +115,9 @@ impl TemplateManager {
     pub fn render_activity_texts(&self, player: Player, metadata: MediaMetadata) -> Result<ActivityTexts, TemplateError> {
         trace!("Creating activity texts for player: {}", player.identity());
         
-        // Create render context with player and metadata information
         debug!("Creating render context with player and metadata information");
         let render_context = RenderContext::new(&player, metadata);
 
-        // Render templates with full context
         trace!("Rendering all activity text templates");
         let details = self.render("detail", &render_context)?;
         let state_text = self.render("state", &render_context)?;

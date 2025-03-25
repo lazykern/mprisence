@@ -109,7 +109,6 @@ impl ConfigManager {
         self.path.clone()
     }
 
-    // Direct read/write access for more complex operations
     #[allow(dead_code)]
     pub fn read(&self) -> Result<impl std::ops::Deref<Target = Config> + '_, ConfigError> {
         self.config
@@ -144,7 +143,6 @@ impl ConfigManager {
         // Use the same loading logic as initial load
         let new_config = load_config_from_file(&self.path)?;
         
-        // Update the config
         let mut config = self.write()?;
         *config = new_config;
         
@@ -162,7 +160,6 @@ pub fn initialize() -> Result<(), ConfigError> {
     // Create parent directories but don't worry about file
     ensure_config_exists(&config_path)?;
 
-    // Create the config manager
     let config_manager = ConfigManager::new(config_path.clone())?;
     let config_manager = Arc::new(config_manager);
 
@@ -252,7 +249,6 @@ fn ensure_config_exists(path: &Path) -> Result<(), ConfigError> {
 fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     log::info!("Loading configuration from {}", path.display());
     
-    // Create figment with default config
     let mut figment = Figment::new()
         .merge(Toml::string(include_str!("../../config/default.toml")));
 
@@ -262,6 +258,5 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
         figment = figment.merge(Toml::file(path));
     }
 
-    // Extract the merged config
     figment.extract().map_err(ConfigError::Figment)
 }
