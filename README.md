@@ -21,7 +21,7 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
 
 - **Media Players**: VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer
 - **Streaming**: YouTube Music, Spotify (disabled by default)
-- **Browsers** (disabled by default): Firefox, Chrome, Edge, Brave
+- **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
 
 ## 📋 Requirements
 
