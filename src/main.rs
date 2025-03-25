@@ -29,11 +29,6 @@ mod utils;
 
 use crate::cli::Cli;
 
-/// mprisence - Discord Rich Presence for MPRIS-compatible media players
-/// 
-/// This application only works on Linux systems as it relies on MPRIS
-/// (Media Player Remote Interfacing Specification), which is a standard
-/// D-Bus interface for controlling media players on Linux/Unix systems.
 #[tokio::main]
 async fn main() -> Result<(), error::Error> {
     env_logger::init();
@@ -126,7 +121,6 @@ impl Mprisence {
     pub async fn update(&mut self) {
         trace!("Starting Discord presence update cycle");
 
-        // Check if Discord is running
         let discord_running = discord::is_discord_running();
         if !discord_running {
             trace!("Discord is not running, destroying all Discord clients");
@@ -143,7 +137,6 @@ impl Mprisence {
             let player = player.unwrap();
             let id = PlayerIdentifier::from(&player);
 
-            // Check if player should be ignored
             let player_config = self.config.get_player_config(&id.identity);
             if player_config.ignore {
                 trace!("Skipping ignored player: {}", id.identity);
@@ -154,7 +147,6 @@ impl Mprisence {
 
             trace!("Processing player {}", id);
             if let Some(presence) = self.media_players.get_mut(&id) {
-                // Initialize Discord client if needed
                 let _ = presence.initialize_discord_client();
                 let _ = presence.update(player).await;
             } else {
@@ -170,7 +162,6 @@ impl Mprisence {
             }
         }
 
-        // Now remove players that no longer exist or are now ignored
         self.media_players.retain(|id, presence| {
             let player_config = self.config.get_player_config(&id.identity);
             let keep = current_ids.contains(id) && !player_config.ignore;
@@ -194,7 +185,6 @@ impl Mprisence {
         info!("Starting mprisence service");
 
         let mut interval = tokio::time::interval(Duration::from_millis(self.config.interval()));
-        // Add cache cleanup interval - run every 6 hours
         let mut cache_cleanup_interval = tokio::time::interval(Duration::from_secs(6 * 60 * 60));
 
         loop {
@@ -214,10 +204,8 @@ impl Mprisence {
                     match change {
                         config::ConfigChange::Reloaded => {
                             debug!("Configuration change detected");
-                            // Update interval with new config
                             interval = tokio::time::interval(Duration::from_millis(self.config.interval()));
 
-                            // Handle config change
                             if let Err(e) = self.handle_config_change().await {
                                 error!("Failed to handle configuration change: {}", e);
                             }

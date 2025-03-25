@@ -48,7 +48,6 @@ pub struct MusicbrainzProvider {
 }
 
 impl MusicbrainzProvider {
-    // Add constant for minimum score threshold
     const MIN_SCORE: u8 = 90; // Only accept matches with 90% or higher confidence
     
     // Thumbnail sizes to try in order of preference

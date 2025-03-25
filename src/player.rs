@@ -63,7 +63,6 @@ impl From<&Player> for PlaybackState {
     fn from(player: &Player) -> Self {
         let metadata = player.get_metadata().ok();
 
-        // Prefer track_id, fallback to url for track identification
         let track_identifier = metadata
             .as_ref()
             .and_then(|m| {

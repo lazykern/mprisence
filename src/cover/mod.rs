@@ -17,7 +17,6 @@ use sources::ArtSource;
 
 const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 24 hours
 
-/// Main manager for cover art retrieval
 pub struct CoverManager {
     providers: Vec<Box<dyn CoverArtProvider>>,
     cache: CoverCache,
@@ -30,7 +29,6 @@ impl CoverManager {
         let cache = CoverCache::new(CACHE_TTL)?;
         let mut providers: Vec<Box<dyn CoverArtProvider>> = Vec::new();
 
-        // Initialize configured providers
         for provider_name in &cover_config.provider.provider {
             match provider_name.as_str() {
                 "musicbrainz" => {
@@ -58,7 +56,6 @@ impl CoverManager {
         Ok(Self { providers, cache })
     }
 
-    /// Get a cover art URL from available sources and providers
     pub async fn get_cover_art(
         &self,
         source: ArtSource,
@@ -98,7 +95,6 @@ impl CoverManager {
     }
 }
 
-/// Clean up cache periodically
 pub async fn clean_cache() -> Result<(), CoverArtError> {
     info!("Starting periodic cache cleanup");
     let cache = CoverCache::new(CACHE_TTL)?;

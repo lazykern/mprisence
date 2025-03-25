@@ -13,7 +13,6 @@ use url::Url;
 use crate::utils::{format_duration, format_track_number, format_audio_channels, format_bitrate, format_sample_rate, format_bit_depth};
 use crate::cover::sources::ArtSource;
 
-// Define macros for common metadata getter patterns
 macro_rules! impl_metadata_getter {
     ($name:ident, $mpris_key:expr, $lofty_key:expr) => {
         pub fn $name(&self) -> Option<String> {
@@ -154,7 +153,6 @@ impl MetadataSource {
     }
 
     pub fn from_mpris(metadata: Metadata) -> Self {
-        // Try to get local file path from MPRIS metadata URL
         let tagged_file = metadata
             .url()
             .and_then(|url| Self::lofty_tag_from_url(url).ok());
@@ -244,7 +242,6 @@ impl MetadataSource {
     );
     impl_metadata_getter!(year, "xesam:year", &ItemKey::Year, parse_u32);
 
-    // Special cases that need custom handling
     pub fn artists(&self) -> Option<Vec<String>> {
         trace!("Getting artists from metadata sources");
         self.mpris_metadata
@@ -283,7 +280,6 @@ impl MetadataSource {
             .or_else(|| self.tagged_file.as_ref().map(|t| t.properties().duration()))
     }
 
-    // Audio properties
     pub fn audio_properties(&self) -> Option<&FileProperties> {
         self.tagged_file.as_ref().map(|t| t.properties())
     }
@@ -291,13 +287,11 @@ impl MetadataSource {
     pub fn art_source(&self) -> Option<ArtSource> {
         trace!("Getting art source from metadata");
         
-        // Try MPRIS metadata URL first
         self.mpris_metadata
             .as_ref()
             .and_then(|m| m.art_url())
             .and_then(ArtSource::from_art_url)
             .or_else(|| {
-                // Fall back to embedded art from Lofty tag
                 self.tagged_file
                     .as_ref()
                     .and_then(|t| t.primary_tag())
@@ -306,7 +300,6 @@ impl MetadataSource {
             })
     }
 
-    // Raw metadata access
     #[allow(dead_code)]
     pub fn mpris_metadata(&self) -> Option<&Metadata> {
         self.mpris_metadata.as_ref()
@@ -317,7 +310,6 @@ impl MetadataSource {
         self.tagged_file.as_ref()
     }
 
-    /// Convert the metadata into a template-friendly format
     pub fn to_media_metadata(&self) -> MediaMetadata {
         let mut metadata = MediaMetadata::default();
 

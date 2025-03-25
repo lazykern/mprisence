@@ -6,20 +6,14 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use crate::cover::error::CoverArtError;
 
-/// Source of art data with different representations
 #[derive(Debug, Clone)]
 pub enum ArtSource {
-    /// Direct HTTP(S) URL for Discord
     Url(String),
-    /// Local file path
     File(PathBuf),
-    /// Base64 encoded image data
     Base64(String),
-    /// Raw bytes of image data
     Bytes(Vec<u8>),
 }
 
-/// Extract the art source from metadata
 #[allow(dead_code)]
 pub fn extract_from_metadata(metadata: &Metadata) -> Result<Option<ArtSource>, CoverArtError> {
     if let Some(url_str) = metadata.art_url() {
@@ -37,10 +31,8 @@ pub fn extract_from_metadata(metadata: &Metadata) -> Result<Option<ArtSource>, C
     }
 }
 
-/// Extract base64 encoded image data
 #[allow(dead_code)]
 fn extract_base64(url_str: &str) -> Result<Option<ArtSource>, CoverArtError> {
-    // Extract image type for better logging
     let image_type = url_str
         .strip_prefix("data:image/")
         .and_then(|s| s.split(';').next())
@@ -57,7 +49,6 @@ fn extract_base64(url_str: &str) -> Result<Option<ArtSource>, CoverArtError> {
     }
 }
 
-/// Extract file path or direct URL
 #[allow(dead_code)]
 fn extract_url(url_str: &str) -> Result<Option<ArtSource>, CoverArtError> {
     match Url::parse(url_str) {
@@ -95,7 +86,6 @@ fn extract_url(url_str: &str) -> Result<Option<ArtSource>, CoverArtError> {
     }
 }
 
-/// Load a file into bytes
 #[allow(dead_code)]
 pub async fn load_file(path: PathBuf) -> Result<Option<ArtSource>, CoverArtError> {
     match tokio::fs::read(&path).await {
@@ -111,7 +101,6 @@ pub async fn load_file(path: PathBuf) -> Result<Option<ArtSource>, CoverArtError
 }
 
 impl ArtSource {
-    /// Convert a string that may be a URL, file path, or base64 data into an ArtSource
     pub fn from_art_url(url: &str) -> Option<Self> {
         trace!("Converting art URL to source: {}", url);
 
@@ -140,14 +129,12 @@ impl ArtSource {
         })
     }
 
-    /// Create an ArtSource from raw bytes
     #[allow(dead_code)]
     pub fn from_bytes(data: Vec<u8>) -> Self {
         trace!("Creating art source from {} bytes", data.len());
         Self::Bytes(data)
     }
 
-    /// Convert the art source to base64 if possible
     #[allow(dead_code)]
     pub fn to_base64(&self) -> Option<String> {
         match self {

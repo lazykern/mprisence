@@ -12,7 +12,7 @@ use crate::{
     utils::format_playback_status_icon,
 };
 
-/// A comprehensive struct containing all variables available for template rendering,
+/// A struct containing all variables available for template rendering,
 /// including player state and media metadata.
 #[derive(Debug, Clone, Serialize)]
 pub struct RenderContext {
@@ -111,7 +111,6 @@ impl TemplateManager {
         })
     }
 
-    /// Create a complete Activity object from player state and metadata
     pub fn render_activity_texts(&self, player: Player, metadata: MediaMetadata) -> Result<ActivityTexts, TemplateError> {
         trace!("Creating activity texts for player: {}", player.identity());
         

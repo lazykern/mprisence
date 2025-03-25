@@ -25,7 +25,6 @@ impl ImgbbProvider {
         }
     }
 
-    /// Generate a meaningful name for the image based on metadata
     fn generate_image_name(&self, metadata: &Metadata) -> String {
         let artist = metadata.artists()
             .and_then(|artists| artists.first().map(ToString::to_string))

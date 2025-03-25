@@ -13,7 +13,6 @@ fn get_discord_lock_path() -> Option<PathBuf> {
 
 pub fn is_discord_running() -> bool {
     if let Some(lock_path) = get_discord_lock_path() {
-        // Use symlink_metadata instead of metadata to handle symlinks
         match std::fs::symlink_metadata(&lock_path) {
             Ok(_) => {
                 trace!("Discord SingletonLock found at {:?}", lock_path);
@@ -25,7 +24,6 @@ pub fn is_discord_running() -> bool {
             }
         }
     } else {
-        // If we can't determine the lock path, assume Discord is running
         trace!("Could not determine Discord lock path, assuming Discord is running");
         true
     }

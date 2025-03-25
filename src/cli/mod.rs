@@ -19,25 +19,13 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// List all available MPRIS-compatible media players
     Players {
-        /// Show detailed information about each player
         #[arg(short, long)]
         detailed: bool,
     },
     
-    /// Show or generate configuration
-    Config {
-        /// Generate a default configuration template
-        #[arg(short, long)]
-        generate: bool,
-        
-        /// Output path for generated config (defaults to stdout)
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
+    Config,
 
-    /// Show version
     Version,
 }
 
@@ -97,26 +85,7 @@ impl Command {
                 }
             }
             
-            Command::Config { generate, output } => {
-                if generate {
-                    info!("Generating default configuration template...");
-                    let default_config = Config::default();
-                    let config_str = toml::to_string_pretty(&default_config)
-                        .map_err(|e| Error::Other(format!("Failed to serialize config: {}", e)))?;
-                    
-                    match output {
-                        Some(path) => {
-                            std::fs::write(&path, config_str)?;
-                            println!("Default configuration written to: {}", path.display());
-                        }
-                        None => {
-                            println!("# Default Configuration Template");
-                            println!("{}", config_str);
-                        }
-                    }
-                    return Ok(());
-                }
-                
+            Command::Config=> {
                 let config = get_config();
                 println!("\nCurrent Configuration:");
                 println!("---------------------");
