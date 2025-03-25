@@ -1,18 +1,36 @@
-# mprisence - discord rich presence for mpris media players
+# mprisence
 
+> A powerful Discord Rich Presence integration for MPRIS-compatible media players on Linux
 
 [![AUR version](https://img.shields.io/aur/version/mprisence)](https://aur.archlinux.org/packages/mprisence)
 [![GitHub license](https://img.shields.io/github/license/lazykern/mprisence)](https://github.com/lazykern/mprisence/blob/main/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/lazykern/mprisence)](https://github.com/lazykern/mprisence/stargazers)
 
-## Preconfigured Players
+A highly configurable tool that shows your currently playing media on Discord. Works with VLC, MPV, Spotify, and any other Linux media player that supports MPRIS. Shows album art, track info, and playback status with extensive customization options.
 
-Preconfigured in [`config.default.toml`](./config/config.default.toml):
+## ✨ Key Features
+
+- 🎵 **Universal Media Player Support**: Works with any MPRIS-compatible media player
+- ⚡ **Hot Reload**: Configuration changes are applied instantly without restart
+- 🏞️ **Cover Art Integration**: Supports local files, MusicBrainz, and ImgBB hosting
+- 🎮 **Smart Activity**: Shows "Listening" for music, "Watching" for videos automatically (configurable)
+
+## 📦 Preconfigured Players
+
+Ready to use with popular media players (configured in [`config.default.toml`](./config/config.default.toml)):
+
 - **Media Players**: VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer
 - **Streaming**: YouTube Music, Spotify (disabled by default)
 - **Browsers** (disabled by default): Firefox, Chrome, Edge, Brave
 
-## Quick Installation
+## 📋 Requirements
+
+- Linux system with MPRIS support
+- Discord desktop client
+- Rust toolchain (for manual installation)
+- One or more MPRIS-compatible media players
+
+## 🚀 Installation
 
 ### Arch Linux
 ```bash
@@ -36,28 +54,81 @@ make install-local ENABLE_SERVICE=0
 make uninstall-local
 ```
 
-## Configuration
+## ⚙️ Configuration
 
-The configuration file is located at `~/.config/mprisence/config.toml` or `$XDG_CONFIG_HOME/mprisence/config.toml`. Changes are automatically detected and applied without requiring a restart.
+The configuration file is located at:
+- `~/.config/mprisence/config.toml` or
+- `$XDG_CONFIG_HOME/mprisence/config.toml`
 
-If there are any parsing errors in your configuration, mprisence will:
-1. Keep running with the last valid configuration
-2. Log the error details (viewable with `journalctl`)
-3. Continue watching for new changes
+Changes are automatically detected and applied without requiring a restart.
 
-See [`config.example.toml`](./config/config.example.toml) for all available options.
+For a complete configuration reference with detailed explanations of all available options, see [`config.example.toml`](./config/config.example.toml).
+
+### Basic Configuration Example
+```toml
+# Basic settings
+# Whether to clear Discord activity when media is paused
+clear_on_pause = true
+
+# How often to update Discord presence (in milliseconds)
+interval = 2000
+
+# Display template
+[template]
+# First line in Discord presence
+detail = "{{{title}}}"
+# Second line in Discord presence
+state = "{{{artist_display}}}"
+# Text shown when hovering over the large image
+large_text = "{{{album}}}"
+# Text shown when hovering over the small image
+small_text = "Playing on {{{player}}}"
+
+# Activity type settings
+[activity_type]
+# Auto-detect type (audio -> "listening", video -> "watching")
+use_content_type = true
+# Default type: "listening", "watching", "playing", or "competing"
+default = "listening"
+
+# Time display settings
+[time]
+# Show progress bar/time in Discord
+show = true
+# true = show elapsed time, false = show remaining time
+as_elapsed = true
+```
 
 ### Cover Art Setup
 ```toml
-# Configure ImgBB integration (optional)
+[cover.provider]
+# Cover art providers in order of preference
+provider = ["musicbrainz", "imgbb"]
+
 [cover.provider.imgbb]
-api_key = "<YOUR_IMGBB_API_KEY>"
-provider = ["musicbrainz", "imgbb"]  # Provider order
+# Your ImgBB API key (get one at: https://api.imgbb.com/)
+api_key = "YOUR_API_KEY_HERE"
+# How long to keep uploaded images (in seconds, default: 1 day)
+expiration = 86400
 ```
 
-## CLI Commands
+### Player-Specific Configuration
+```toml
+# Use 'mprisence players' to get the correct player name
+[player.vlc_media_player]
+# Discord application ID (get yours at: https://discord.com/developers/docs/quick-start/overview-of-apps)
+app_id = "YOUR_APP_ID_HERE"
+# Player icon URL (shown as small image)
+icon = "https://example.com/vlc-icon.png"
+# Show player icon in Discord as small image
+show_icon = true
+# Allow Discord presence for web/streaming content
+allow_streaming = true
+# Override activity type for this player
+override_activity_type = "listening"
+```
 
-mprisence provides several command-line options:
+## 🛠️ CLI Commands
 
 ```bash
 # Run without system service
@@ -79,20 +150,37 @@ mprisence version
 RUST_LOG=debug mprisence
 ```
 
-## Troubleshooting
+## 🔍 Troubleshooting
 
-If you encounter issues:
+### Common Issues
 
-1. **Check Service Status**:
+1. **Discord Presence Not Showing**
+   - Verify Discord desktop client is running
+   - Check if your media player is MPRIS-compatible
+   - Ensure the correct Discord App ID is configured
+
+2. **Cover Art Not Displaying**
+   - Check if the media file has embedded artwork
+   - Verify ImgBB API key if using ImgBB provider
+   - Ensure cover art files are accessible
+
+3. **Service Issues**
    ```bash
+   # Check service status
    systemctl --user status mprisence
-   ```
-
-2. **View System Logs**:
-   ```bash
+   
+   # View detailed logs
    journalctl --user -u mprisence
+   
+   # Restart service
+   systemctl --user restart mprisence
    ```
 
-## License
+4. **Configuration Issues**
+   - Validate your TOML syntax
+   - Check logs for parsing errors
+   - Try with the default configuration first
+
+## 📝 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
