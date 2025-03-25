@@ -1,7 +1,5 @@
 # MPRISence
 
-⚠️ **This is a work in progress. Things might break!** ⚠️
-
 Show what you're playing on Linux in your Discord status. Works with any MPRIS-compatible media player.
 
 ## Features
