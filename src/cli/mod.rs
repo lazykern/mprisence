@@ -2,12 +2,13 @@ use clap::{Parser, Subcommand};
 use log::info;
 use mpris::PlayerFinder;
 use crate::{error::Error, config::{get_config, schema::Config}, utils::normalize_player_identity};
-use std::path::PathBuf;
+use std::{path::PathBuf, env};
 use toml;
 
 #[derive(Parser)]
 #[command(name = "mprisence")]
 #[command(about = "Discord Rich Presence for MPRIS-compatible media players")]
+#[command(version)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -35,6 +36,9 @@ pub enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+
+    /// Show version
+    Version,
 }
 
 impl Command {
@@ -148,6 +152,10 @@ impl Command {
                         println!("  Ignored: {}", cfg.ignore);
                     }
                 }
+            }
+
+            Command::Version => {
+                println!("{}", env!("CARGO_PKG_VERSION"));
             }
         }
         Ok(())

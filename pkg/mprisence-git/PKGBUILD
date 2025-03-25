@@ -1,0 +1,47 @@
+# Maintainer: Phusit Somboonyingsuk
+
+pkgname=mprisence-git
+pkgver=1.0.0.r46.g16f7cad
+pkgrel=1
+pkgdesc="Discord Rich Presence for MPRIS-compatible media players (Linux only)"
+arch=("x86_64")
+url="https://github.com/lazykern/mprisence"
+license=("MIT")
+depends=("gcc-libs")
+makedepends=("cargo" "git")
+provides=("mprisence")
+conflicts=("mprisence")
+source=("git+$url.git#branch=remake")
+sha256sums=("SKIP")
+
+pkgver() {
+    cd "$srcdir/mprisence"
+    printf "1.0.0.r%s.g%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+    cd "$srcdir/mprisence"
+    cargo fetch --locked
+}
+
+build() {
+    cd "$srcdir/mprisence"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo build --frozen --release
+}
+
+check() {
+    cd "$srcdir/mprisence"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo test --frozen
+}
+
+package() {
+    cd "$srcdir/mprisence"
+    install -Dm755 target/release/mprisence "$pkgdir/usr/bin/mprisence"
+    install -Dm644 mprisence.service "$pkgdir/usr/lib/systemd/user/mprisence.service"
+    install -Dm644 config/example.toml "$pkgdir/etc/mprisence/config.example.toml"
+    install -Dm644 config/default.toml "$pkgdir/etc/mprisence/config.default.toml"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/mprisence/README.md"
+} 
