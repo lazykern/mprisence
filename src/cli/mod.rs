@@ -11,9 +11,6 @@ use std::env;
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
-
-    #[arg(short, long)]
-    pub verbose: bool,
 }
 
 #[derive(Subcommand)]
