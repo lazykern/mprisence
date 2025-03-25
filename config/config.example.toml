@@ -1,3 +1,7 @@
+# WARNING:
+# IF THE RICH PRESENCE DOES NOT GET UPDATED
+# PLEASE CHECK THE LOGS FOR ANY ERRORS
+
 # ------------------
 # Basic Settings
 # ------------------
@@ -16,17 +20,25 @@ detail = "{{{title}}}"
 
 # Second line in Discord presence for all activity types
 state = "{{{artist_display}}}"
+# or
+# state = "{{#each artists}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}"
 
 # Text shown when hovering over the large image
 # For "listening" activity type: Shows as third line
-large_text = "{{#if album}}{{{album}}}{{else}}{{{artist_display}}}{{/if}}"
+large_text = "{{#if album}}{{{album}}}{{#if year}} ({{{year}}}){{/if}}{{#if album_artist_display}} by {{{album_artist_display}}}{{/if}}{{/if}}"
 
 # Text shown when hovering over the small image (player icon)
 # Only visible when show_icon = true
-small_text = "Playing on {{{player}}} ({{{bitrate_display}}})"
+small_text = "{{#if player}}Playing on {{{player}}}{{else}}MPRIS{{/if}}"
 
-# Available template variables:
+# Templates are rendered using Handlebars
 #
+# Available Handlebars Helpers:
+# - Built-in Helpers: https://handlebarsjs.com/guide/builtin-helpers.html
+# - eq: Compare two values for equality
+#   Example: {{#if (eq status "playing")}}Playing{{/if}}
+#
+# Available template variables:
 # Core Metadata:
 #   {{{title}}}              - Track title
 #   {{{artists}}}            - Track artists (as array)
@@ -73,11 +85,6 @@ small_text = "Playing on {{{player}}} ({{{bitrate_display}}})"
 #   {{{musicbrainz_artist_id}}} - MusicBrainz artist ID
 #   {{{musicbrainz_album_artist_id}}} - MusicBrainz album artist ID
 #   {{{musicbrainz_release_group_id}}} - MusicBrainz release group ID
-#
-# Available Handlebars Helpers:
-# - Built-in Helpers: https://handlebarsjs.com/guide/builtin-helpers.html
-# - eq: Compare two values for equality
-#   Example: {{#if (eq status "playing")}}Playing{{/if}}
 
 # ------------------
 # Activity Types

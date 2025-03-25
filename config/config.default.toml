@@ -4,8 +4,8 @@ interval = 2000
 [template]
 detail = "{{{title}}}"
 state = "{{{artist_display}}}"
-large_text = "{{#if album}}{{{album}}}{{else}}{{{artist_display}}}{{/if}}"
-small_text = "Playing on {{{player}}}"
+large_text = "{{#if album}}{{{album}}}{{#if year}} ({{{year}}}){{/if}}{{#if album_artist_display}} by {{{album_artist_display}}}{{/if}}{{/if}}"
+small_text = "{{#if player}}Playing on {{{player}}}{{else}}MPRIS{{/if}}"
 
 [time]
 show = true
