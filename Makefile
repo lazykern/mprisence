@@ -107,7 +107,7 @@ help:
 	@echo "  make                    Install for current user (enables service by default)"
 	@echo "  make install-local      Same as 'make'"
 	@echo "  make build              Build only without installing"
-	@echo "  make uninstall-local    Remove MPRISence from your system"
+	@echo "  make uninstall-local    Remove mprisence from your system"
 	@echo "  make clean              Clean build files"
 	@echo "  make pkg-prepare        Prepare files for packaging (maintainers)"
 	@echo "  make sync-version       Sync version from Cargo.toml to package files"

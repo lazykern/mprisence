@@ -1,22 +1,57 @@
-# MPRISence
+# mprisence - discord rich presence for mpris media players
 
-Show what you're playing on Linux in your Discord status. Works with any MPRIS-compatible media player.
+A feature-rich Rust application to show what you're playing on Linux in your Discord status. Works with any MPRIS-compatible media player.
 
-## Features
+[![AUR version](https://img.shields.io/aur/version/mprisence)](https://aur.archlinux.org/packages/mprisence)
+[![GitHub license](https://img.shields.io/github/license/lazykern/mprisence)](https://github.com/lazykern/mprisence/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/lazykern/mprisence)](https://github.com/lazykern/mprisence/stargazers)
 
-- Shows your media in Discord status (music, videos)
-- Works with any MPRIS-compatible media player
-- Shows album/song artwork (MusicBrainz, local files hosted on ImgBB)
-- Displays rich media info (title, artist, album)
-- Handles multiple players at once
-- Updates in real-time
-- Highly configurable (see [configuration](#configuration))
+Display your media activity from VLC, Spotify, Firefox, or any MPRIS-compatible player in Discord with rich details and album artwork.
 
-## Quick Start
+## Preconfigured Players
 
-Choose the installation method for your system:
+### Media Players
+- VLC Media Player
+- MPV
+- Audacious
+- Elisa
+- Lollypop
+- Rhythmbox
+- CMUS
+- MPD (Music Player Daemon)
+- Musikcube
+- Clementine
+- Strawberry
+- Amberol
+- SMPlayer
 
-### On Arch Linux (Recommended)
+### Streaming Services
+- YouTube Music
+- Spotify (disabled by default)
+
+### Browsers (disabled by default)
+- Mozilla Firefox
+- Google Chrome
+- Microsoft Edge
+- Brave
+
+## Key Features
+
+- **Universal Compatibility**: Works with all MPRIS-compatible media players on Linux
+- **Rich Media Display**: Shows detailed information including:
+  - Song/video title and artist
+  - Album artwork (via MusicBrainz or local files)
+  - Playback progress
+  - Media quality (bitrate, sample rate)
+- **Real-time Updates**: Instantly reflects your current media status
+- **Multi-player Support**: Handles multiple media players simultaneously
+- **Highly Configurable**: Extensive customization options for display format and behavior
+- **Album Artwork Integration**: Supports MusicBrainz and ImgBB for cover art hosting
+- **Performance**: Written in Rust for efficiency and reliability
+
+## Quick Installation
+
+### Arch Linux (Recommended)
 ```bash
 # Install from AUR
 yay -S mprisence
@@ -28,82 +63,71 @@ yay -S mprisence
 git clone https://github.com/lazykern/mprisence.git
 cd mprisence
 
-# Build and install (this will also enable and start the service by default)
+# Build and install (includes service activation)
 make
 
-# To install without enabling the service
+# Install without enabling service
 make install-local ENABLE_SERVICE=0
 
-# To uninstall
+# Uninstall
 make uninstall-local
 ```
 
 ## Configuration
 
-The configuration file is located at:
-- `~/.config/mprisence/config.toml` or
-- `$XDG_CONFIG_HOME/mprisence/config.toml`
+Configuration files are located at:
+- Primary: `~/.config/mprisence/config.toml`
+- Alternative: `$XDG_CONFIG_HOME/mprisence/config.toml`
 
-When you first install MPRISence, a default configuration file will be created based on the example configuration. You can customize this file to suit your needs.
+mprisence uses a three-tier configuration system:
+1. [`config.default.toml`](./config/config.default.toml) - System defaults
+2. [`config.example.toml`](./config/config.example.toml) - Documented example with all options
+3. `config.toml` - Your personal configuration (auto-created from example)
 
-MPRISence uses three configuration files:
-- [`config.default.toml`](./config/config.default.toml) - Built-in defaults used as fallback
-- [`config.example.toml`](./config/config.example.toml) - Complete example with all available options and documentation
-- `config.toml` - Your active configuration file (created from example if it doesn't exist)
+### Album Artwork Setup
 
-### Album Artwork
-
-MPRISence uses MusicBrainz and ImgBB by default. To use ImgBB hosting:
+Enable album artwork display with MusicBrainz and ImgBB:
 ```toml
-# Add your ImgBB API key
+# Configure ImgBB integration
 [cover.provider.imgbb]
-api_key = "<YOUR API KEY>"
+api_key = "<YOUR_IMGBB_API_KEY>"
 
-# Default providers are already set to ["musicbrainz", "imgbb"]
-# Only change this if you want to modify the order or disable a provider
+# Optional: Customize provider order
 [cover.provider]
 provider = ["musicbrainz", "imgbb"]
 ```
 
-### Migrating from v0.5.2
+### Version Migration Guide
 
-If you're upgrading from v0.5.2, there are several important changes to the configuration:
+#### Upgrading from v0.5.2
 
-1. **Template Format Changes**:
-   - State format simplified: from `'{{{status_icon}}} {{{artists}}} '` to `"{{{artist_display}}}"`
-   - Large text now uses `album` instead of `album_name`
-   - New variables available:
-     - Audio properties: `bitrate_display`, `sample_rate_display`, `bit_depth_display`, `channels_display`
-     - Track metadata: `track_display`, `disc_display`, `genre`, `year`, `initial_key`, `bpm`, `mood`
-     - Player info: `player_bus_name`, `duration_secs`, `duration_display`
-   - Renamed variables:
-     - `artists` → `artist_display`
-     - `album_artists` → `album_artist_display`
-     - `album_name` → `album`
+Key configuration changes in v1.0.0-beta1:
 
-2. **Player Configuration**:
-   - Default player settings now use inline table syntax
-   - Changed default `ignore` from `true` to `false`
-   - Added new options:
-     - `override_activity_type` for per-player activity type
-     - `allow_streaming` for http/https media support
+1. **Template System Updates**:
+   - Simplified state format
+   - New metadata variables
+   - Renamed template variables for clarity
 
-3. **Activity Types** (New Feature):
-   - Added `[activity_type]` section
-   - `use_content_type = true` to determine activity type based on media
-   - Supports: "listening", "watching", "playing", "competing"
-   - Set `default = "listening"` for fallback
+2. **Enhanced Player Settings**:
+   - Inline table syntax for defaults
+   - New streaming media support
+   - Per-player activity type override
 
-4. **Cover Art Changes**:
-   - Added `expiration = 86400` (1 day) for ImgBB uploads
-   - File names for local cover art now configurable globally
+3. **Activity Type Configuration**:
+   - Content-based type detection
+   - Multiple activity types support
+   - Customizable default activities
 
-Please refer to the [example configuration](./config/config.example.toml) for the complete list of options and their documentation.
+4. **Cover Art Improvements**:
+   - Configurable image expiration
+   - Flexible file name patterns
+   - Enhanced provider options
 
-## Running Manually
+See the [example configuration](./config/config.example.toml) for complete documentation.
 
-If you prefer not to use the service, you can run MPRISence directly:
+## Manual Operation
 
+Run mprisence without system service:
 ```bash
 mprisence
 ```
@@ -112,18 +136,29 @@ mprisence
 
 If you encounter issues:
 
-1. Check the service status:
+1. **Check Service Status**:
    ```bash
    systemctl --user status mprisence
    ```
 
-2. View the logs:
+2. **View System Logs**:
    ```bash
    journalctl --user -u mprisence
    ```
 
-3. Verify your configuration:
+3. **Verify Configuration**:
    ```bash
-   # Compare your config with the example
+   # Compare with example config
    diff ~/.config/mprisence/config.toml ~/.config/mprisence/config.example.toml
    ```
+
+## Contributing
+
+Contributions are welcome! Feel free to:
+- Report bugs
+- Suggest features
+- Submit pull requests
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
