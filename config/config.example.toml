@@ -65,9 +65,6 @@ large_text = "{{#if album}}{{{album}}}{{else}}{{{artist_display}}}{{/if}}"
 # Text shown when hovering over the small image
 small_text = "Playing on {{{player}}} ({{{bitrate_display}}})"
 
-# Text shown when value is not found
-unknown_text = ""
-
 # ------------------
 # Activity Types
 # ------------------

@@ -44,7 +44,6 @@ detail = "{{{title}}}"
 state = "{{{artist_display}}}"
 large_text = "{{#if album}}{{{album}}}{{else}}{{{artist_display}}}{{/if}}"
 small_text = "Playing on {{{player}}}"
-unknown_text = ""
 
 [time]
 show = true
