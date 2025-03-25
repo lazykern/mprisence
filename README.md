@@ -65,32 +65,40 @@ api_key = "<YOUR API KEY>"
 provider = ["musicbrainz", "imgbb"]
 ```
 
-### Service Management
+### Migrating from v0.5.2
 
-The service is managed through systemd user services:
+If you're upgrading from v0.5.2, there are several important changes to the configuration:
 
-```bash
-# Start the service
-systemctl --user start mprisence
+1. **Template Format Changes**:
+   - State format simplified: from `'{{{status_icon}}} {{{artists}}} '` to `"{{{artist_display}}}"`
+   - Large text now uses `album` instead of `album_name`
+   - New variables available:
+     - Audio properties: `bitrate_display`, `sample_rate_display`, `bit_depth_display`, `channels_display`
+     - Track metadata: `track_display`, `disc_display`, `genre`, `year`, `initial_key`, `bpm`, `mood`
+     - Player info: `player_bus_name`, `duration_secs`, `duration_display`
+   - Renamed variables:
+     - `artists` → `artist_display`
+     - `album_artists` → `album_artist_display`
+     - `album_name` → `album`
 
-# Stop the service
-systemctl --user stop mprisence
+2. **Player Configuration**:
+   - Default player settings now use inline table syntax
+   - Changed default `ignore` from `true` to `false`
+   - Added new options:
+     - `override_activity_type` for per-player activity type
+     - `allow_streaming` for http/https media support
 
-# Enable service to start on boot
-systemctl --user enable mprisence
+3. **Activity Types** (New Feature):
+   - Added `[activity_type]` section
+   - `use_content_type = true` to determine activity type based on media
+   - Supports: "listening", "watching", "playing", "competing"
+   - Set `default = "listening"` for fallback
 
-# Disable service from starting on boot
-systemctl --user disable mprisence
+4. **Cover Art Changes**:
+   - Added `expiration = 86400` (1 day) for ImgBB uploads
+   - File names for local cover art now configurable globally
 
-# Restart after config changes
-systemctl --user restart mprisence
-
-# Check service status
-systemctl --user status mprisence
-
-# View logs
-journalctl --user -u mprisence
-```
+Please refer to the [example configuration](./config/config.example.toml) for the complete list of options and their documentation.
 
 ## Running Manually
 
