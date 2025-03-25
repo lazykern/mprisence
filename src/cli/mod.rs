@@ -1,9 +1,8 @@
 use clap::{Parser, Subcommand};
 use log::info;
 use mpris::PlayerFinder;
-use crate::{error::Error, config::{get_config, schema::Config}, utils::normalize_player_identity};
-use std::{path::PathBuf, env};
-use toml;
+use crate::{error::Error, config::get_config, utils::normalize_player_identity};
+use std::env;
 
 #[derive(Parser)]
 #[command(name = "mprisence")]
