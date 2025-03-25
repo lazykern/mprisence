@@ -228,7 +228,6 @@ fn setup_file_watcher(config_path: PathBuf, config: Arc<ConfigManager>) -> Resul
     Ok(())
 }
 
-// Helper functions
 fn get_config_path() -> Result<PathBuf, ConfigError> {
     let config_dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -240,7 +239,7 @@ fn get_config_path() -> Result<PathBuf, ConfigError> {
 
 fn ensure_config_exists(path: &Path) -> Result<(), ConfigError> {
     if !path.exists() {
-        let default_config = include_str!("../../config/default.toml");
+        let default_config = include_str!("../../config/config.default.toml");
         std::fs::write(path, default_config).map_err(ConfigError::IO)?;
     }
     Ok(())
@@ -250,7 +249,7 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     log::info!("Loading configuration from {}", path.display());
     
     let mut figment = Figment::new()
-        .merge(Toml::string(include_str!("../../config/default.toml")));
+        .merge(Toml::string(include_str!("../../config/config.default.toml")));
 
     // Merge user config if it exists
     if path.exists() {

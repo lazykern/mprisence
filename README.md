@@ -12,7 +12,7 @@ Show what you're playing on Linux in your Discord status. Works with any MPRIS-c
 - Displays rich media info (title, artist, album)
 - Handles multiple players at once
 - Updates in real-time
-- Highly configurable (see [example config](./config/example.toml))
+- Highly configurable (see [configuration](#configuration))
 
 ## Quick Start
 
@@ -22,43 +22,36 @@ Choose the installation method for your system:
 ```bash
 # Install from AUR
 yay -S mprisence
-
-# Enable auto-start
-systemctl --user enable --now mprisence.service
 ```
 
-### On Other Linux Systems (Using Cargo)
+### Manual Installation
 ```bash
-# Install using Rust's package manager
-cargo install --git "https://github.com/lazykern/mprisence.git"
+# Clone the repository
+git clone https://github.com/lazykern/mprisence.git
+cd mprisence
 
-# Set up auto-start
-mkdir -p "$HOME/.config/systemd/user"
-curl https://raw.githubusercontent.com/lazykern/mprisence/main/mprisence.service >"$HOME/.config/systemd/user/mprisence.service"
-# Update the service file to use the cargo bin path
-sed -i 's|ExecStart=/usr/bin/mprisence|ExecStart='"$HOME"'/.cargo/bin/mprisence|' "$HOME/.config/systemd/user/mprisence.service"
-systemctl --user daemon-reload
-systemctl --user enable --now mprisence.service
+# Build and install (this will also enable and start the service by default)
+make
+
+# To install without enabling the service
+make install-local ENABLE_SERVICE=0
+
+# To uninstall
+make uninstall-local
 ```
 
-> **Note**: When installing via cargo, make sure `~/.cargo/bin` is in your `$PATH`. If it isn't, add `export PATH="$HOME/.cargo/bin:$PATH"` to your shell's config file.
+## Configuration
 
-## Basic Usage
-
-Just run:
-```bash
-mprisence
-```
-
-## Settings
-
-You can customize how MPRISence works by editing its settings file. Put your settings in:
+The configuration file is located at:
 - `~/.config/mprisence/config.toml` or
 - `$XDG_CONFIG_HOME/mprisence/config.toml`
 
-Need help with settings?
-- Check [example settings](./config/example.toml) for all options
-- See [default settings](./config/default.toml) for what's pre-configured
+When you first install MPRISence, a default configuration file will be created based on the example configuration. You can customize this file to suit your needs.
+
+MPRISence uses three configuration files:
+- [`config.default.toml`](./config/config.default.toml) - Built-in defaults used as fallback
+- [`config.example.toml`](./config/config.example.toml) - Complete example with all available options and documentation
+- `config.toml` - Your active configuration file (created from example if it doesn't exist)
 
 ### Album Artwork
 
@@ -74,7 +67,57 @@ api_key = "<YOUR API KEY>"
 provider = ["musicbrainz", "imgbb"]
 ```
 
-> **Note**: After changing settings, restart MPRISence:
-> ```bash
-> systemctl --user restart mprisence.service
-> ```
+### Service Management
+
+The service is managed through systemd user services:
+
+```bash
+# Start the service
+systemctl --user start mprisence
+
+# Stop the service
+systemctl --user stop mprisence
+
+# Enable service to start on boot
+systemctl --user enable mprisence
+
+# Disable service from starting on boot
+systemctl --user disable mprisence
+
+# Restart after config changes
+systemctl --user restart mprisence
+
+# Check service status
+systemctl --user status mprisence
+
+# View logs
+journalctl --user -u mprisence
+```
+
+## Running Manually
+
+If you prefer not to use the service, you can run MPRISence directly:
+
+```bash
+mprisence
+```
+
+## Troubleshooting
+
+If you encounter issues:
+
+1. Check the service status:
+   ```bash
+   systemctl --user status mprisence
+   ```
+
+2. View the logs:
+   ```bash
+   journalctl --user -u mprisence
+   ```
+
+3. Verify your configuration:
+   ```bash
+   # Compare your config with the example
+   diff ~/.config/mprisence/config.toml ~/.config/mprisence/config.example.toml
+   ```

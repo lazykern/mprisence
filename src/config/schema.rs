@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::utils::normalize_player_identity;
 
-// Hardcoded defaults from default.toml
+// Hardcoded defaults from config.default.toml
 pub const DEFAULT_CLEAR_ON_PAUSE: bool = true;
 pub const DEFAULT_INTERVAL: u64 = 2000;
 pub const DEFAULT_USE_CONTENT_TYPE: bool = true;

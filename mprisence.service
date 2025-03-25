@@ -3,11 +3,13 @@ Description=Discord Rich Presence for MPRIS media players
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/mprisence
+ExecStart=@BINDIR@/mprisence
 Restart=always
-RestartSec=5
+RestartSec=10
 
-# Basic paths we need
+Environment=RUST_LOG=info
+Environment=RUST_BACKTRACE=1
+
 ReadWritePaths=%h/.config/mprisence
 ReadWritePaths=%h/.cache/mprisence
 
