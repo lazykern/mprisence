@@ -23,13 +23,6 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
 - **Streaming**: YouTube Music, Spotify (disabled by default)
 - **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
 
-## 📋 Requirements
-
-- Linux system with MPRIS support
-- Discord desktop client
-- Rust toolchain (for manual installation)
-- One or more MPRIS-compatible media players
-
 ## 🚀 Installation
 
 ### Arch Linux
