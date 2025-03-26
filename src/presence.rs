@@ -3,29 +3,29 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::{Duration, SystemTime, UNIX_EPOCH, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use discord_rich_presence::{
     activity::{Activity, Assets, Timestamps},
     DiscordIpc, DiscordIpcClient,
 };
-use log::{debug, info, trace, warn, error};
+use log::{debug, error, info, trace, warn};
 use mime_guess::mime;
 use mpris::{PlaybackStatus, Player};
 use parking_lot::Mutex;
 
 use crate::{
     config::{
-        ConfigManager,
         schema::{ActivityType, ActivityTypesConfig, PlayerConfig},
+        ConfigManager,
     },
     cover::CoverManager,
     error::DiscordError,
+    metadata,
     player::PlaybackState,
     template::TemplateManager,
     utils,
-    metadata,
 };
 
 pub struct Presence {
@@ -78,7 +78,10 @@ impl Presence {
 
     pub fn destroy_discord_client(&mut self) -> Result<(), DiscordError> {
         if let Some(client) = &self.discord_client {
-            debug!("Closing Discord connection for player: {}", self.player.identity());
+            debug!(
+                "Closing Discord connection for player: {}",
+                self.player.identity()
+            );
             client.lock().close().map_err(|err| {
                 error!("Failed to close Discord connection: {}", err);
                 DiscordError::CloseError(err.to_string())
@@ -138,8 +141,11 @@ impl Presence {
             || player.bus_name() != self.player.bus_name()
             || player.unique_name() != self.player.unique_name()
         {
-            error!("Player validation failed - identity mismatch. Expected: {}, got: {}", 
-                self.player.identity(), player.identity());
+            error!(
+                "Player validation failed - identity mismatch. Expected: {}, got: {}",
+                self.player.identity(),
+                player.identity()
+            );
             return Err(DiscordError::InvalidPlayer(format!(
                 "Expected {}, got {}",
                 self.player.identity(),
@@ -159,26 +165,24 @@ impl Presence {
 
         if self.needs_initial_connection.load(Ordering::Relaxed) {
             debug!("Establishing initial Discord connection");
-            discord_client
-                .lock()
-                .connect()
-                .map_err(|err| {
-                    if !self.error_logged.load(Ordering::Relaxed) {
-                        error!("Failed to establish Discord connection: {}", err);
-                        self.error_logged.store(true, Ordering::Relaxed);
-                    }
-                    *self.last_reconnect_attempt.lock() = Instant::now();
-                    DiscordError::ConnectionError(err.to_string())
-                })?;
+            discord_client.lock().connect().map_err(|err| {
+                if !self.error_logged.load(Ordering::Relaxed) {
+                    error!("Failed to establish Discord connection: {}", err);
+                    self.error_logged.store(true, Ordering::Relaxed);
+                }
+                *self.last_reconnect_attempt.lock() = Instant::now();
+                DiscordError::ConnectionError(err.to_string())
+            })?;
             debug!("Discord connection established successfully");
-            self.needs_initial_connection.store(false, Ordering::Relaxed);
+            self.needs_initial_connection
+                .store(false, Ordering::Relaxed);
             self.error_logged.store(false, Ordering::Relaxed);
         }
 
         if self.needs_reconnection.load(Ordering::Relaxed) {
             let now = Instant::now();
             let last_attempt = *self.last_reconnect_attempt.lock();
-            
+
             if now.duration_since(last_attempt) < MIN_RECONNECT_INTERVAL {
                 return Ok(());
             }
@@ -186,19 +190,16 @@ impl Presence {
             if !self.error_logged.load(Ordering::Relaxed) {
                 debug!("Attempting to reconnect to Discord");
             }
-            
+
             *self.last_reconnect_attempt.lock() = now;
-            
-            discord_client
-                .lock()
-                .reconnect()
-                .map_err(|err| {
-                    if !self.error_logged.load(Ordering::Relaxed) {
-                        error!("Failed to reconnect to Discord: {}", err);
-                        self.error_logged.store(true, Ordering::Relaxed);
-                    }
-                    DiscordError::ReconnectionError(err.to_string())
-                })?;
+
+            discord_client.lock().reconnect().map_err(|err| {
+                if !self.error_logged.load(Ordering::Relaxed) {
+                    error!("Failed to reconnect to Discord: {}", err);
+                    self.error_logged.store(true, Ordering::Relaxed);
+                }
+                DiscordError::ReconnectionError(err.to_string())
+            })?;
             debug!("Discord reconnection successful");
             self.needs_reconnection.store(false, Ordering::Relaxed);
             self.error_logged.store(false, Ordering::Relaxed);
@@ -209,7 +210,10 @@ impl Presence {
 
     #[allow(dead_code)]
     pub fn force_reconnect(&mut self) {
-        debug!("Forcing Discord reconnection for player: {}", self.player.identity());
+        debug!(
+            "Forcing Discord reconnection for player: {}",
+            self.player.identity()
+        );
         self.needs_reconnection.store(true, Ordering::Relaxed);
         self.last_player_state = None;
     }
@@ -220,8 +224,11 @@ impl Presence {
         player_config: &PlayerConfig,
         url: Option<&str>,
     ) -> ActivityType {
-        trace!("Determining activity type for player: {}", self.player.identity());
-        
+        trace!(
+            "Determining activity type for player: {}",
+            self.player.identity()
+        );
+
         if let Some(override_type) = player_config.override_activity_type {
             debug!("Using overridden activity type: {:?}", override_type);
             return override_type;
@@ -246,7 +253,10 @@ impl Presence {
             }
         }
 
-        debug!("Using default activity type: {:?}", activity_type_config.default);
+        debug!(
+            "Using default activity type: {:?}",
+            activity_type_config.default
+        );
         activity_type_config.default
     }
 
@@ -271,20 +281,20 @@ impl Presence {
                     }
                 );
             }
-            discord_client
-                .lock()
-                .clear_activity()
-                .map_err(|err| {
-                    if !self.error_logged.load(Ordering::Relaxed) {
-                        error!("Failed to clear Discord activity: {}", err);
-                        self.error_logged.store(true, Ordering::Relaxed);
-                    }
-                    DiscordError::ActivityError(err.to_string())
-                })?;
+            discord_client.lock().clear_activity().map_err(|err| {
+                if !self.error_logged.load(Ordering::Relaxed) {
+                    error!("Failed to clear Discord activity: {}", err);
+                    self.error_logged.store(true, Ordering::Relaxed);
+                }
+                DiscordError::ActivityError(err.to_string())
+            })?;
             return Ok(());
         }
 
-        trace!("Building Discord activity for player: {}", player.identity());
+        trace!(
+            "Building Discord activity for player: {}",
+            player.identity()
+        );
         let metadata = match player.get_metadata() {
             Ok(metadata) => metadata,
             Err(e) => {
@@ -306,27 +316,39 @@ impl Presence {
                 .expect("Time went backwards");
 
             let position = player.get_position().unwrap_or_default();
+            trace!("Player position: {:?}", position);
             let start_dur = now.checked_sub(position).unwrap_or_default();
+            trace!("Start duration: {:?}", start_dur);
             let start_s = Some(start_dur.as_secs() as u64);
+            trace!("Start seconds: {:?}", start_s);
 
             let length = metadata.length().unwrap_or_default();
+            trace!("Length: {:?}", length);
             let end_s = if !as_elapsed && !length.is_zero() {
-                start_dur
-                    .checked_add(length)
-                    .map(|end| end.as_secs() as u64)
+                start_dur.checked_add(length).map(|end| {
+                    trace!("End duration: {:?}", end); // Fix: Log the end duration
+                    end.as_secs() as u64
+                })
             } else {
                 None
             };
+            trace!("End seconds: {:?}", end_s);
 
             (start_s, end_s)
         } else {
             (None, None)
         };
 
-        let activity_texts = self.template_manager.render_activity_texts(player, media_metadata)?;
+        let activity_texts = self
+            .template_manager
+            .render_activity_texts(player, media_metadata)?;
 
         let cover_art_url = if let Some(art_source) = metadata_source.art_source() {
-            match self.cover_manager.get_cover_art(art_source, &metadata).await {
+            match self
+                .cover_manager
+                .get_cover_art(art_source, &metadata)
+                .await
+            {
                 Ok(Some(url)) => {
                     debug!("Found cover art URL for Discord presence");
                     trace!("Cover art URL: {}", url);
@@ -366,12 +388,13 @@ impl Presence {
         }
 
         if let Some(start) = start_s {
-            trace!("Setting activity timestamps");
             activity = activity.timestamps({
                 let ts = Timestamps::default().start(start as i64);
                 if let Some(end) = end_s {
+                    trace!("Setting activity timestamps: start={}, end={}", start, end);
                     ts.end(end as i64)
                 } else {
+                    trace!("Setting activity timestamps: start={}", start);
                     ts
                 }
             });
@@ -413,7 +436,8 @@ impl Presence {
                 DiscordError::ActivityError(err.to_string())
             })?;
         if !self.error_logged.load(Ordering::Relaxed) {
-            info!("Updated Discord activity for {} - {} ({:?})", 
+            info!(
+                "Updated Discord activity for {} - {} ({:?})",
                 self.player.identity(),
                 activity_texts.details,
                 playback_status
@@ -430,7 +454,10 @@ impl Presence {
         cover_manager: Arc<CoverManager>,
         config: Arc<ConfigManager>,
     ) {
-        trace!("Updating presence managers for player: {}", self.player.identity());
+        trace!(
+            "Updating presence managers for player: {}",
+            self.player.identity()
+        );
         self.template_manager = template_manager;
         self.cover_manager = cover_manager;
         self.config = config;

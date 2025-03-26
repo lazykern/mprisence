@@ -99,6 +99,15 @@ pkg-prepare: build
 	@sed "s|@BINDIR@|$(SYS_PREFIX)/bin|g" mprisence.service > mprisence.service.tmp
 	install -Dm644 mprisence.service.tmp "$(DESTDIR)$(SYS_SYSTEMD_USER_DIR)/mprisence.service"
 	rm mprisence.service.tmp
+	@echo "=== MPRISence package preparation complete ==="
+	@echo "Files installed to DESTDIR:"
+	@echo "  Binary:       $(DESTDIR)$(SYS_PREFIX)/bin/mprisence"
+	@echo "  Example conf: $(DESTDIR)$(SYS_CONFIG_DIR)/config.example.toml"
+	@echo "  Service file: $(DESTDIR)$(SYS_SYSTEMD_USER_DIR)/mprisence.service"
+	@echo ""
+	@echo "Note for packagers: Don't forget to include post-install messages about:"
+	@echo "  - User configuration (~/.config/mprisence/config.toml)"
+	@echo "  - Service activation (systemctl --user enable --now mprisence)"
 
 # Show help
 help:
