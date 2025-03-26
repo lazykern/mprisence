@@ -3,11 +3,7 @@ use serde_json::Value;
 use mprisence::metadata::MetadataSource;
 use mpris::Metadata;
 
-// We need to use the crate name to import from the library
 use mprisence:: utils::{format_duration, format_track_number, format_audio_channels, format_bitrate, format_sample_rate, format_bit_depth, normalize_player_identity};
-
-// Import the common test module
-mod common;
 
 fn create_extended_mpris_metadata() -> Metadata {
     let mut data = HashMap::new();
