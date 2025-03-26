@@ -60,3 +60,75 @@ pub fn format_playback_status_icon(status: PlaybackStatus) -> &'static str {
         PlaybackStatus::Stopped => "⏹️",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mpris::PlaybackStatus;
+
+    #[test]
+    fn test_normalize_player_identity() {
+        assert_eq!(normalize_player_identity("Spotify"), "spotify");
+        assert_eq!(normalize_player_identity("  VLC Media Player  "), "vlc_media_player");
+        assert_eq!(normalize_player_identity("RHYTHMBOX"), "rhythmbox");
+    }
+
+    #[test]
+    fn test_format_duration() {
+        assert_eq!(format_duration(0), "00:00");
+        assert_eq!(format_duration(61), "01:01");
+        assert_eq!(format_duration(3600), "60:00");
+        assert_eq!(format_duration(3723), "62:03"); // 1h 2m 3s
+    }
+
+    #[test]
+    fn test_format_track_number() {
+        assert_eq!(format_track_number(1, None), "1");
+        assert_eq!(format_track_number(5, Some(12)), "5/12");
+    }
+
+    #[test]
+    fn test_format_audio_channels() {
+        assert_eq!(format_audio_channels(1), "Mono");
+        assert_eq!(format_audio_channels(2), "Stereo");
+        assert_eq!(format_audio_channels(6), "6 channels");
+    }
+
+    #[test]
+    fn test_format_bitrate() {
+        assert_eq!(format_bitrate(320), "320 kbps");
+        assert_eq!(format_bitrate(128), "128 kbps");
+    }
+
+    #[test]
+    fn test_format_sample_rate() {
+        assert_eq!(format_sample_rate(44100), "44.1 kHz");
+        assert_eq!(format_sample_rate(48000), "48.0 kHz");
+    }
+
+    #[test]
+    fn test_format_bit_depth() {
+        assert_eq!(format_bit_depth(16), "16-bit");
+        assert_eq!(format_bit_depth(24), "24-bit");
+    }
+
+    #[test]
+    fn test_format_playback_status_icon() {
+        assert_eq!(format_playback_status_icon(PlaybackStatus::Playing), "▶");
+        assert_eq!(format_playback_status_icon(PlaybackStatus::Paused), "⏸️");
+        assert_eq!(format_playback_status_icon(PlaybackStatus::Stopped), "⏹️");
+    }
+
+    #[test]
+    fn test_get_content_type_from_metadata() {
+        let audio_url = "file:///music/song.mp3";
+        let video_url = "file:///videos/movie.mp4";
+        let image_url = "file:///images/cover.jpg";
+        let unknown_url = "file:///unknown/file.unknown"; // Changed extension to something mime_guess won't recognize
+
+        assert_eq!(get_content_type_from_metadata(audio_url).unwrap().type_().as_str(), "audio");
+        assert_eq!(get_content_type_from_metadata(video_url).unwrap().type_().as_str(), "video");
+        assert_eq!(get_content_type_from_metadata(image_url).unwrap().type_().as_str(), "image");
+        assert!(get_content_type_from_metadata(unknown_url).is_none());
+    }
+}

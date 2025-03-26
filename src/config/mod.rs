@@ -44,6 +44,35 @@ impl ConfigManager {
         })
     }
 
+    /// Create a ConfigManager instance for testing purposes with the provided config
+    #[allow(dead_code)]
+    pub fn new_for_testing(config: Config) -> Self {
+        let (tx, _) = broadcast::channel(16);
+        
+        Self {
+            config: Arc::new(RwLock::new(config)),
+            path: PathBuf::from("/tmp/test_config.toml"), // Dummy path
+            change_tx: tx,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn create_with_templates(
+        detail_template: &str,
+        state_template: &str,
+        large_text_template: &str,
+        small_text_template: &str,
+    ) -> Self {
+        let mut default_config = Config::default();
+        
+        default_config.template.detail = detail_template.into();
+        default_config.template.state = state_template.into();
+        default_config.template.large_text = large_text_template.into();
+        default_config.template.small_text = small_text_template.into();
+        
+        Self::new_for_testing(default_config)
+    }
+
     pub fn interval(&self) -> u64 {
         self.config
             .read()
