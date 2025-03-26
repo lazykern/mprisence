@@ -1,6 +1,6 @@
 # mprisence 
 
-> A powerful Discord Rich Presence integration for MPRIS-compatible media players on Linux
+> A powerful Discord Rich Presence integration for MPRIS media players on Linux
 
 [![AUR version](https://img.shields.io/aur/version/mprisence)](https://aur.archlinux.org/packages/mprisence)
 [![GitHub license](https://img.shields.io/github/license/lazykern/mprisence)](https://github.com/lazykern/mprisence/blob/main/LICENSE)

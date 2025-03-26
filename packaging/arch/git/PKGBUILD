@@ -3,7 +3,7 @@
 pkgname=mprisence-git
 pkgver=1.0.0.beta1
 pkgrel=1
-pkgdesc="Discord Rich Presence for MPRIS-compatible media players  (git version)"
+pkgdesc="Discord Rich Presence for MPRIS media players  (git version)"
 arch=('x86_64')
 url="https://github.com/lazykern/mprisence"
 license=('MIT')

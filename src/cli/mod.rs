@@ -6,7 +6,7 @@ use std::env;
 
 #[derive(Parser)]
 #[command(name = "mprisence")]
-#[command(about = "Discord Rich Presence for MPRIS-compatible media players")]
+#[command(about = "Discord Rich Presence for MPRIS media players")]
 #[command(version)]
 pub struct Cli {
     #[command(subcommand)]
@@ -29,12 +29,12 @@ impl Command {
     pub async fn execute(self) -> Result<(), Error> {
         match self {
             Command::Players { detailed } => {
-                info!("Scanning for MPRIS-compatible media players...");
+                info!("Scanning for MPRIS media players...");
                 let finder = PlayerFinder::new()?;
                 let players = finder.find_all()?;
                 
                 if players.is_empty() {
-                    println!("No MPRIS-compatible media players found.");
+                    println!("No MPRIS media players found.");
                     return Ok(());
                 }
                 
