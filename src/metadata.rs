@@ -74,7 +74,8 @@ pub struct MediaMetadata {
     pub disc_number: Option<u32>,   // Raw disc number (e.g., 1)
     pub disc_total: Option<u32>,    // Total discs (e.g., 3)
     pub disc_display: Option<String>, // "1/3" format
-    pub genre: Option<String>,
+    pub genres: Vec<String>,        // Keep as Vec since empty vec is semantically correct
+    pub genre_display: Option<String>, // Comma-separated genres for easy template use
     pub year: Option<String>,
 
     pub duration_secs: Option<u64>,       // Raw duration in seconds
@@ -115,7 +116,8 @@ impl Default for MediaMetadata {
             disc_number: None,
             disc_total: None,
             disc_display: None,
-            genre: None,
+            genres: vec![],
+            genre_display: None,
             year: None,
             duration_secs: None,
             duration_display: None,
@@ -176,7 +178,6 @@ impl MetadataSource {
 
     impl_metadata_getter!(title, "xesam:title", &ItemKey::TrackTitle);
     impl_metadata_getter!(album, "xesam:album", &ItemKey::AlbumTitle);
-    impl_metadata_getter!(genre, "xesam:genre", &ItemKey::Genre);
     impl_metadata_getter!(initial_key, "xesam:initialKey", &ItemKey::InitialKey);
     impl_metadata_getter!(bpm, "xesam:bpm", &ItemKey::Bpm);
     impl_metadata_getter!(mood, "xesam:mood", &ItemKey::Mood);
@@ -339,7 +340,9 @@ impl MetadataSource {
             metadata.disc_display = Some(format_track_number(disc_num, metadata.disc_total));
         }
 
-        metadata.genre = self.genre();
+        metadata.genres = self.genres().unwrap_or_default();
+        metadata.genre_display = Some(metadata.genres.join(", "));
+
         metadata.year = self.year().map(|y| y.to_string());
 
         if let Some(duration) = self.length() {
@@ -378,5 +381,21 @@ impl MetadataSource {
         metadata.musicbrainz_release_group_id = self.musicbrainz_release_group_id();
 
         metadata
+    }
+
+    pub fn genres(&self) -> Option<Vec<String>> {
+        trace!("Getting genres from metadata sources");
+        self.mpris_metadata
+            .as_ref()
+            .and_then(|m| m.get("xesam:genre"))
+            .and_then(|v| v.as_array())
+            .map(|genres| genres.iter().filter_map(|g| g.as_str()).map(String::from).collect())
+            .or_else(|| {
+                self.tagged_file
+                    .as_ref()
+                    .and_then(|t| t.primary_tag())
+                    .and_then(|tag| tag.get_string(&ItemKey::Genre))
+                    .map(|genre| vec![genre.to_string()])
+            })
     }
 }

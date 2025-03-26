@@ -52,7 +52,8 @@ small_text = "{{#if player}}Playing on {{{player}}}{{else}}MPRIS{{/if}}"
 #   {{{disc_number}}}        - Disc number
 #   {{{disc_total}}}         - Total discs
 #   {{{disc_display}}}       - Disc number as "X/Y"
-#   {{{genre}}}              - Track genre
+#   {{{genres}}}             - Track genres (as array)
+#   {{{genre_display}}}      - Track genres (comma separated)
 #   {{{year}}}               - Release year
 #
 # Additional Metadata:
