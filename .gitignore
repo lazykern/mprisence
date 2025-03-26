@@ -12,7 +12,5 @@ flamegraph*
 .SRCINFO
 /aur-mprisence/
 /aur-mprisence-git/
-pkg/
-/pkg/src/
 *.pkg.tar.zst
 *.tar.gz
