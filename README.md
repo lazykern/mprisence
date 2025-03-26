@@ -8,14 +8,14 @@
 
 A highly configurable tool that shows your currently playing media on Discord. Works with VLC, MPV, Spotify, and any other Linux media player that supports MPRIS. Shows album art, track info, and playback status with extensive customization options.
 
-## ✨ Key Features
+## Features
 
-- 🎵 **Universal Media Player Support**: Works with any MPRIS-compatible media player
-- ⚡ **Hot Reload**: Configuration changes are applied instantly without restart
-- 🏞️ **Cover Art Integration**: Supports local files, MusicBrainz, and ImgBB hosting
-- 🎮 **Smart Activity**: Shows "Listening" for music, "Watching" for videos automatically (configurable)
+- **Universal Media Player Support**: Works with any MPRIS-compatible media player
+- **Hot Reload**: Configuration changes are applied instantly without restart
+- **Cover Art Integration**: Supports local files, MusicBrainz, and ImgBB hosting
+-  **Smart Activity**: Shows "Listening" for music, "Watching" for videos automatically (configurable)
 
-## 📦 Preconfigured Players
+## Preconfigured Players
 
 Ready to use with popular media players (configured in [`config.default.toml`](./config/config.default.toml)):
 
@@ -23,7 +23,7 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
 - **Streaming**: YouTube Music, Spotify (disabled by default)
 - **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
 
-## 🚀 Installation
+## Installation
 
 ### Arch Linux
 ```bash
@@ -47,7 +47,7 @@ make install-local ENABLE_SERVICE=0
 make uninstall-local
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 The configuration file is located at:
 - `~/.config/mprisence/config.toml` or
@@ -121,7 +121,7 @@ allow_streaming = true
 override_activity_type = "listening"
 ```
 
-## 🛠️ CLI Commands
+## CLI Commands
 
 ```bash
 # Run without system service
@@ -143,7 +143,7 @@ mprisence version
 RUST_LOG=debug mprisence
 ```
 
-## 🔍 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -174,6 +174,6 @@ RUST_LOG=debug mprisence
    - Check logs for parsing errors
    - Try with the default configuration first
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
