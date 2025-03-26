@@ -7,3 +7,12 @@ flamegraph*
 # Editor
 .vscode
 .idea
+
+# Packaging
+.SRCINFO
+/aur-mprisence/
+/aur-mprisence-git/
+pkg/
+src/
+*.pkg.tar.zst
+*.tar.gz

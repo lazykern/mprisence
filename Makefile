@@ -13,9 +13,8 @@ ENABLE_SERVICE ?= 1
 
 # Version management
 CARGO_VERSION != grep '^version = ' Cargo.toml | head -n1 | cut -d'"' -f2 | sed 's/-beta/\.beta/'
-GIT_VERSION != git describe --long --tags | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
 
-.PHONY: all install-local uninstall-local clean help pkg-prepare check-deps build sync-version sync-git-version sync-all-versions
+.PHONY: all install-local uninstall-local clean help pkg-prepare check-deps build sync-version
 
 # Default target: local user installation
 all: install-local
@@ -31,16 +30,6 @@ sync-version:
 	@echo "Syncing version $(CARGO_VERSION) across package files..."
 	@sed -i 's/^pkgver=.*$$/pkgver=$(CARGO_VERSION)/' packaging/arch/release/PKGBUILD
 	@echo "Version updated in release package file"
-
-# Sync git version
-sync-git-version:
-	@echo "Syncing git version $(GIT_VERSION) for git package..."
-	@sed -i 's/^pkgver=.*$$/pkgver=$(GIT_VERSION)/' packaging/arch/git/PKGBUILD
-	@echo "Version updated in git package file"
-
-# Sync all versions
-sync-all-versions: sync-version sync-git-version
-	@echo "All package versions updated"
 
 # Local user installation
 install-local: build
@@ -120,9 +109,7 @@ help:
 	@echo "  make uninstall-local    Remove mprisence from your system"
 	@echo "  make clean              Clean build files"
 	@echo "  make pkg-prepare        Prepare files for packaging (maintainers)"
-	@echo "  make sync-version       Sync version from Cargo.toml to package files"
-	@echo "  make sync-git-version   Sync git version from git describe to package files"
-	@echo "  make sync-all-versions  Sync both versions"
+	@echo "  make sync-version       Sync version from Cargo.toml to release package"
 	@echo
 	@echo "Installation Options:"
 	@echo "  ENABLE_SERVICE=0        Install without enabling the service"
