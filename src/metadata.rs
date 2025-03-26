@@ -14,6 +14,7 @@ use crate::utils::{format_duration, format_track_number, format_audio_channels, 
 use crate::cover::sources::ArtSource;
 
 macro_rules! impl_metadata_getter {
+    // String getter with both MPRIS and Lofty
     ($name:ident, $mpris_key:expr, $lofty_key:expr) => {
         pub fn $name(&self) -> Option<String> {
             trace!(concat!(
@@ -33,6 +34,7 @@ macro_rules! impl_metadata_getter {
                 })
         }
     };
+    // u32 getter with parsing for both MPRIS and Lofty
     ($name:ident, $mpris_key:expr, $lofty_key:expr, parse_u32) => {
         pub fn $name(&self) -> Option<u32> {
             trace!(concat!(
@@ -54,6 +56,58 @@ macro_rules! impl_metadata_getter {
                         .and_then(|tag| tag.get_string($lofty_key))
                         .and_then(|s| s.parse().ok())
                 })
+        }
+    };
+    // Array getter for both MPRIS and Lofty
+    ($name:ident, $mpris_key:expr, $lofty_key:expr, array) => {
+        pub fn $name(&self) -> Option<Vec<String>> {
+            trace!(concat!(
+                "Getting ",
+                stringify!($name),
+                " from metadata sources"
+            ));
+            self.mpris_metadata
+                .as_ref()
+                .and_then(|m| m.get($mpris_key))
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|g| g.as_str()).map(String::from).collect())
+                .or_else(|| {
+                    self.tagged_file
+                        .as_ref()
+                        .and_then(|t| t.primary_tag())
+                        .and_then(|tag| tag.get_string($lofty_key))
+                        .map(|s| vec![s.to_string()])
+                })
+        }
+    };
+    // MPRIS-only string getter
+    ($name:ident, $mpris_key:expr) => {
+        pub fn $name(&self) -> Option<String> {
+            trace!(concat!(
+                "Getting ",
+                stringify!($name),
+                " from MPRIS metadata"
+            ));
+            self.mpris_metadata
+                .as_ref()
+                .and_then(|m| m.get($mpris_key))
+                .and_then(|v| v.as_str())
+                .map(String::from)
+        }
+    };
+    // MPRIS-only u32 getter
+    ($name:ident, $mpris_key:expr, _) => {
+        pub fn $name(&self) -> Option<u32> {
+            trace!(concat!(
+                "Getting ",
+                stringify!($name),
+                " from MPRIS metadata"
+            ));
+            self.mpris_metadata
+                .as_ref()
+                .and_then(|m| m.get($mpris_key))
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse().ok())
         }
     };
 }
@@ -99,6 +153,26 @@ pub struct MediaMetadata {
     pub musicbrainz_artist_id: Option<String>,
     pub musicbrainz_album_artist_id: Option<String>,
     pub musicbrainz_release_group_id: Option<String>,
+
+    pub composer: Option<String>,
+    pub lyricist: Option<String>,
+    pub conductor: Option<String>,
+    pub remixer: Option<String>,
+    pub language: Option<String>,
+    pub encoded_by: Option<String>,
+    pub encoder_settings: Option<String>,
+    pub copyright: Option<String>,
+    pub publisher: Option<String>,
+    pub url: Option<String>,
+    pub comment: Option<String>,
+    pub content_created: Option<String>,
+    pub last_used: Option<String>,
+    pub use_count: Option<u32>,
+    // Classical music specific
+    pub movement: Option<String>,
+    pub movement_number: Option<u32>,
+    pub movement_total: Option<u32>,
+    pub movement_display: Option<String>, // "1/3" format like track_display
 }
 
 impl Default for MediaMetadata {
@@ -137,6 +211,24 @@ impl Default for MediaMetadata {
             musicbrainz_artist_id: None,
             musicbrainz_album_artist_id: None,
             musicbrainz_release_group_id: None,
+            composer: None,
+            lyricist: None,
+            conductor: None,
+            remixer: None,
+            language: None,
+            encoded_by: None,
+            encoder_settings: None,
+            copyright: None,
+            publisher: None,
+            url: None,
+            comment: None,
+            content_created: None,
+            last_used: None,
+            use_count: None,
+            movement: None,
+            movement_number: None,
+            movement_total: None,
+            movement_display: None,
         }
     }
 }
@@ -184,64 +276,37 @@ impl MetadataSource {
 
     impl_metadata_getter!(isrc, "xesam:isrc", &ItemKey::Isrc);
     impl_metadata_getter!(barcode, "xesam:barcode", &ItemKey::Barcode);
-    impl_metadata_getter!(
-        catalog_number,
-        "xesam:catalogNumber",
-        &ItemKey::CatalogNumber
-    );
+    impl_metadata_getter!(catalog_number, "xesam:catalogNumber", &ItemKey::CatalogNumber);
     impl_metadata_getter!(label, "xesam:label", &ItemKey::Label);
 
-    impl_metadata_getter!(
-        musicbrainz_track_id,
-        "xesam:musicbrainzTrackID",
-        &ItemKey::MusicBrainzTrackId
-    );
-    impl_metadata_getter!(
-        musicbrainz_album_id,
-        "xesam:musicbrainzAlbumID",
-        &ItemKey::MusicBrainzReleaseId
-    );
-    impl_metadata_getter!(
-        musicbrainz_artist_id,
-        "xesam:musicbrainzArtistID",
-        &ItemKey::MusicBrainzArtistId
-    );
-    impl_metadata_getter!(
-        musicbrainz_album_artist_id,
-        "xesam:musicbrainzAlbumArtistID",
-        &ItemKey::MusicBrainzReleaseArtistId
-    );
-    impl_metadata_getter!(
-        musicbrainz_release_group_id,
-        "xesam:musicbrainzReleaseGroupID",
-        &ItemKey::MusicBrainzReleaseGroupId
-    );
+    impl_metadata_getter!(musicbrainz_track_id, "xesam:musicbrainzTrackID", &ItemKey::MusicBrainzTrackId);
+    impl_metadata_getter!(musicbrainz_album_id, "xesam:musicbrainzAlbumID", &ItemKey::MusicBrainzReleaseId);
+    impl_metadata_getter!(musicbrainz_artist_id, "xesam:musicbrainzArtistID", &ItemKey::MusicBrainzArtistId);
+    impl_metadata_getter!(musicbrainz_album_artist_id, "xesam:musicbrainzAlbumArtistID", &ItemKey::MusicBrainzReleaseArtistId);
+    impl_metadata_getter!(musicbrainz_release_group_id, "xesam:musicbrainzReleaseGroupID", &ItemKey::MusicBrainzReleaseGroupId);
 
-    impl_metadata_getter!(
-        track_number,
-        "xesam:trackNumber",
-        &ItemKey::TrackNumber,
-        parse_u32
-    );
-    impl_metadata_getter!(
-        track_total,
-        "xesam:trackTotal",
-        &ItemKey::TrackTotal,
-        parse_u32
-    );
-    impl_metadata_getter!(
-        disc_number,
-        "xesam:discNumber",
-        &ItemKey::DiscNumber,
-        parse_u32
-    );
-    impl_metadata_getter!(
-        disc_total,
-        "xesam:discTotal",
-        &ItemKey::DiscTotal,
-        parse_u32
-    );
+    impl_metadata_getter!(track_number, "xesam:trackNumber", &ItemKey::TrackNumber, parse_u32);
+    impl_metadata_getter!(track_total, "xesam:trackTotal", &ItemKey::TrackTotal, parse_u32);
+    impl_metadata_getter!(disc_number, "xesam:discNumber", &ItemKey::DiscNumber, parse_u32);
+    impl_metadata_getter!(disc_total, "xesam:discTotal", &ItemKey::DiscTotal, parse_u32);
     impl_metadata_getter!(year, "xesam:year", &ItemKey::Year, parse_u32);
+
+    impl_metadata_getter!(composer, "xesam:composer", &ItemKey::Composer);
+    impl_metadata_getter!(lyricist, "xesam:lyricist", &ItemKey::Lyricist);
+    impl_metadata_getter!(conductor, "xesam:conductor", &ItemKey::Conductor);
+    impl_metadata_getter!(remixer, "xesam:remixer", &ItemKey::Remixer);
+    impl_metadata_getter!(language, "xesam:language", &ItemKey::Language);
+    impl_metadata_getter!(encoded_by, "xesam:encodedBy", &ItemKey::EncodedBy);
+    impl_metadata_getter!(encoder_settings, "xesam:encoderSettings", &ItemKey::EncoderSettings);
+    impl_metadata_getter!(comment, "xesam:comment", &ItemKey::Comment);
+
+    impl_metadata_getter!(genres, "xesam:genre", &ItemKey::Genre, array);
+    impl_metadata_getter!(copyright, "xesam:copyright");
+    impl_metadata_getter!(publisher, "xesam:publisher");
+    impl_metadata_getter!(movement, "xesam:movement");
+    impl_metadata_getter!(movement_number, "xesam:movementNumber", _);
+    impl_metadata_getter!(movement_total, "xesam:movementTotal", _);
+    impl_metadata_getter!(use_count, "xesam:useCount", _);
 
     pub fn artists(&self) -> Option<Vec<String>> {
         trace!("Getting artists from metadata sources");
@@ -309,6 +374,29 @@ impl MetadataSource {
     #[allow(dead_code)]
     pub fn lofty_tag(&self) -> Option<&TaggedFile> {
         self.tagged_file.as_ref()
+    }
+
+    pub fn url(&self) -> Option<String> {
+        self.mpris_metadata
+            .as_ref()
+            .and_then(|m| m.url())
+            .map(String::from)
+    }
+
+    pub fn content_created(&self) -> Option<String> {
+        self.mpris_metadata
+            .as_ref()
+            .and_then(|m| m.get("xesam:contentCreated"))
+            .and_then(|v| v.as_str())
+            .map(String::from)
+    }
+
+    pub fn last_used(&self) -> Option<String> {
+        self.mpris_metadata
+            .as_ref()
+            .and_then(|m| m.get("xesam:lastUsed"))
+            .and_then(|v| v.as_str())
+            .map(String::from)
     }
 
     pub fn to_media_metadata(&self) -> MediaMetadata {
@@ -380,22 +468,28 @@ impl MetadataSource {
         metadata.musicbrainz_album_artist_id = self.musicbrainz_album_artist_id();
         metadata.musicbrainz_release_group_id = self.musicbrainz_release_group_id();
 
-        metadata
-    }
+        metadata.composer = self.composer();
+        metadata.lyricist = self.lyricist();
+        metadata.conductor = self.conductor();
+        metadata.remixer = self.remixer();
+        metadata.language = self.language();
+        metadata.encoded_by = self.encoded_by();
+        metadata.encoder_settings = self.encoder_settings();
+        metadata.copyright = self.copyright();
+        metadata.publisher = self.publisher();
+        metadata.url = self.url();
+        metadata.comment = self.comment();
+        metadata.content_created = self.content_created();
+        metadata.last_used = self.last_used();
+        metadata.use_count = self.use_count();
+        
+        metadata.movement = self.movement();
+        metadata.movement_number = self.movement_number();
+        metadata.movement_total = self.movement_total();
+        if let Some(mov_num) = metadata.movement_number {
+            metadata.movement_display = Some(format_track_number(mov_num, metadata.movement_total));
+        }
 
-    pub fn genres(&self) -> Option<Vec<String>> {
-        trace!("Getting genres from metadata sources");
-        self.mpris_metadata
-            .as_ref()
-            .and_then(|m| m.get("xesam:genre"))
-            .and_then(|v| v.as_array())
-            .map(|genres| genres.iter().filter_map(|g| g.as_str()).map(String::from).collect())
-            .or_else(|| {
-                self.tagged_file
-                    .as_ref()
-                    .and_then(|t| t.primary_tag())
-                    .and_then(|tag| tag.get_string(&ItemKey::Genre))
-                    .map(|genre| vec![genre.to_string()])
-            })
+        metadata
     }
 }
