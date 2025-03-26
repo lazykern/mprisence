@@ -13,6 +13,6 @@ flamegraph*
 /aur-mprisence/
 /aur-mprisence-git/
 pkg/
-src/
+/pkg/src/
 *.pkg.tar.zst
 *.tar.gz
