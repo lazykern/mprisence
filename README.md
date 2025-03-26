@@ -148,14 +148,12 @@ RUST_LOG=debug mprisence
 ### Common Issues
 
 1. **Discord Presence Not Showing**
-   - Verify Discord desktop client is running
-   - Check if your media player is MPRIS-compatible
+   - Check if your media player is MPRIS-compatible (try running `mprisence players`)
    - Ensure the correct Discord App ID is configured
 
 2. **Cover Art Not Displaying**
    - Check if the media file has embedded artwork
    - Verify ImgBB API key if using ImgBB provider
-   - Ensure cover art files are accessible
 
 3. **Service Issues**
    ```bash
