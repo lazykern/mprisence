@@ -2,6 +2,11 @@
 
 All notable changes to mprisence will be documented in this file.
 
+## [1.0.1](https://github.com/lazykern/mprisence/compare/v1.0.0...v1.0.1) (2025-03-29)
+
+### Bug Fixes
+* Fixed issue with stale player configuration state after config reload
+
 ## [1.0.0](https://github.com/lazykern/mprisence/compare/v0.5.2...v1.0.0) (2025-03-27)
 
 > Major release with comprehensive improvements to configuration, cover art handling, templating, and Discord integration
