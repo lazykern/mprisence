@@ -1,11 +1,11 @@
 use figment::providers::{Format, Toml};
 use figment::Figment;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
-use std::collections::HashMap;
 
 mod error;
 pub mod schema;
@@ -46,7 +46,7 @@ impl ConfigManager {
     #[allow(dead_code)]
     pub fn new_with_config(config: Config) -> Self {
         let (tx, _) = broadcast::channel(16);
-        
+
         Self {
             config: Arc::new(RwLock::new(config)),
             path: PathBuf::from("/tmp/test_config.toml"), // Dummy path
@@ -62,12 +62,12 @@ impl ConfigManager {
         small_text_template: &str,
     ) -> Self {
         let mut default_config = Config::default();
-        
+
         default_config.template.detail = detail_template.into();
         default_config.template.state = state_template.into();
         default_config.template.large_text = large_text_template.into();
         default_config.template.small_text = small_text_template.into();
-        
+
         Self::new_with_config(default_config)
     }
 
@@ -166,13 +166,13 @@ impl ConfigManager {
     // Reload config from file
     pub fn reload(&self) -> Result<(), ConfigError> {
         log::info!("Reloading configuration from {}", self.path.display());
-        
+
         // Use the same loading logic as initial load
         let new_config = load_config_from_file(&self.path)?;
-        
+
         let mut config = self.write()?;
         *config = new_config;
-        
+
         let _ = self.change_tx.send(ConfigChange::Reloaded);
         Ok(())
     }
@@ -184,7 +184,6 @@ pub fn initialize() -> Result<(), ConfigError> {
     let config_path = get_config_path()?;
     log::debug!("Config path: {:?}", config_path);
 
-    // Create parent directories but don't worry about file
     ensure_config_exists(&config_path)?;
 
     let config_manager = ConfigManager::new(config_path.clone())?;
@@ -265,18 +264,19 @@ fn get_config_path() -> Result<PathBuf, ConfigError> {
 }
 
 fn ensure_config_exists(path: &Path) -> Result<(), ConfigError> {
-    if !path.exists() {
-        let default_config = include_str!("../../config/config.default.toml");
-        std::fs::write(path, default_config).map_err(ConfigError::IO)?;
+    // Only ensure parent directory exists, don't create the file
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(ConfigError::IO)?;
     }
     Ok(())
 }
 
 fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     log::info!("Loading configuration from {}", path.display());
-    
-    let mut figment = Figment::new()
-        .merge(Toml::string(include_str!("../../config/config.default.toml")));
+
+    let mut figment = Figment::new().merge(Toml::string(include_str!(
+        "../../config/config.default.toml"
+    )));
 
     // Merge user config if it exists
     if path.exists() {
