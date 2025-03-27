@@ -24,22 +24,17 @@ All notable changes to mprisence will be documented in this file.
 * Configuration structure changes require updates to existing config files
 
 ### New Features
-* **Configuration System**
+* **Configuration**
   - Live config reloading while running
   - New `[activity_type]` section with:
     - Configurable default activity type (listening/watching/playing/competing)
     - Content type detection from media URLs
-  - Player-specific activity type overrides
-  - Case-insensitive player name handling
 
-* **Cover Art System**
+* **Cover Art**
   - Disk caching with configurable TTL (24 hours default)
-  - Multiple provider fallback chain
-  - MusicBrainz integration for online lookups
   - Enhanced ImgBB provider with expiration control
-  - Support for embedded audio file cover art
 
-* **Template System**
+* **Template**
   - New template variables:
     - Audio details: `bitrate_display`, `sample_rate_display`
     - Extended metadata: `composer`, `lyricist`, `genre_display`
@@ -48,18 +43,11 @@ All notable changes to mprisence will be documented in this file.
   - Full template variable reference available in [`src/metadata.rs`](./src/metadata.rs)
   - Template rendering implementation details in [`src/template.rs`](./src/template.rs)
 
-* **CLI Interface**
+* **CLI**
   - New subcommands structure:
     - `mprisence players list [--detailed]`
     - `mprisence config`
     - `mprisence version`
-
-### Performance Improvements
-* Reduced CPU usage through debounced updates
-* Implemented smart caching for expensive operations
-* Memory usage optimizations
-* More efficient player state change detection
-* Smarter Discord presence updates to minimize API calls
 
 ### Other Changes
 * Enhanced Discord connection reliability with auto-reconnection
