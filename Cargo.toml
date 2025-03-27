@@ -1,6 +1,6 @@
 [package]
 name = "mprisence"
-version = "1.0.0-beta2"
+version = "1.0.0"
 edition = "2021"
 authors = ["Phusit Somboonyingsuk"]
 readme = "README.md"
@@ -40,3 +40,4 @@ urlencoding = "2.1.3"
 futures = "0.3"
 base64 = "0.22.1"
 lofty = "0.22.2"
+semver = "1.0.22"

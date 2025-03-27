@@ -1,7 +1,7 @@
 # Maintainer: Phusit Somboonyingsuk
 
 pkgname=mprisence
-pkgver=1.0.0.beta1
+pkgver=1.0.0
 pkgrel=1
 pkgdesc="Discord Rich Presence for MPRIS media players"
 arch=("x86_64")
@@ -10,29 +10,29 @@ license=("MIT")
 depends=("gcc-libs")
 makedepends=("cargo")
 install=$pkgname.install
-source=("$pkgname-$pkgver.tar.gz::$url/archive/v${pkgver//.beta/-beta}.tar.gz")
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
 prepare() {
-    cd "$srcdir/$pkgname-${pkgver//.beta/-beta}"
+    cd "$srcdir/$pkgname-${pkgver}"
     cargo fetch --locked
 }
 
 build() {
-    cd "$srcdir/$pkgname-${pkgver//.beta/-beta}"
+    cd "$srcdir/$pkgname-${pkgver}"
     export RUSTUP_TOOLCHAIN=stable
     export CARGO_TARGET_DIR=target
     cargo build --frozen --release
 }
 
 check() {
-    cd "$srcdir/$pkgname-${pkgver//.beta/-beta}"
+    cd "$srcdir/$pkgname-${pkgver}"
     export RUSTUP_TOOLCHAIN=stable
     cargo test --frozen
 }
 
 package() {
-    cd "$srcdir/$pkgname-${pkgver//.beta/-beta}"
+    cd "$srcdir/$pkgname-${pkgver}"
     # Check for local installations during packaging
     if [ -f "$HOME/.local/bin/mprisence" ] || [ -f "$HOME/.config/systemd/user/mprisence.service" ]; then
         echo "=== WARNING ==="

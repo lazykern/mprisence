@@ -12,7 +12,7 @@ SYS_SYSTEMD_USER_DIR ?= $(SYS_PREFIX)/lib/systemd/user
 ENABLE_SERVICE ?= 1
 
 # Version management
-CARGO_VERSION != grep '^version = ' Cargo.toml | head -n1 | cut -d'"' -f2 | sed 's/-beta/\.beta/'
+CARGO_VERSION != grep '^version = ' Cargo.toml | head -n1 | cut -d'"' -f2
 
 .PHONY: all install-local uninstall-local clean help pkg-prepare check-deps build sync-version check-existing-install
 
@@ -47,6 +47,14 @@ build: check-deps
 
 sync-version:
 	@echo "Syncing version $(CARGO_VERSION) across package files..."
+	@if ! cargo install --quiet semver-cli 2>/dev/null; then \
+		echo "Installing semver-cli..."; \
+		cargo install semver-cli; \
+	fi
+	@if ! semver "$(CARGO_VERSION)" >/dev/null 2>&1; then \
+		echo "Error: Invalid version format in Cargo.toml"; \
+		exit 1; \
+	fi
 	@sed -i 's/^pkgver=.*$$/pkgver=$(CARGO_VERSION)/' packaging/arch/release/PKGBUILD
 	@echo "Version updated in release package file"
 

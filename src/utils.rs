@@ -61,10 +61,50 @@ pub fn format_playback_status_icon(status: PlaybackStatus) -> &'static str {
     }
 }
 
+use semver::Version;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum VersionError {
+    #[error("Invalid version format: {0}")]
+    InvalidFormat(#[from] semver::Error),
+}
+
+pub fn validate_version(version: &str) -> Result<String, VersionError> {
+    // Parse version to validate it
+    let version = Version::parse(version)?;
+    Ok(version.to_string())
+}
+
+pub fn to_package_version(version: &str) -> Result<String, VersionError> {
+    let version = Version::parse(version)?;
+    Ok(version.to_string())
+}
+
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use mpris::PlaybackStatus;
+
+    #[test]
+    fn test_validate_version() {
+        assert!(validate_version("1.0.0").is_ok());
+        assert!(validate_version("1.0.0-beta.1").is_ok());
+        assert!(validate_version("1.0.0+build.123").is_ok());
+        assert!(validate_version("1.0.0-beta.1+build.123").is_ok());
+        
+        // Invalid versions
+        assert!(validate_version("1.0").is_err());
+        assert!(validate_version("1.0.0.beta1").is_err());
+        assert!(validate_version("v1.0.0").is_err());
+    }
+
+    #[test]
+    fn test_to_package_version() {
+        assert_eq!(to_package_version("1.0.0-beta.1").unwrap(), "1.0.0-beta.1");
+        assert_eq!(to_package_version("1.0.0").unwrap(), "1.0.0");
+    }
 
     #[test]
     fn test_normalize_player_identity() {

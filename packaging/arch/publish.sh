@@ -83,6 +83,19 @@ VERSION=$(grep '^version = ' Cargo.toml | cut -d '"' -f 2)
 
 print "Publishing version ${VERSION}"
 
+# Check if this is a pre-release version
+if [[ "$VERSION" == *"-"* ]]; then
+    if [ "$PUBLISH_RELEASE" = true ] && [ "$PUBLISH_GIT" = false ]; then
+        echo -e "${RED}Error: Cannot publish pre-release version ${VERSION} to release package.${NC}"
+        echo -e "${RED}Pre-release versions should only be published to the -git package.${NC}"
+        echo -e "${YELLOW}Use --git to publish to the -git package instead.${NC}"
+        exit 1
+    elif [ "$PUBLISH_RELEASE" = true ] && [ "$PUBLISH_GIT" = true ]; then
+        warn "Pre-release version ${VERSION} will only be published to the -git package"
+        PUBLISH_RELEASE=false
+    fi
+fi
+
 # Sync version across package files
 print "Syncing version across package files..."
 make sync-version
@@ -104,11 +117,12 @@ if [ "$PUBLISH_RELEASE" = true ]; then
     print "Updating release package..."
     cp packaging/arch/release/PKGBUILD "$RELEASE_REPO/PKGBUILD"
     cp packaging/arch/release/.SRCINFO "$RELEASE_REPO/.SRCINFO"
+    cp packaging/arch/release/mprisence.install "$RELEASE_REPO/mprisence.install"
 
     print "Publishing release package..."
     (
         cd "$RELEASE_REPO"
-        git add PKGBUILD .SRCINFO
+        git add PKGBUILD .SRCINFO mprisence.install
         git commit -m "Update to version $VERSION"
         git push
     )
@@ -128,11 +142,12 @@ if [ "$PUBLISH_GIT" = true ]; then
     print "Updating git package..."
     cp packaging/arch/git/PKGBUILD "$GIT_REPO/PKGBUILD"
     cp packaging/arch/git/.SRCINFO "$GIT_REPO/.SRCINFO"
+    cp packaging/arch/git/mprisence-git.install "$GIT_REPO/mprisence-git.install"
 
     print "Publishing git package..."
     (
         cd "$GIT_REPO"
-        git add PKGBUILD .SRCINFO
+        git add PKGBUILD .SRCINFO mprisence-git.install
         git commit -m "Update to version $VERSION"
         git push
     )
