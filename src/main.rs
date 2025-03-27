@@ -87,20 +87,14 @@ impl Mprisence {
         info!("Configuration change detected, updating components");
         self.config = get_config();
 
-        trace!("Updating template manager");
         self.template_manager = Arc::new(template::TemplateManager::new(&self.config)?);
-        debug!("Template manager updated successfully");
-
-        trace!("Updating cover manager");
         self.cover_manager = Arc::new(CoverManager::new(&self.config)?);
-        debug!("Cover manager updated successfully");
+        debug!("Template and cover managers updated successfully");
 
-        trace!("Checking for players affected by configuration changes");
-        self.media_players.retain(|id, presence| {
+        for (id, presence) in self.media_players.iter_mut() {
             let player_config = self.config.get_player_config(&id.identity);
-            let keep = !player_config.ignore;
-            if !keep {
-                debug!("Removing player due to ignore setting: {}", id.identity);
+            if player_config.ignore {
+                debug!("Player now ignored: {}", id.identity);
                 let _ = presence.destroy_discord_client();
             } else {
                 presence.update_managers(
@@ -109,8 +103,10 @@ impl Mprisence {
                     self.config.clone(),
                 );
             }
-            keep
-        });
+        }
+
+        self.media_players
+            .retain(|id, _| !self.config.get_player_config(&id.identity).ignore);
 
         debug!("All media players updated with new configuration");
         Ok(())
