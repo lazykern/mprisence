@@ -2,89 +2,64 @@
 
 All notable changes to mprisence will be documented in this file.
 
-## [1.0.0] - 2025-03-27
+## [1.0.0](https://github.com/lazykern/mprisence/compare/v0.5.2...v1.0.0) (2025-03-27)
 
-### Configuration System
-- Added live config reloading (edit config.toml while running)
-- Configuration structure improvements:
-  - New `[activity_type]` section:
-    - `default = "listening"` - choose between listening/watching/playing/competing
-    - `use_content_type = true` - detects content type from media URLs
-  - Expanded `[cover]` section with provider priorities
-  - Added `[cover.provider.imgbb]` settings with expiration control
-  - Player configs now support `override_activity_type` option
-  - Better player name handling (case insensitive, spaces → underscores)
+> Major release with comprehensive improvements to configuration, cover art handling, templating, and Discord integration
 
-### Cover Art System
-- Completely rewritten cover art handling:
-  - Disk caching with TTL (24 hours by default)
-  - Multiple cover art providers with fallback chain
-  - MusicBrainz provider for online cover lookups
-  - Enhanced ImgBB provider with customizable settings
-  - Support for embedded cover art in audio files
+### Upgrade Steps
+* **Configuration File Updates Required:**
+  1. Update template variables usage:
+     - Replace `artists` with `artist_display` for formatted output
+     - Use new `track_display` instead of manual `track_number`/`track_total`
+     - New audio info variables: `bitrate_display`, `sample_rate_display`
 
-### Template System
-- Updated to Handlebars 6.x
-- Many new template variables:
-  - Audio info: `bitrate_display`, `sample_rate_display`, etc.
-  - Extended metadata: `composer`, `lyricist`, `genre_display`, etc.
-  - Formatted values: `track_display ("1/12")`, `duration_display ("3:45")`
-  - Status variables: `status_icon` (separate from status text)
+### Breaking Changes
+* Template system updated to Handlebars 6.x - verify your custom templates
+* Status icon handling changed in templates - now accessed via separate `status_icon` variable
+* Configuration structure changes require updates to existing config files
 
-### CLI Interface
-- Better command-line interface with subcommands:
-  - `mprisence` - run normally (default)
-  - `mprisence players list` - show available players
-  - `mprisence players list --detailed` - show player details
-  - `mprisence config` - show current configuration
-  - `mprisence version` - display version info
+### New Features
+* **Configuration System**
+  - Live config reloading while running
+  - New `[activity_type]` section with:
+    - Configurable default activity type (listening/watching/playing/competing)
+    - Content type detection from media URLs
+  - Player-specific activity type overrides
+  - Case-insensitive player name handling
 
-### Discord Integration
-- More reliable Discord connection with auto-reconnection
-- Support for all Discord activity types:
-  - Listening (default for audio)
-  - Watching (auto-detected for video)
-  - Playing and Competing (manually configurable)
-  - Custom activity types (manually configurable)
-- Smarter presence updates that reduce Discord API calls
+* **Cover Art System**
+  - Disk caching with configurable TTL (24 hours default)
+  - Multiple provider fallback chain
+  - MusicBrainz integration for online lookups
+  - Enhanced ImgBB provider with expiration control
+  - Support for embedded audio file cover art
 
-### Performance
-- Reduced CPU usage with debounced updates
-- Smart caching for expensive operations
-- Memory usage optimizations
-- More efficient change detection for player state
+* **Template System**
+  - New template variables:
+    - Audio details: `bitrate_display`, `sample_rate_display`
+    - Extended metadata: `composer`, `lyricist`, `genre_display`
+    - Formatted values: `track_display`, `duration_display`
+    - Separated `status_icon` variable
 
-### Dependencies
-- Updated core dependencies to latest versions
+* **CLI Interface**
+  - New subcommands structure:
+    - `mprisence players list [--detailed]`
+    - `mprisence config`
+    - `mprisence version`
 
-## Config Migration Notes
+### Performance Improvements
+* Reduced CPU usage through debounced updates
+* Implemented smart caching for expensive operations
+* Memory usage optimizations
+* More efficient player state change detection
+* Smarter Discord presence updates to minimize API calls
 
-### Key Changes
+### Other Changes
+* Updated core dependencies to latest versions
+* Enhanced Discord connection reliability with auto-reconnection
+* Improved support for all Discord activity types
+* Better player name normalization
 
-If upgrading from 0.5.x, the main changes to make in your config:
-
-1. Add activity type settings (if desired):
-   ```toml
-   [activity_type]
-   use_content_type = true   # Auto-detect from media URLs
-   default = "listening"     # Default activity type
-   ```
-
-2. Status icons: Previously used in templates like `{{{status_icon}}} {{{artists}}}`, now you can access `status_icon` separately in templates.
-
-3. Player-specific activity types (optional):
-   ```toml
-   [player.vlc]
-   # ... other settings ...
-   override_activity_type = "watching"  # Force this player to always use "Watching"
-   ```
-
-4. Cover art caching:
-   ```toml
-   [cover.provider.imgbb]
-   expiration = 86400  # Cache time in seconds (24 hours)
-   ```
-
-## [0.5.2]
+## [0.5.2](https://github.com/lazykern/mprisence/compare/v0.5.1...v0.5.2)
 
 For changes before v1.0.0, please refer to the [releases page](https://github.com/lazykern/mprisence/releases).
