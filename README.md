@@ -74,12 +74,17 @@ interval = 2000
 [template]
 # First line in Discord presence
 detail = "{{{title}}}"
-# Second line in Discord presence
-state = "{{{artist_display}}}"
-# Text shown when hovering over the large image
-large_text = "{{{album}}}"
-# Text shown when hovering over the small image
-small_text = "Playing on {{{player}}}"
+
+# Second line in Discord presence - using Handlebars array iteration
+state = "{{#each artists}}{{this}}{{#unless @last}} & {{/unless}}{{/each}}"
+# or just use 
+# state = "{{{artist_display}}}"
+
+# Text shown when hovering over the large image - using conditional helpers
+large_text = "{{#if album}}{{{album}}}{{#if year}} ({{year}}){{/if}}{{#if album_artist_display}} by {{{album_artist_display}}}{{/if}}{{/if}}"
+
+# Text shown when hovering over the small image - using equality helper
+small_text = "{{#if (eq status \"playing\")}}▶{{else}}⏸{{/if}} on {{{player}}}"
 
 # Activity type settings
 [activity_type]
