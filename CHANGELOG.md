@@ -4,12 +4,6 @@ All notable changes to mprisence will be documented in this file.
 
 ## [1.0.0] - 2025-03-27
 
-### Architecture
-- Modular code architecture with improved component isolation
-- Thread-safe configuration using RwLock and Arc
-- Added proper error handling with thiserror
-- Improved logging system with different log levels
-
 ### Configuration System
 - Added live config reloading (edit config.toml while running)
 - Configuration structure improvements:
@@ -30,7 +24,7 @@ All notable changes to mprisence will be documented in this file.
   - Support for embedded cover art in audio files
 
 ### Template System
-- Updated to Handlebars 6.x with better error handling
+- Updated to Handlebars 6.x
 - Many new template variables:
   - Audio info: `bitrate_display`, `sample_rate_display`, etc.
   - Extended metadata: `composer`, `lyricist`, `genre_display`, etc.
@@ -51,6 +45,7 @@ All notable changes to mprisence will be documented in this file.
   - Listening (default for audio)
   - Watching (auto-detected for video)
   - Playing and Competing (manually configurable)
+  - Custom activity types (manually configurable)
 - Smarter presence updates that reduce Discord API calls
 
 ### Performance
@@ -61,8 +56,6 @@ All notable changes to mprisence will be documented in this file.
 
 ### Dependencies
 - Updated core dependencies to latest versions
-- Added tokio async runtime for better concurrency
-- Using reqwest 0.12 for modern HTTP operations
 
 ## Config Migration Notes
 
