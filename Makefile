@@ -8,6 +8,9 @@ SYS_PREFIX ?= /usr
 SYS_CONFIG_DIR ?= /etc/mprisence
 SYS_SYSTEMD_USER_DIR ?= $(SYS_PREFIX)/lib/systemd/user
 
+# Distribution detection
+IS_ARCH := $(shell command -v pacman 2>/dev/null)
+
 # Installation options
 ENABLE_SERVICE ?= 1
 
@@ -25,13 +28,24 @@ check-existing-install:
 		echo "Found mprisence at: $$SYSTEM_PATH"; \
 		if [ "$$SYSTEM_PATH" != "$(PREFIX)/bin/mprisence" ]; then \
 			echo "WARNING: Existing mprisence installation found at $$SYSTEM_PATH"; \
-			echo "This might conflict with the local installation."; \
-			echo "If installed via package manager, you should remove it first:"; \
-			echo "  sudo pacman -R mprisence"; \
-			echo "  systemctl --user disable --now mprisence"; \
-			echo ""; \
-			echo "Press Ctrl+C to abort, or Enter to continue anyway..."; \
-			read REPLY; \
+			if [ -n "$(IS_ARCH)" ] && pacman -Qo $$SYSTEM_PATH >/dev/null 2>&1; then \
+				echo "This is a package manager (pacman) managed installation!"; \
+				echo "To avoid conflicts, please remove it first:"; \
+				echo "  yay -R mprisence # or"; \
+				echo "  sudo pacman -R mprisence"; \
+				echo "  systemctl --user disable --now mprisence"; \
+				exit 1; \
+			elif [ -f "/usr/lib/systemd/user/mprisence.service" ]; then \
+				echo "Found system-wide installation. Please remove it first."; \
+				echo "Check your distribution's package manager to remove it."; \
+				exit 1; \
+			else \
+				echo "Found non-package-managed installation at $$SYSTEM_PATH"; \
+				echo "This might conflict with the local installation."; \
+				echo ""; \
+				echo "Press Ctrl+C to abort, or Enter to continue anyway..."; \
+				read REPLY; \
+			fi; \
 		else \
 			echo "Found existing local installation at $$SYSTEM_PATH"; \
 		fi; \
@@ -56,13 +70,15 @@ sync-version:
 		exit 1; \
 	fi
 	@sed -i 's/^pkgver=.*$$/pkgver=$(CARGO_VERSION)/' packaging/arch/release/PKGBUILD
-	@echo "Version updated in release package file"
+	@sed -i 's/^pkgver=.*$$/pkgver=$(CARGO_VERSION)/' packaging/arch/git/PKGBUILD
+	@echo "Version updated in package files"
 
 install-local: build
 	@$(MAKE) check-existing-install
 	@echo "Starting installation..."
 	@if systemctl --user is-active mprisence >/dev/null 2>&1; then \
-		echo "Service is running, will restart after installation"; \
+		echo "Existing service is running, stopping it first..."; \
+		systemctl --user stop mprisence || true; \
 		SHOULD_RESTART=1; \
 	fi
 	install -Dm755 target/release/mprisence "$(PREFIX)/bin/mprisence"

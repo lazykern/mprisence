@@ -1,7 +1,7 @@
 # Maintainer: Phusit Somboonyingsuk
 
 pkgname=mprisence-git
-pkgver=1.0.0-beta.1
+pkgver=1.0.0
 pkgrel=1
 pkgdesc="Discord Rich Presence for MPRIS media players  (git version)"
 arch=('x86_64')
@@ -41,14 +41,6 @@ check() {
 
 package() {
     cd "${srcdir}/${pkgname%-git}"
-    # Check for local installations during packaging
-    if [ -f "$HOME/.local/bin/mprisence" ] || [ -f "$HOME/.config/systemd/user/mprisence.service" ]; then
-        echo "=== WARNING ==="
-        echo "Local installation of mprisence detected. After installing this package,"
-        echo "users should remove their local installations to avoid conflicts:"
-        echo "  make uninstall-local"
-        echo "=============="
-    fi
     make DESTDIR="$pkgdir" pkg-prepare
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 } 
