@@ -118,23 +118,37 @@ impl Mprisence {
         Ok(())
     }
 
-    pub async fn update(&mut self) {
+    pub async fn update(&mut self) -> Result<(), MprisenceError> {
         trace!("Starting Discord presence update cycle");
 
         let discord_running = discord::is_discord_running();
         if !discord_running {
             trace!("Discord is not running, destroying all Discord clients");
             for presence in self.media_players.values_mut() {
-                let _ = presence.destroy_discord_client();
+                if let Err(e) = presence.destroy_discord_client() {
+                    warn!("Failed to destroy Discord client: {}", e);
+                }
             }
-            return;
+            return Ok(());
         }
 
         let mut current_ids = std::collections::HashSet::new();
 
         trace!("Scanning for active media players");
-        for player in self.mpris_finder.iter_players().unwrap() {
-            let player = player.unwrap();
+        let players = self.mpris_finder.iter_players().map_err(|e| {
+            error!("Failed to get MPRIS players: {}", e);
+            MprisenceError::DBus(e)
+        })?;
+
+        for player_result in players {
+            let player = match player_result {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!("Failed to get player: {}", e);
+                    continue;
+                }
+            };
+
             let id = PlayerIdentifier::from(&player);
 
             let player_config = self.config.get_player_config(&id.identity);
@@ -147,8 +161,12 @@ impl Mprisence {
 
             trace!("Processing player {}", id);
             if let Some(presence) = self.media_players.get_mut(&id) {
-                let _ = presence.initialize_discord_client();
-                let _ = presence.update(player).await;
+                if let Err(e) = presence.initialize_discord_client() {
+                    warn!("Failed to initialize Discord client for {}: {}", id.identity, e);
+                }
+                if let Err(e) = presence.update(player).await {
+                    warn!("Failed to update presence for {}: {}", id.identity, e);
+                }
             } else {
                 debug!("New media player detected: {}", id.identity);
                 let mut presence = Presence::new(
@@ -157,7 +175,9 @@ impl Mprisence {
                     self.cover_manager.clone(),
                     self.config.clone(),
                 );
-                let _ = presence.initialize_discord_client();
+                if let Err(e) = presence.initialize_discord_client() {
+                    warn!("Failed to initialize Discord client for new player {}: {}", id.identity, e);
+                }
                 self.media_players.insert(id, presence);
             }
         }
@@ -175,10 +195,14 @@ impl Mprisence {
                     "Media player removed from tracking: {} ({})",
                     id.identity, reason
                 );
-                let _ = presence.destroy_discord_client();
+                if let Err(e) = presence.destroy_discord_client() {
+                    warn!("Failed to destroy Discord client for {}: {}", id.identity, e);
+                }
             }
             keep
         });
+
+        Ok(())
     }
 
     pub async fn run(&mut self) -> Result<(), MprisenceError> {
@@ -191,7 +215,7 @@ impl Mprisence {
             tokio::select! {
                 _ = interval.tick() => {
                     trace!("Running periodic presence update");
-                    self.update().await;
+                    self.update().await?;
                 },
                 _ = cache_cleanup_interval.tick() => {
                     debug!("Starting periodic cache cleanup");
