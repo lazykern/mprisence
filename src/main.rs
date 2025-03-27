@@ -9,9 +9,7 @@ use log::{debug, error, info, trace, warn};
 use mpris::PlayerFinder;
 use player::PlayerIdentifier;
 use presence::Presence;
-use std::{
-    alloc::System, collections::HashMap, sync::Arc, time::Duration,
-};
+use std::{alloc::System, collections::HashMap, sync::Arc, time::Duration};
 
 #[global_allocator]
 static GLOBAL: System = System;
@@ -162,7 +160,10 @@ impl Mprisence {
             trace!("Processing player {}", id);
             if let Some(presence) = self.media_players.get_mut(&id) {
                 if let Err(e) = presence.initialize_discord_client() {
-                    warn!("Failed to initialize Discord client for {}: {}", id.identity, e);
+                    warn!(
+                        "Failed to initialize Discord client for {}: {}",
+                        id.identity, e
+                    );
                 }
                 if let Err(e) = presence.update(player).await {
                     warn!("Failed to update presence for {}: {}", id.identity, e);
@@ -176,7 +177,10 @@ impl Mprisence {
                     self.config.clone(),
                 );
                 if let Err(e) = presence.initialize_discord_client() {
-                    warn!("Failed to initialize Discord client for new player {}: {}", id.identity, e);
+                    warn!(
+                        "Failed to initialize Discord client for new player {}: {}",
+                        id.identity, e
+                    );
                 }
                 self.media_players.insert(id, presence);
             }
@@ -196,7 +200,10 @@ impl Mprisence {
                     id.identity, reason
                 );
                 if let Err(e) = presence.destroy_discord_client() {
-                    warn!("Failed to destroy Discord client for {}: {}", id.identity, e);
+                    warn!(
+                        "Failed to destroy Discord client for {}: {}",
+                        id.identity, e
+                    );
                 }
             }
             keep
