@@ -265,10 +265,17 @@ pub struct CoverConfig {
 
     #[serde(default)]
     pub provider: CoverProviderConfig,
+
+    #[serde(default = "default_cover_local_search_depth")]
+    pub local_search_depth: usize,
 }
 
 fn default_cover_file_names() -> Vec<String> {
     DEFAULT_COVER_FILE_NAMES.iter().map(|&s| s.to_string()).collect()
+}
+
+fn default_cover_local_search_depth() -> usize {
+    2
 }
 
 impl Default for CoverConfig {
@@ -276,6 +283,7 @@ impl Default for CoverConfig {
         CoverConfig {
             file_names: default_cover_file_names(),
             provider: CoverProviderConfig::default(),
+            local_search_depth: default_cover_local_search_depth(),
         }
     }
 }

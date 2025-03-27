@@ -27,9 +27,7 @@ pub enum Command {
 
 #[derive(Subcommand)]
 pub enum PlayersCommand {
-    /// List available MPRIS media players
     List {
-        /// Show detailed information including metadata and configuration
         #[arg(short, long)]
         detailed: bool,
     },
@@ -37,9 +35,7 @@ pub enum PlayersCommand {
 
 #[derive(Subcommand)]
 pub enum VersionCommand {
-    /// Validate a version string according to SemVer
     Validate {
-        /// Version string to validate
         version: String,
     },
 }

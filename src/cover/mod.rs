@@ -2,6 +2,7 @@ use log::{debug, info, trace, warn};
 use mpris::Metadata;
 use std::sync::Arc;
 use std::time::Duration;
+use std::path::PathBuf;
 
 use crate::config;
 
@@ -13,13 +14,14 @@ pub mod sources;
 use cache::CoverCache;
 use error::CoverArtError;
 use providers::CoverArtProvider;
-use sources::ArtSource;
+use sources::{ArtSource, search_local_cover_art};
 
 const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 24 hours
 
 pub struct CoverManager {
     providers: Vec<Box<dyn CoverArtProvider>>,
     cache: CoverCache,
+    config: Arc<config::ConfigManager>,
 }
 
 impl CoverManager {
@@ -53,7 +55,7 @@ impl CoverManager {
             warn!("No cover art providers configured");
         }
 
-        Ok(Self { providers, cache })
+        Ok(Self { providers, cache, config: config.clone() })
     }
 
     pub async fn get_cover_art(
@@ -61,17 +63,56 @@ impl CoverManager {
         source: ArtSource,
         metadata: &Metadata,
     ) -> Result<Option<String>, CoverArtError> {
+        // 1. Check Cache
         if let Some(url) = self.cache.get(metadata)? {
-            debug!("Found cached cover art URL");
+            debug!("Found cached cover art URL: {}", url);
             return Ok(Some(url));
         }
+        trace!("No valid cache entry found.");
 
-        if let ArtSource::Url(url) = &source {
-            debug!("Using direct URL from source");
+        // 2. If we have a direct URL, use and cache it immediately
+        if let ArtSource::Url(ref url) = source {
+            debug!("Using direct URL from source: {}", url);
             self.cache.store(metadata, "direct", url)?;
             return Ok(Some(url.clone()));
         }
 
+        // 3. Try to find local cover art if we have a file path
+        if let Some(path) = metadata.url().and_then(|url| {
+            if url.starts_with("file://") {
+                Some(PathBuf::from(&url[7..]))
+            } else {
+                None
+            }
+        }) {
+            if let Some(parent) = path.parent() {
+                debug!("Attempting to find local cover art in: {:?}", parent);
+                let cover_config = self.config.cover_config();
+                if let Ok(Some(art_source)) = search_local_cover_art(
+                    &parent.to_path_buf(),
+                    &cover_config.file_names,
+                    cover_config.local_search_depth
+                ) {
+                    // Process the found local cover art through providers
+                    for provider in &self.providers {
+                        if provider.supports_source_type(&art_source) {
+                            debug!("Processing local cover art with {}", provider.name());
+                            match provider.process(art_source.clone(), metadata).await {
+                                Ok(Some(result)) => {
+                                    info!("Successfully processed local cover art with {}", provider.name());
+                                    self.cache.store(metadata, &result.provider, &result.url)?;
+                                    return Ok(Some(result.url));
+                                }
+                                Ok(None) => debug!("Provider {} could not process local cover art", provider.name()),
+                                Err(e) => warn!("Provider {} failed to process local cover art: {}", provider.name(), e),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Try configured providers with the original source
         for provider in &self.providers {
             if !provider.supports_source_type(&source) {
                 trace!("Provider {} does not support source type", provider.name());
@@ -90,7 +131,7 @@ impl CoverManager {
             }
         }
 
-        debug!("No cover art found from any provider");
+        debug!("No cover art found from any source");
         Ok(None)
     }
 }

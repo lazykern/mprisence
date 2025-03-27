@@ -344,11 +344,7 @@ impl Presence {
             .render_activity_texts(player, media_metadata)?;
 
         let cover_art_url = if let Some(art_source) = metadata_source.art_source() {
-            match self
-                .cover_manager
-                .get_cover_art(art_source, &metadata)
-                .await
-            {
+            match self.cover_manager.get_cover_art(art_source, &metadata).await {
                 Ok(Some(url)) => {
                     debug!("Found cover art URL for Discord presence");
                     trace!("Cover art URL: {}", url);

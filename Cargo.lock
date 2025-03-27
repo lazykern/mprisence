@@ -1493,6 +1493,7 @@ dependencies = [
  "toml",
  "url",
  "urlencoding",
+ "walkdir",
 ]
 
 [[package]]
