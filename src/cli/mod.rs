@@ -1,7 +1,6 @@
 use clap::{Parser, Subcommand};
-use log::info;
 use mpris::PlayerFinder;
-use crate::{error::Error, config::get_config, utils::normalize_player_identity};
+use crate::{config::get_config, error::Error, utils::normalize_player_identity};
 use std::env;
 
 #[derive(Parser)]
@@ -63,28 +62,39 @@ impl Command {
                         for player in players {
                             let identity = player.identity();
                             let normalized = normalize_player_identity(&identity);
-                            println!("  {}", identity);
+                            let status = player.get_playback_status()
+                                .map(|s| format!("{:?}", s))
+                                .unwrap_or_else(|_| "Unknown".to_string());
+
+                            println!("\n{}", identity);
+                            println!("  Status: {}", status);
                             
                             if detailed {
-                                let config = get_config().get_player_config(&normalized);
-                                println!("    Config:");
-                                println!("      app_id: {}", config.app_id);
-                                println!("      icon: {}", config.icon);
-                                println!("      show_icon: {}", config.show_icon);
-                                println!("      allow_streaming: {}", config.allow_streaming);
-                                println!("      override_activity_type: {:#?}", config.override_activity_type);
-                                
                                 if let Ok(metadata) = player.get_metadata() {
-                                    println!("    Metadata:");
+                                    println!("  Metadata:");
                                     if let Some(title) = metadata.title() {
-                                        println!("      Title: {}", title);
+                                        println!("    Title: {}", title);
                                     }
                                     if let Some(artists) = metadata.artists() {
-                                        println!("      Artists: {}", artists.join(", "));
+                                        println!("    Artists: {}", artists.join(", "));
                                     }
                                     if let Some(album) = metadata.album_name() {
-                                        println!("      Album: {}", album);
+                                        println!("    Album: {}", album);
                                     }
+                                    if let Some(length) = metadata.length() {
+                                        let duration = std::time::Duration::from_micros(length.as_micros() as u64);
+                                        println!("    Length: {:02}:{:02}", duration.as_secs() / 60, duration.as_secs() % 60);
+                                    }
+                                }
+
+                                let config = get_config().get_player_config(&normalized);
+                                println!("  Configuration:");
+                                println!("    App ID: {}", config.app_id);
+                                println!("    Icon: {}", config.icon);
+                                println!("    Show Icon: {}", config.show_icon);
+                                println!("    Allow Streaming: {}", config.allow_streaming);
+                                if let Some(activity_type) = config.override_activity_type {
+                                    println!("    Activity Type: {:?}", activity_type);
                                 }
                             }
                         }
@@ -92,7 +102,47 @@ impl Command {
                 }
             }
             Command::Config => {
-                unimplemented!()
+                let config = get_config();
+                
+                println!("\nGeneral Settings:");
+                println!("  Config Path: {}", config.config_path().display());
+                println!("  Update Interval: {}ms", config.interval());
+                println!("  Clear on Pause: {}", config.clear_on_pause());
+
+                let activity_config = config.activity_type_config();
+                println!("\nActivity Settings:");
+                println!("  Default Type: {:?}", activity_config.default);
+                println!("  Use Content Type: {}", activity_config.use_content_type);
+
+                let time_config = config.time_config();
+                println!("\nTime Display:");
+                println!("  Show Time: {}", time_config.show);
+                println!("  Show as Elapsed: {}", time_config.as_elapsed);
+
+                let cover_config = config.cover_config();
+                println!("\nCover Art:");
+                println!("  Providers: {:?}", cover_config.provider.provider);
+                println!("  ImgBB:");
+                println!("    Expiration: {}s", cover_config.provider.imgbb.expiration);
+
+                let player_configs = config.player_configs();
+                if !player_configs.is_empty() {
+                    println!("\nPlayer Configurations:");
+                    for (identity, cfg) in player_configs {
+                        if identity == "default" {
+                            println!("\n  Default Configuration:");
+                        } else {
+                            println!("\n  Player: {}", identity);
+                        }
+                        println!("    App ID: {}", cfg.app_id);
+                        println!("    Icon: {}", cfg.icon);
+                        println!("    Show Icon: {}", cfg.show_icon);
+                        println!("    Allow Streaming: {}", cfg.allow_streaming);
+                        if let Some(activity_type) = cfg.override_activity_type {
+                            println!("    Activity Type: {:?}", activity_type);
+                        }
+                    }
+                }
             }
             Command::Version { command } => {
                 match command {

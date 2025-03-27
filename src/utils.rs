@@ -1,6 +1,8 @@
 use mime_guess::Mime;
 use url::Url;
 use mpris::PlaybackStatus;
+use semver::Version;
+use thiserror::Error;
 
 pub fn normalize_player_identity(input: &str) -> String {
     input.trim()
@@ -61,8 +63,6 @@ pub fn format_playback_status_icon(status: PlaybackStatus) -> &'static str {
     }
 }
 
-use semver::Version;
-use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum VersionError {
@@ -76,6 +76,7 @@ pub fn validate_version(version: &str) -> Result<String, VersionError> {
     Ok(version.to_string())
 }
 
+#[allow(dead_code)]
 pub fn to_package_version(version: &str) -> Result<String, VersionError> {
     let version = Version::parse(version)?;
     Ok(version.to_string())
