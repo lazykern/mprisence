@@ -169,12 +169,10 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Get player config by raw identity (will be normalized internally)
     pub fn get_player_config(&self, identity: &str) -> PlayerConfig {
         self.get_player_config_normalized(normalize_player_identity(identity).as_str())
     }
 
-    /// Get player config by pre-normalized identity
     pub fn get_player_config_normalized(&self, normalized_identity: &str) -> PlayerConfig {
         // First try to get the specific player config
         if let Some(config) = self.player.get(normalized_identity) {

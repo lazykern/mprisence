@@ -64,7 +64,6 @@ impl ArtSource {
     }
 }
 
-/// Search for cover art files in the given directory using configured file names
 pub fn search_local_cover_art(
     directory: &PathBuf,
     file_names: &[String],

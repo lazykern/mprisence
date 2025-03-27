@@ -22,7 +22,6 @@ pub enum ConfigChange {
     Error(String),
 }
 
-/// Simplified config manager with thread-safe access
 pub struct ConfigManager {
     config: Arc<RwLock<Config>>,
     path: PathBuf,
@@ -44,9 +43,8 @@ impl ConfigManager {
         })
     }
 
-    /// Create a ConfigManager instance for testing purposes with the provided config
     #[allow(dead_code)]
-    pub fn new_for_testing(config: Config) -> Self {
+    pub fn new_with_config(config: Config) -> Self {
         let (tx, _) = broadcast::channel(16);
         
         Self {
@@ -70,7 +68,7 @@ impl ConfigManager {
         default_config.template.large_text = large_text_template.into();
         default_config.template.small_text = small_text_template.into();
         
-        Self::new_for_testing(default_config)
+        Self::new_with_config(default_config)
     }
 
     pub fn interval(&self) -> u64 {
