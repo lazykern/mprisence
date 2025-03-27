@@ -14,10 +14,30 @@ ENABLE_SERVICE ?= 1
 # Version management
 CARGO_VERSION != grep '^version = ' Cargo.toml | head -n1 | cut -d'"' -f2 | sed 's/-beta/\.beta/'
 
-.PHONY: all install-local uninstall-local clean help pkg-prepare check-deps build sync-version
+.PHONY: all install-local uninstall-local clean help pkg-prepare check-deps build sync-version check-existing-install
 
-# Default target: local user installation
 all: install-local
+
+check-existing-install:
+	@echo "Checking for existing installations..."
+	@if command -v mprisence >/dev/null 2>&1; then \
+		SYSTEM_PATH=$$(command -v mprisence); \
+		echo "Found mprisence at: $$SYSTEM_PATH"; \
+		if [ "$$SYSTEM_PATH" != "$(PREFIX)/bin/mprisence" ]; then \
+			echo "WARNING: Existing mprisence installation found at $$SYSTEM_PATH"; \
+			echo "This might conflict with the local installation."; \
+			echo "If installed via package manager, you should remove it first:"; \
+			echo "  sudo pacman -R mprisence"; \
+			echo "  systemctl --user disable --now mprisence"; \
+			echo ""; \
+			echo "Press Ctrl+C to abort, or Enter to continue anyway..."; \
+			read REPLY; \
+		else \
+			echo "Found existing local installation at $$SYSTEM_PATH"; \
+		fi; \
+	else \
+		echo "No existing mprisence installation found."; \
+	fi
 
 check-deps:
 	@command -v cargo >/dev/null 2>&1 || { echo "Error: cargo is required but not installed." >&2; exit 1; }
@@ -25,14 +45,14 @@ check-deps:
 build: check-deps
 	cargo build --release
 
-# Sync version across package files
 sync-version:
 	@echo "Syncing version $(CARGO_VERSION) across package files..."
 	@sed -i 's/^pkgver=.*$$/pkgver=$(CARGO_VERSION)/' packaging/arch/release/PKGBUILD
 	@echo "Version updated in release package file"
 
-# Local user installation
 install-local: build
+	@$(MAKE) check-existing-install
+	@echo "Starting installation..."
 	@if systemctl --user is-active mprisence >/dev/null 2>&1; then \
 		echo "Service is running, will restart after installation"; \
 		SHOULD_RESTART=1; \
@@ -79,7 +99,6 @@ install-local: build
 		echo "  systemctl --user enable --now mprisence"; \
 	fi
 
-# Local user uninstallation
 uninstall-local:
 	systemctl --user disable --now mprisence || true
 	rm -f "$(PREFIX)/bin/mprisence"
@@ -87,11 +106,9 @@ uninstall-local:
 	rm -f "$(SYSTEMD_USER_DIR)/mprisence.service"
 	systemctl --user daemon-reload || true
 
-# Clean build artifacts
 clean:
 	cargo clean
 
-# System-wide installation preparation (for packagers)
 pkg-prepare: build
 	install -Dm755 target/release/mprisence "$(DESTDIR)$(SYS_PREFIX)/bin/mprisence"
 	install -dm755 "$(DESTDIR)$(SYS_CONFIG_DIR)"
@@ -109,7 +126,6 @@ pkg-prepare: build
 	@echo "  - User configuration (~/.config/mprisence/config.toml)"
 	@echo "  - Service activation (systemctl --user enable --now mprisence)"
 
-# Show help
 help:
 	@echo "Usage:"
 	@echo "  make                    Install for current user (enables service by default)"

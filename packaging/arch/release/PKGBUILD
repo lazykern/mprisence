@@ -9,6 +9,7 @@ url="https://github.com/lazykern/mprisence"
 license=("MIT")
 depends=("gcc-libs")
 makedepends=("cargo")
+install=$pkgname.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v${pkgver//.beta/-beta}.tar.gz")
 sha256sums=('SKIP')
 
@@ -32,6 +33,14 @@ check() {
 
 package() {
     cd "$srcdir/$pkgname-${pkgver//.beta/-beta}"
+    # Check for local installations during packaging
+    if [ -f "$HOME/.local/bin/mprisence" ] || [ -f "$HOME/.config/systemd/user/mprisence.service" ]; then
+        echo "=== WARNING ==="
+        echo "Local installation of mprisence detected. After installing this package,"
+        echo "users should remove their local installations to avoid conflicts:"
+        echo "  make uninstall-local"
+        echo "=============="
+    fi
     make DESTDIR="$pkgdir" pkg-prepare
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 } 
