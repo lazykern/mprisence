@@ -1,7 +1,5 @@
 use log::{debug, info, warn, trace};
-use mpris::Metadata;
 use std::path::PathBuf;
-use url::Url;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use walkdir::WalkDir;
 use std::collections::HashSet;
