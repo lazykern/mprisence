@@ -84,23 +84,11 @@ install-local: build
 	install -Dm755 target/release/mprisence "$(PREFIX)/bin/mprisence"
 	install -dm755 "$(CONFIG_DIR)"
 	install -Dm644 config/config.example.toml "$(CONFIG_DIR)/config.example.toml"
-	@if [ ! -f "$(CONFIG_DIR)/config.toml" ]; then \
-		echo "Creating default config..."; \
-		cp "$(CONFIG_DIR)/config.example.toml" "$(CONFIG_DIR)/config.toml"; \
-	fi
-	@if [ -f "$(SYSTEMD_USER_DIR)/mprisence.service" ]; then \
-		if ! cmp -s mprisence.service "$(SYSTEMD_USER_DIR)/mprisence.service"; then \
-			NEED_RELOAD=1; \
-		fi; \
-	else \
-		NEED_RELOAD=1; \
-	fi; \
-	sed "s|@BINDIR@|$(PREFIX)/bin|g" mprisence.service > mprisence.service.tmp; \
-	install -Dm644 mprisence.service.tmp "$(SYSTEMD_USER_DIR)/mprisence.service"; \
+	sed "s|@BINDIR@|$(PREFIX)/bin|g" mprisence.service > mprisence.service.tmp
+	install -Dm644 mprisence.service.tmp "$(SYSTEMD_USER_DIR)/mprisence.service"
 	rm mprisence.service.tmp
-	@if [ "$$NEED_RELOAD" = "1" ]; then \
-		systemctl --user daemon-reload || true; \
-	fi
+	@echo "Reloading systemd user configuration..."
+	@systemctl --user daemon-reload || true
 	@if [ "$(ENABLE_SERVICE)" = "1" ]; then \
 		if ! systemctl --user is-enabled mprisence >/dev/null 2>&1; then \
 			systemctl --user enable mprisence || true; \
@@ -145,10 +133,6 @@ pkg-prepare: build
 	@echo "  Binary:       $(DESTDIR)$(SYS_PREFIX)/bin/mprisence"
 	@echo "  Example conf: $(DESTDIR)$(SYS_CONFIG_DIR)/config.example.toml"
 	@echo "  Service file: $(DESTDIR)$(SYS_SYSTEMD_USER_DIR)/mprisence.service"
-	@echo ""
-	@echo "Note for packagers: Don't forget to include post-install messages about:"
-	@echo "  - User configuration (~/.config/mprisence/config.toml)"
-	@echo "  - Service activation (systemctl --user enable --now mprisence)"
 
 help:
 	@echo "Usage:"
@@ -169,3 +153,11 @@ help:
 	@echo "  Binary:     $(PREFIX)/bin/mprisence"
 	@echo "  Config:     $(CONFIG_DIR)"
 	@echo "  Service:    $(SYSTEMD_USER_DIR)/mprisence.service"
+	@echo
+	@echo "Configuration:"
+	@echo "  Example config is provided at $(SYS_CONFIG_DIR)/config.example.toml"
+	@echo "  To configure mprisence:"
+	@echo "    1. Create your config directory:"
+	@echo "       mkdir -p ~/.config/mprisence"
+	@echo "    2. Copy and modify the example config:"
+	@echo "       cp $(SYS_CONFIG_DIR)/config.example.toml ~/.config/mprisence/config.toml"
