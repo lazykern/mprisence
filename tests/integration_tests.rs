@@ -7,7 +7,6 @@ use mprisence::{
     metadata::MediaMetadata,
 };
 
-// Test how templates work with handlebars directly
 #[test]
 fn test_template_with_metadata() {
     // Create a simple handlebars template engine
@@ -59,7 +58,6 @@ fn test_template_with_metadata() {
     assert_eq!(full_info, "Test Song by Test Artist from Test Album (03:45)");
 }
 
-// Test using the actual TemplateManager with ConfigManager
 #[test]
 fn test_template_manager_with_config() {
     // Create a config with custom templates

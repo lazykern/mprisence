@@ -28,7 +28,6 @@ pub struct ConfigManager {
     change_tx: ConfigChangeSender,
 }
 
-// Global instance
 static CONFIG: OnceLock<Arc<ConfigManager>> = OnceLock::new();
 
 impl ConfigManager {
@@ -178,7 +177,6 @@ impl ConfigManager {
     }
 }
 
-// Initialize config system
 pub fn initialize() -> Result<(), ConfigError> {
     log::info!("Initializing configuration system");
     let config_path = get_config_path()?;
@@ -200,7 +198,6 @@ pub fn initialize() -> Result<(), ConfigError> {
     Ok(())
 }
 
-// Get config with simplified error handling
 pub fn get_config() -> Arc<ConfigManager> {
     CONFIG
         .get()
@@ -208,7 +205,6 @@ pub fn get_config() -> Arc<ConfigManager> {
         .clone()
 }
 
-// Setup file watcher with debouncing
 fn setup_file_watcher(config_path: PathBuf, config: Arc<ConfigManager>) -> Result<(), ConfigError> {
     let path_to_watch = config_path.clone();
     let mut last_reload = Instant::now();
@@ -218,18 +214,24 @@ fn setup_file_watcher(config_path: PathBuf, config: Arc<ConfigManager>) -> Resul
         let mut watcher = RecommendedWatcher::new(
             move |res: Result<notify::Event, notify::Error>| match res {
                 Ok(event) => {
-                    if matches!(event.kind, notify::EventKind::Modify(_))
+                    if (matches!(event.kind, notify::EventKind::Modify(_)) || 
+                        matches!(event.kind, notify::EventKind::Remove(_)))
                         && event.paths.iter().any(|p| p == &path_to_watch)
                     {
                         let now = Instant::now();
                         if now.duration_since(last_reload) >= DEBOUNCE_DURATION {
                             last_reload = now;
                             match config.reload() {
-                                Ok(_) => log::debug!("Config reloaded successfully"),
+                                Ok(_) => {
+                                    if matches!(event.kind, notify::EventKind::Remove(_)) {
+                                        log::info!("Config file was deleted, using default configuration");
+                                    } else {
+                                        log::debug!("Config reloaded successfully");
+                                    }
+                                },
                                 Err(e) => {
                                     log::warn!("Failed to reload config: {}", e);
-                                    let _ =
-                                        config.change_tx.send(ConfigChange::Error(e.to_string()));
+                                    let _ = config.change_tx.send(ConfigChange::Error(e.to_string()));
                                 }
                             }
                         }

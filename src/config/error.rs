@@ -21,7 +21,6 @@ pub enum ConfigError {
     Lock(String),
 }
 
-// Implementation for converting PoisonError to ConfigError
 impl<T> From<std::sync::PoisonError<T>> for ConfigError {
     fn from(err: std::sync::PoisonError<T>) -> Self {
         ConfigError::Lock(err.to_string())

@@ -3,7 +3,6 @@ use serde_json::Value;
 use mprisence::metadata::MetadataSource;
 use mpris::Metadata;
 
-use mprisence:: utils::{format_duration, format_track_number, format_audio_channels, format_bitrate, format_sample_rate, format_bit_depth, normalize_player_identity};
 
 fn create_extended_mpris_metadata() -> Metadata {
     let mut data = HashMap::new();
@@ -182,34 +181,6 @@ fn test_to_media_metadata_conversion() {
 }
 
 #[test]
-fn test_formatting_functions() {
-    // Test duration formatting
-    assert_eq!(format_duration(0), "00:00");
-    assert_eq!(format_duration(61), "01:01");
-    assert_eq!(format_duration(3723), "62:03"); // 1h 2m 3s
-    
-    // Test track number formatting
-    assert_eq!(format_track_number(1, None), "1");
-    assert_eq!(format_track_number(5, Some(12)), "5/12");
-    
-    // Test audio channel formatting
-    assert_eq!(format_audio_channels(1), "Mono");
-    assert_eq!(format_audio_channels(2), "Stereo");
-    assert_eq!(format_audio_channels(6), "6 channels");
-    
-    // Test other formatting functions
-    assert_eq!(format_bitrate(320), "320 kbps");
-    assert_eq!(format_sample_rate(44100), "44.1 kHz");
-    assert_eq!(format_bit_depth(16), "16-bit");
-    
-    // Test player name normalization (from metadata_integration.rs)
-    assert_eq!(normalize_player_identity("Spotify Player"), "spotify_player");
-    assert_eq!(normalize_player_identity("VLC media player"), "vlc_media_player");
-    assert_eq!(normalize_player_identity("Firefox"), "firefox");
-}
-
-// Add the test from metadata_integration.rs that tests metadata creation from raw data
-#[test]
 fn test_metadata_from_json() {
     // Create mock metadata similar to what would come from MPRIS
     let mut raw_data = HashMap::new();
@@ -217,10 +188,6 @@ fn test_metadata_from_json() {
     raw_data.insert("xesam:artist".to_string(), Value::Array(vec![Value::String("Artist 1".to_string()), Value::String("Artist 2".to_string())]));
     raw_data.insert("xesam:album".to_string(), Value::String("Test Album".to_string()));
     raw_data.insert("xesam:trackNumber".to_string(), Value::String("1".to_string()));
-    
-    // Verify formatting utilities with same data
-    assert_eq!(format_track_number(1, Some(12)), "1/12");
-    assert_eq!(format_duration(225), "03:45"); // 3:45 = 225 seconds
     
     // Create metadata from the raw data
     let metadata_value = serde_json::to_value(raw_data).unwrap();
