@@ -13,7 +13,15 @@ pub fn normalize_player_identity(input: &str) -> String {
 }
 
 pub fn format_duration(seconds: u64) -> String {
-    format!("{:02}:{:02}", seconds / 60, seconds % 60)
+    let hours = seconds / 3600;
+    let minutes = (seconds % 3600) / 60;
+    let secs = seconds % 60;
+
+    if hours > 0 {
+        format!("{}:{:02}:{:02}", hours, minutes, secs)
+    } else {
+        format!("{:02}:{:02}", minutes, secs)
+    }
 }
 
 pub fn get_content_type_from_metadata(url: &str) -> Option<Mime> {
@@ -118,8 +126,10 @@ mod tests {
     fn test_format_duration() {
         assert_eq!(format_duration(0), "00:00");
         assert_eq!(format_duration(61), "01:01");
-        assert_eq!(format_duration(3600), "60:00");
-        assert_eq!(format_duration(3723), "62:03"); // 1h 2m 3s
+        assert_eq!(format_duration(3600), "1:00:00");  // 1 hour
+        assert_eq!(format_duration(3723), "1:02:03");  // 1h 2m 3s
+        assert_eq!(format_duration(7323), "2:02:03");  // 2h 2m 3s
+        assert_eq!(format_duration(45296), "12:34:56"); // 12h 34m 56s
     }
 
     #[test]
