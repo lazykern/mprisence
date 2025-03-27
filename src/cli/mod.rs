@@ -16,72 +16,82 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Command {
     Players {
+        #[command(subcommand)]
+        command: PlayersCommand,
+    },
+    Config,
+    Version,
+}
+
+#[derive(Subcommand)]
+pub enum PlayersCommand {
+    /// List available MPRIS media players
+    List {
+        /// Show detailed information including metadata and configuration
         #[arg(short, long)]
         detailed: bool,
     },
-    
-    Config,
-
-    Version,
 }
 
 impl Command {
     pub async fn execute(self) -> Result<(), Error> {
         match self {
-            Command::Players { detailed } => {
-                info!("Scanning for MPRIS media players...");
-                let finder = PlayerFinder::new()?;
-                let players = finder.find_all()?;
-                
-                if players.is_empty() {
-                    println!("No MPRIS media players found.");
-                    return Ok(());
-                }
-                
-                println!("\nAvailable media players:");
-                println!("------------------------");
-                for player in players {
-                    let identity = normalize_player_identity(&player.identity());
-                    let status = player.get_playback_status()
-                        .map(|s| format!("{:?}", s))
-                        .unwrap_or_else(|_| "Unknown".to_string());
+            Command::Players { command } => match command {
+                PlayersCommand::List { detailed } => {
+                    info!("Scanning for MPRIS media players...");
+                    let finder = PlayerFinder::new()?;
+                    let players = finder.find_all()?;
                     
-                    println!("\nPlayer: {}", identity);
-                    println!("Status: {}", status);
+                    if players.is_empty() {
+                        println!("No MPRIS media players found.");
+                        return Ok(());
+                    }
                     
-                    if detailed {
-                        if let Ok(metadata) = player.get_metadata() {
-                            if let Some(title) = metadata.title() {
-                                println!("Title: {}", title);
-                            }
-                            if let Some(artists) = metadata.artists() {
-                                println!("Artists: {}", artists.join(", "));
-                            }
-                            if let Some(album) = metadata.album_name() {
-                                println!("Album: {}", album);
-                            }
-                            if let Some(length) = metadata.length() {
-                                let duration = std::time::Duration::from_micros(length.as_micros() as u64);
-                                println!("Length: {:02}:{:02}", duration.as_secs() / 60, duration.as_secs() % 60);
-                            }
-                        }
+                    println!("\nAvailable media players:");
+                    println!("------------------------");
+                    for player in players {
+                        let identity = normalize_player_identity(&player.identity());
+                        let status = player.get_playback_status()
+                            .map(|s| format!("{:?}", s))
+                            .unwrap_or_else(|_| "Unknown".to_string());
                         
-                        // Show config for this player if it exists
-                        let config = get_config();
-                        let player_config = config.get_player_config(&identity);
-                        println!("\nConfiguration:");
-                        println!("  App ID: {}", player_config.app_id);
-                        println!("  Show Icon: {}", player_config.show_icon);
-                        if let Some(activity_type) = player_config.override_activity_type {
-                            println!("  Activity Type: {:?}", activity_type);
+                        println!("\nPlayer: {}", identity);
+                        println!("Status: {}", status);
+                        
+                        if detailed {
+                            if let Ok(metadata) = player.get_metadata() {
+                                if let Some(title) = metadata.title() {
+                                    println!("Title: {}", title);
+                                }
+                                if let Some(artists) = metadata.artists() {
+                                    println!("Artists: {}", artists.join(", "));
+                                }
+                                if let Some(album) = metadata.album_name() {
+                                    println!("Album: {}", album);
+                                }
+                                if let Some(length) = metadata.length() {
+                                    let duration = std::time::Duration::from_micros(length.as_micros() as u64);
+                                    println!("Length: {:02}:{:02}", duration.as_secs() / 60, duration.as_secs() % 60);
+                                }
+                            }
+                            
+                            // Show config for this player if it exists
+                            let config = get_config();
+                            let player_config = config.get_player_config(&identity);
+                            println!("\nConfiguration:");
+                            println!("  App ID: {}", player_config.app_id);
+                            println!("  Show Icon: {}", player_config.show_icon);
+                            if let Some(activity_type) = player_config.override_activity_type {
+                                println!("  Activity Type: {:?}", activity_type);
+                            }
+                            println!("  Allow Streaming: {}", player_config.allow_streaming);
+                            println!("  Ignored: {}", player_config.ignore);
                         }
-                        println!("  Allow Streaming: {}", player_config.allow_streaming);
-                        println!("  Ignored: {}", player_config.ignore);
                     }
                 }
-            }
+            },
             
-            Command::Config=> {
+            Command::Config => {
                 let config = get_config();
                 println!("\nCurrent Configuration:");
                 println!("---------------------");
