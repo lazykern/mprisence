@@ -117,12 +117,11 @@ if [ "$PUBLISH_RELEASE" = true ]; then
     print "Updating release package..."
     cp packaging/arch/release/PKGBUILD "$RELEASE_REPO/PKGBUILD"
     cp packaging/arch/release/.SRCINFO "$RELEASE_REPO/.SRCINFO"
-    cp packaging/arch/release/mprisence.install "$RELEASE_REPO/mprisence.install"
 
     print "Publishing release package..."
     (
         cd "$RELEASE_REPO"
-        git add PKGBUILD .SRCINFO mprisence.install
+        git add PKGBUILD .SRCINFO
         git commit -m "Update to version $VERSION"
         git push
     )
