@@ -40,6 +40,8 @@ All notable changes to mprisence will be documented in this file.
     - Extended metadata: `composer`, `lyricist`, `genre_display`
     - Formatted values: `track_display`, `duration_display`
     - Separated `status_icon` variable
+  - Full template variable reference available in [`src/metadata.rs`](./src/metadata.rs)
+  - Template rendering implementation details in [`src/template.rs`](./src/template.rs)
 
 * **CLI Interface**
   - New subcommands structure:
@@ -55,7 +57,6 @@ All notable changes to mprisence will be documented in this file.
 * Smarter Discord presence updates to minimize API calls
 
 ### Other Changes
-* Updated core dependencies to latest versions
 * Enhanced Discord connection reliability with auto-reconnection
 * Improved support for all Discord activity types
 * Better player name normalization

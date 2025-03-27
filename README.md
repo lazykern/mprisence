@@ -55,7 +55,11 @@ The configuration file is located at:
 
 Changes are automatically detected and applied without requiring a restart.
 
-For a complete configuration reference with detailed explanations of all available options, see [`config.example.toml`](./config/config.example.toml).
+For a complete configuration reference:
+- See [`config.example.toml`](./config/config.example.toml) for detailed configuration options with explanations
+- See [`config.default.toml`](./config/config.default.toml) for default configurations of popular media players
+- See [`src/metadata.rs`](./src/metadata.rs) for all available template variables and their implementations
+- See [`src/template.rs`](./src/template.rs) for template rendering system details
 
 ### Basic Configuration Example
 ```toml
