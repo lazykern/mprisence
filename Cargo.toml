@@ -1,13 +1,13 @@
 [package]
 name = "mprisence"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 authors = ["Phusit Somboonyingsuk"]
 readme = "README.md"
 homepage = "https://github.com/lazykern/mprisence"
 repository = "https://github.com/lazykern/mprisence"
 license = "MIT"
-description = "Discord Rich Presence for MPRIS media players"
+description = "A powerful Discord Rich Presence for MPRIS media players"
 keywords = ["discord", "mpris", "linux", "media", "rich-presence"]
 categories = ["multimedia", "command-line-utilities"]
 

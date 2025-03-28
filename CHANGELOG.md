@@ -2,6 +2,10 @@
 
 All notable changes to mprisence will be documented in this file.
 
+## [1.0.2](https://github.com/lazykern/mprisence/compare/v1.0.2...v1.0.3) (2025-03-28)
+
+* Show player icon as large image if cover art is not available
+
 ## [1.0.2](https://github.com/lazykern/mprisence/compare/v1.0.1...v1.0.2) (2025-03-28)
 
 * Show normalized player identity in CLI
