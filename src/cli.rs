@@ -1,6 +1,6 @@
+use crate::{config::get_config, error::Error, utils::normalize_player_identity};
 use clap::{Parser, Subcommand};
 use mpris::PlayerFinder;
-use crate::{config::get_config, error::Error, utils::normalize_player_identity};
 use std::env;
 
 #[derive(Parser)]
@@ -35,71 +35,73 @@ pub enum PlayersCommand {
 
 #[derive(Subcommand)]
 pub enum VersionCommand {
-    Validate {
-        version: String,
-    },
+    Validate { version: String },
 }
 
 impl Command {
     pub async fn execute(self) -> Result<(), Error> {
         match self {
-            Command::Players { command } => {
-                match command {
-                    PlayersCommand::List { detailed } => {
-                        let finder = PlayerFinder::new()?;
-                        let players = finder.find_all()?;
-                        
-                        if players.is_empty() {
-                            println!("No MPRIS players found");
-                            return Ok(());
-                        }
+            Command::Players { command } => match command {
+                PlayersCommand::List { detailed } => {
+                    let finder = PlayerFinder::new()?;
+                    let players = finder.find_all()?;
 
-                        println!("Found {} MPRIS player(s):", players.len());
-                        for player in players {
-                            let identity = player.identity();
-                            let normalized = normalize_player_identity(&identity);
-                            let status = player.get_playback_status()
-                                .map(|s| format!("{:?}", s))
-                                .unwrap_or_else(|_| "Unknown".to_string());
+                    if players.is_empty() {
+                        println!("No MPRIS players found");
+                        return Ok(());
+                    }
 
-                            println!("\n{}", identity);
-                            println!("  Status: {}", status);
-                            
-                            if detailed {
-                                if let Ok(metadata) = player.get_metadata() {
-                                    println!("  Metadata:");
-                                    if let Some(title) = metadata.title() {
-                                        println!("    Title: {}", title);
-                                    }
-                                    if let Some(artists) = metadata.artists() {
-                                        println!("    Artists: {}", artists.join(", "));
-                                    }
-                                    if let Some(album) = metadata.album_name() {
-                                        println!("    Album: {}", album);
-                                    }
-                                    if let Some(length) = metadata.length() {
-                                        let duration = std::time::Duration::from_micros(length.as_micros() as u64);
-                                        println!("    Length: {:02}:{:02}", duration.as_secs() / 60, duration.as_secs() % 60);
-                                    }
+                    println!("Found {} MPRIS player(s):", players.len());
+                    for player in players {
+                        let identity = player.identity();
+                        let normalized = normalize_player_identity(&identity);
+                        let status = player
+                            .get_playback_status()
+                            .map(|s| format!("{:?}", s))
+                            .unwrap_or_else(|_| "Unknown".to_string());
+
+                        println!("\n{}", normalized);
+                        println!("  Status: {}", status);
+
+                        if detailed {
+                            if let Ok(metadata) = player.get_metadata() {
+                                println!("  Metadata:");
+                                if let Some(title) = metadata.title() {
+                                    println!("    Title: {}", title);
                                 }
-
-                                let config = get_config().get_player_config(&normalized);
-                                println!("  Configuration:");
-                                println!("    App ID: {}", config.app_id);
-                                println!("    Icon: {}", config.icon);
-                                println!("    Show Icon: {}", config.show_icon);
-                                println!("    Allow Streaming: {}", config.allow_streaming);
-                                if let Some(activity_type) = config.override_activity_type {
-                                    println!("    Activity Type: {:?}", activity_type);
+                                if let Some(artists) = metadata.artists() {
+                                    println!("    Artists: {}", artists.join(", "));
                                 }
+                                if let Some(album) = metadata.album_name() {
+                                    println!("    Album: {}", album);
+                                }
+                                if let Some(length) = metadata.length() {
+                                    let duration =
+                                        std::time::Duration::from_micros(length.as_micros() as u64);
+                                    println!(
+                                        "    Length: {:02}:{:02}",
+                                        duration.as_secs() / 60,
+                                        duration.as_secs() % 60
+                                    );
+                                }
+                            }
+
+                            let config = get_config().get_player_config(&normalized);
+                            println!("  Configuration:");
+                            println!("    App ID: {}", config.app_id);
+                            println!("    Icon: {}", config.icon);
+                            println!("    Show Icon: {}", config.show_icon);
+                            println!("    Allow Streaming: {}", config.allow_streaming);
+                            if let Some(activity_type) = config.override_activity_type {
+                                println!("    Activity Type: {:?}", activity_type);
                             }
                         }
                     }
                 }
-            }
+            },
             Command::Config => {
                 let config = get_config();
-                
+
                 println!("\nGeneral Settings:");
                 println!("  Config Path: {}", config.config_path().display());
                 println!("  Update Interval: {}ms", config.interval());
@@ -119,7 +121,10 @@ impl Command {
                 println!("\nCover Art:");
                 println!("  Providers: {:?}", cover_config.provider.provider);
                 println!("  ImgBB:");
-                println!("    Expiration: {}s", cover_config.provider.imgbb.expiration);
+                println!(
+                    "    Expiration: {}s",
+                    cover_config.provider.imgbb.expiration
+                );
 
                 let player_configs = config.player_configs();
                 if !player_configs.is_empty() {
@@ -128,7 +133,7 @@ impl Command {
                         if identity == "default" {
                             println!("\n  Default Configuration:");
                         } else {
-                            println!("\n  Player: {}", identity);
+                            println!("\n  Player: {}", normalize_player_identity(identity.as_str()));
                         }
                         println!("    App ID: {}", cfg.app_id);
                         println!("    Icon: {}", cfg.icon);
@@ -140,25 +145,23 @@ impl Command {
                     }
                 }
             }
-            Command::Version { command } => {
-                match command {
-                    Some(VersionCommand::Validate { version }) => {
-                        match crate::utils::validate_version(&version) {
-                            Ok(normalized) => {
-                                println!("Version '{}' is valid", normalized);
-                                println!("Normalized: {}", normalized);
-                            }
-                            Err(e) => {
-                                eprintln!("Error: {}", e);
-                                std::process::exit(1);
-                            }
+            Command::Version { command } => match command {
+                Some(VersionCommand::Validate { version }) => {
+                    match crate::utils::validate_version(&version) {
+                        Ok(normalized) => {
+                            println!("Version '{}' is valid", normalized);
+                            println!("Normalized: {}", normalized);
+                        }
+                        Err(e) => {
+                            eprintln!("Error: {}", e);
+                            std::process::exit(1);
                         }
                     }
-                    None => {
-                        println!("mprisence {}", env!("CARGO_PKG_VERSION"));
-                    }
                 }
-            }
+                None => {
+                    println!("mprisence {}", env!("CARGO_PKG_VERSION"));
+                }
+            },
         }
         Ok(())
     }
