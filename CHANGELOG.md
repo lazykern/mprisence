@@ -3,11 +3,11 @@
 All notable changes to mprisence will be documented in this file.
 
 ## [1.0.2](https://github.com/lazykern/mprisence/compare/v1.0.1...v1.0.2) (2025-03-28)
+
 * Show normalized player identity in CLI
 
 ## [1.0.1](https://github.com/lazykern/mprisence/compare/v1.0.0...v1.0.1) (2025-03-27)
 
-### Bug Fixes
 * Fixed issue with stale player configuration state after config reload
 
 ## [1.0.0](https://github.com/lazykern/mprisence/compare/v0.5.2...v1.0.0) (2025-03-27)
