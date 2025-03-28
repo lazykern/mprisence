@@ -403,24 +403,33 @@ impl Presence {
         let mut assets = Assets::default();
 
         if let Some(img_url) = &cover_art_url {
-            trace!("Setting Discord large image asset: {}", img_url);
+            trace!("Setting Discord large image asset (cover art): {}", img_url);
             assets = assets.large_image(img_url);
+            if !activity_texts.large_text.is_empty() {
+                trace!("Setting Discord large text: {}", activity_texts.large_text);
+                assets = assets.large_text(&activity_texts.large_text);
+            }
+
+            if player_config.show_icon {
+                trace!(
+                    "Setting Discord small image asset (player icon): {}",
+                    player_config.icon
+                );
+                assets = assets.small_image(player_config.icon.as_str());
+                if !activity_texts.small_text.is_empty() {
+                    trace!("Setting Discord small text: {}", activity_texts.small_text);
+                    assets = assets.small_text(&activity_texts.small_text);
+                }
+            }
         } else {
-            trace!("Setting Discord large image asset: {}", player_config.icon);
+            trace!(
+                "No cover art found, using player icon as large image: {}",
+                player_config.icon
+            );
             assets = assets.large_image(player_config.icon.as_str());
-        }
-
-        if !activity_texts.large_text.is_empty() {
-            trace!("Setting Discord large text: {}", activity_texts.large_text);
-            assets = assets.large_text(&activity_texts.large_text);
-        }
-
-        if player_config.show_icon {
-            trace!("Setting Discord small image asset: {}", player_config.icon);
-            assets = assets.small_image(player_config.icon.as_str());
-            if !activity_texts.small_text.is_empty() {
-                trace!("Setting Discord small text: {}", activity_texts.small_text);
-                assets = assets.small_text(&activity_texts.small_text);
+            if !activity_texts.large_text.is_empty() {
+                trace!("Setting Discord large text: {}", activity_texts.large_text);
+                assets = assets.large_text(&activity_texts.large_text);
             }
         }
 
