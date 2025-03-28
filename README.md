@@ -1,16 +1,14 @@
 # mprisence 
 
-> A powerful Discord Rich Presence for MPRIS media players on Linux
-
 [![AUR version](https://img.shields.io/aur/version/mprisence)](https://aur.archlinux.org/packages/mprisence)
 [![GitHub license](https://img.shields.io/github/license/lazykern/mprisence)](https://github.com/lazykern/mprisence/blob/main/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/lazykern/mprisence)](https://github.com/lazykern/mprisence/stargazers)
 
-A highly configurable service that shows your currently playing media on Discord. Works with VLC, MPV, Spotify, and any other Linux media player that supports MPRIS. Shows album art, track info, and playback status with extensive customization options.
+A highly customizable daemon for showing MPRIS media playback in Discord Rich Presence. Supports VLC, MPV, RhythmBox, and more.
 
 ## Features
 
-- **Universal Media Player Support**: Works with any MPRIS-compatible media player
+- **Universal Media Player Support**: Works with any MPRIS  media player
 - **Hot Reload**: Configuration changes are applied instantly without restart
 - **Cover Art Integration**: Supports local files, MusicBrainz, and ImgBB hosting
 -  **Content Based Activity Type**: Shows "Listening" for music, "Watching" for videos automatically (configurable)
