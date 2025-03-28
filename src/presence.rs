@@ -344,7 +344,11 @@ impl Presence {
             .render_activity_texts(player, media_metadata)?;
 
         let cover_art_url = if let Some(art_source) = metadata_source.art_source() {
-            match self.cover_manager.get_cover_art(art_source, &metadata).await {
+            match self
+                .cover_manager
+                .get_cover_art(art_source, &metadata)
+                .await
+            {
                 Ok(Some(url)) => {
                     debug!("Found cover art URL for Discord presence");
                     trace!("Cover art URL: {}", url);
@@ -401,10 +405,14 @@ impl Presence {
         if let Some(img_url) = &cover_art_url {
             trace!("Setting Discord large image asset: {}", img_url);
             assets = assets.large_image(img_url);
-            if !activity_texts.large_text.is_empty() {
-                trace!("Setting Discord large text: {}", activity_texts.large_text);
-                assets = assets.large_text(&activity_texts.large_text);
-            }
+        } else {
+            trace!("Setting Discord large image asset: {}", player_config.icon);
+            assets = assets.large_image(player_config.icon.as_str());
+        }
+
+        if !activity_texts.large_text.is_empty() {
+            trace!("Setting Discord large text: {}", activity_texts.large_text);
+            assets = assets.large_text(&activity_texts.large_text);
         }
 
         if player_config.show_icon {
