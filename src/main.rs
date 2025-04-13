@@ -135,13 +135,15 @@ impl Mprisence {
         })?;
 
         for player_result in players {
-            let player = match player_result {
+            let mut player = match player_result {
                 Ok(p) => p,
                 Err(e) => {
                     warn!("Failed to get player: {}", e);
                     continue;
                 }
             };
+
+            player.set_dbus_timeout_ms(5000);
 
             let id = PlayerIdentifier::from(&player);
 
