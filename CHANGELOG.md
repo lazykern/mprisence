@@ -2,6 +2,10 @@
 
 All notable changes to mprisence will be documented in this file.
 
+## [1.0.5](https://github.com/lazykern/mprisence/compare/v1.0.4...v1.0.5) (YYYY-MM-DD)
+
+* Create `PlayerFinder` within the update loop instead of storing it in app state.
+
 ## [1.0.4](https://github.com/lazykern/mprisence/compare/v1.0.3...v1.0.4) (2025-04-13)
 
 * Fix potential panic when fetching player status due to D-Bus errors (Fixes #41)
