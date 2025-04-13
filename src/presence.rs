@@ -102,7 +102,11 @@ impl Presence {
 
         self.ensure_connection()?;
 
+        let start_time = Instant::now();
         let new_state = PlaybackState::from(&player);
+        let dbus_delay = start_time.elapsed();
+        trace!("D-Bus interaction took: {:?}", dbus_delay);
+
         let should_update = self
             .last_player_state
             .as_ref()
@@ -111,6 +115,7 @@ impl Presence {
                     || new_state.has_position_jump(
                         previous_state,
                         Duration::from_millis(self.config.interval()),
+                        dbus_delay,
                     )
             })
             .unwrap_or(true);
@@ -265,7 +270,10 @@ impl Presence {
             return Ok(());
         };
 
-        let playback_status = player.get_playback_status().unwrap();
+        let playback_status = player.get_playback_status().map_err(|err| {
+            error!("Failed to get playback status: {}", err);
+            DiscordError::ActivityError(format!("Failed to get playback status: {}", err))
+        })?;
 
         if playback_status == PlaybackStatus::Stopped
             || (self.config.clear_on_pause() && playback_status == PlaybackStatus::Paused)
