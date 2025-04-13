@@ -49,7 +49,6 @@ async fn main() -> Result<(), error::Error> {
 }
 
 pub struct Mprisence {
-    mpris_finder: PlayerFinder,
     media_players: HashMap<PlayerIdentifier, Presence>,
     template_manager: Arc<template::TemplateManager>,
     cover_manager: Arc<CoverManager>,
@@ -69,12 +68,8 @@ impl Mprisence {
         trace!("Creating cover manager");
         let cover_manager = Arc::new(CoverManager::new(&config)?);
 
-        trace!("Creating MPRIS finder");
-        let mpris_finder = PlayerFinder::new()?;
-
         debug!("Service initialization complete");
         Ok(Self {
-            mpris_finder,
             media_players: HashMap::new(),
             template_manager,
             cover_manager,
@@ -129,7 +124,7 @@ impl Mprisence {
         let mut current_ids = std::collections::HashSet::new();
 
         trace!("Scanning for active media players");
-        let players = self.mpris_finder.iter_players().map_err(|e| {
+        let players = PlayerFinder::new()?.iter_players().map_err(|e| {
             error!("Failed to get MPRIS players: {}", e);
             MprisenceError::DBus(e)
         })?;
@@ -138,7 +133,7 @@ impl Mprisence {
             let mut player = match player_result {
                 Ok(p) => p,
                 Err(e) => {
-                    warn!("Failed to get player: {}", e);
+                    warn!("Failed to get a player: {}", e);
                     continue;
                 }
             };
