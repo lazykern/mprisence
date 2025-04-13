@@ -14,31 +14,31 @@ categories = ["multimedia", "command-line-utilities"]
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 dirs = "6.0.0"
-env_logger = "0.11.7"
+env_logger = "0.11.8"
 figment = { version = "0.10.19", features = ["toml"] }
 handlebars = "6.3.2"
 handlebars_misc_helpers = { version = "0.17.0", features = ["string"] }
-log = "0.4.26"
+log = "0.4.27"
 mime_guess = "2.0.5"
 mpris = "2.0.1"
 notify = "8.0.0"
 parking_lot = "0.12"
 serde = { version = "1.0.219", features = ["derive"] }
-smallvec = "1.13"
+smallvec = "1.15"
 smol_str = "0.3.2"
 thiserror = "2.0.12"
-tokio = { version = "1.44.1", features = ["full"] }
+tokio = { version = "1.44.2", features = ["full"] }
 toml = "0.8.20"
 url = "2.5.4"
-blake3 = "1.7.0"
+blake3 = "1.8.1"
 async-trait = "0.1.88"
 reqwest = { version = "0.12.15", features = ["json", "multipart"] }
-imgbb = "1.3.0"
+imgbb = "1.4.0"
 serde_json = "1.0"
 discord-rich-presence = "0.2.5"
 urlencoding = "2.1.3"
 futures = "0.3"
 base64 = "0.22.1"
-lofty = "0.22.2"
-semver = "1.0.22"
+lofty = "0.22.3"
+semver = "1.0.26"
 walkdir = "2.5.0"
