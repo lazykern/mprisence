@@ -2,7 +2,13 @@
 
 All notable changes to mprisence will be documented in this file.
 
-## [1.0.2](https://github.com/lazykern/mprisence/compare/v1.0.2...v1.0.3) (2025-03-28)
+## [1.0.4](https://github.com/lazykern/mprisence/compare/v1.0.3...v1.0.4) (2025-04-13)
+
+* Fix potential panic when fetching player status due to D-Bus errors (Fixes #41)
+* Refine position jump detection logic to reduce false positives caused by D-Bus latency
+* Set D-Bus timeout explicitly when iterating players to 5 seconds
+
+## [1.0.3](https://github.com/lazykern/mprisence/compare/v1.0.2...v1.0.3) (2025-03-28)
 
 * Show player icon as large image if cover art is not available
 
