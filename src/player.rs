@@ -108,8 +108,17 @@ impl PlaybackState {
         false
     }
 
-    pub fn has_position_jump(&self, previous: &Self, polling_interval: Duration) -> bool {
-        let max_expected_change = (polling_interval.as_secs() as u32) * 2;
+    pub fn has_position_jump(
+        &self,
+        previous: &Self,
+        polling_interval: Duration,
+        dbus_delay: Duration,
+    ) -> bool {
+        // Add a buffer to account for variations
+        const BUFFER_DURATION: Duration = Duration::from_secs(2);
+
+        let max_expected_change_duration = polling_interval + dbus_delay + BUFFER_DURATION;
+        let max_expected_change = max_expected_change_duration.as_secs() as u32;
 
         if self.position < previous.position {
             debug!(
@@ -126,9 +135,10 @@ impl PlaybackState {
             .saturating_sub(previous.position.unwrap_or(0));
         if elapsed > max_expected_change {
             debug!(
-                "Position jumped forward: {}s -> {}s",
+                "Position jumped forward: {}s -> {}s (expected max change: {}s)",
                 previous.position.unwrap_or(0),
-                self.position.unwrap_or(0)
+                self.position.unwrap_or(0),
+                max_expected_change
             );
             return true;
         }
