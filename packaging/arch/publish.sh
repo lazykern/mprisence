@@ -141,12 +141,11 @@ if [ "$PUBLISH_GIT" = true ]; then
     print "Updating git package..."
     cp packaging/arch/git/PKGBUILD "$GIT_REPO/PKGBUILD"
     cp packaging/arch/git/.SRCINFO "$GIT_REPO/.SRCINFO"
-    cp packaging/arch/git/mprisence-git.install "$GIT_REPO/mprisence-git.install"
 
     print "Publishing git package..."
     (
         cd "$GIT_REPO"
-        git add PKGBUILD .SRCINFO mprisence-git.install
+        git add PKGBUILD .SRCINFO
         git commit -m "Update to version $VERSION"
         git push
     )
