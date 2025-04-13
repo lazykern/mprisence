@@ -2,7 +2,7 @@
 
 All notable changes to mprisence will be documented in this file.
 
-## [1.0.5](https://github.com/lazykern/mprisence/compare/v1.0.4...v1.0.5) (YYYY-MM-DD)
+## [1.0.5](https://github.com/lazykern/mprisence/compare/v1.0.4...v1.0.5) (2025-04-13)
 
 * Create `PlayerFinder` within the update loop instead of storing it in app state.
 
