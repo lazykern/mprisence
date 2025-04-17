@@ -2,34 +2,38 @@
 
 All notable changes to mprisence will be documented in this file.
 
-## [1.0.6](https://github.com/lazykern/mprisence/compare/v1.0.5...v1.0.6) (2025-04-18)
+## [1.1.0](https://github.com/lazykern/mprisence/compare/v1.0.6...v1.1.0)
+
+* Use MusicBrainz ID from tags to fetch cover art if available
+
+## [1.0.6](https://github.com/lazykern/mprisence/compare/v1.0.5...v1.0.6)
 
 * Prevent program crash when updating presence fails
 * Set D-Bus timeout before fetching players to 5 seconds
 
-## [1.0.5](https://github.com/lazykern/mprisence/compare/v1.0.4...v1.0.5) (2025-04-13)
+## [1.0.5](https://github.com/lazykern/mprisence/compare/v1.0.4...v1.0.5)
 
 * Create `PlayerFinder` within the update loop instead of storing it in app state.
 
-## [1.0.4](https://github.com/lazykern/mprisence/compare/v1.0.3...v1.0.4) (2025-04-13)
+## [1.0.4](https://github.com/lazykern/mprisence/compare/v1.0.3...v1.0.4)
 
 * Fix potential panic when fetching player status due to D-Bus errors (Fixes #41)
 * Refine position jump detection logic to reduce false positives caused by D-Bus latency
 * Set D-Bus timeout explicitly when iterating players to 5 seconds
 
-## [1.0.3](https://github.com/lazykern/mprisence/compare/v1.0.2...v1.0.3) (2025-03-28)
+## [1.0.3](https://github.com/lazykern/mprisence/compare/v1.0.2...v1.0.3)
 
 * Show player icon as large image if cover art is not available
 
-## [1.0.2](https://github.com/lazykern/mprisence/compare/v1.0.1...v1.0.2) (2025-03-28)
+## [1.0.2](https://github.com/lazykern/mprisence/compare/v1.0.1...v1.0.2)
 
 * Show normalized player identity in CLI
 
-## [1.0.1](https://github.com/lazykern/mprisence/compare/v1.0.0...v1.0.1) (2025-03-27)
+## [1.0.1](https://github.com/lazykern/mprisence/compare/v1.0.0...v1.0.1)
 
 * Fixed issue with stale player configuration state after config reload
 
-## [1.0.0](https://github.com/lazykern/mprisence/compare/v0.5.2...v1.0.0) (2025-03-27)
+## [1.0.0](https://github.com/lazykern/mprisence/compare/v0.5.2...v1.0.0)
 
 > Major release with comprehensive improvements to configuration, cover art handling, templating, and Discord integration
 
