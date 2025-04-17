@@ -1,6 +1,5 @@
 use blake3::Hasher;
 use log::{debug, trace, warn, error};
-use mpris::Metadata;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{
@@ -10,6 +9,7 @@ use std::{
 };
 
 use crate::cover::error::CoverArtError;
+use crate::metadata::MetadataSource;
 
 #[derive(Serialize, Deserialize)]
 pub struct CacheEntry {
@@ -93,8 +93,8 @@ impl CoverCache {
         }
     }
 
-    pub fn get(&self, metadata: &Metadata) -> Result<Option<String>, CoverArtError> {
-        let key = self.generate_key(metadata);
+    pub fn get(&self, metadata_source: &MetadataSource) -> Result<Option<String>, CoverArtError> {
+        let key = self.generate_key(metadata_source);
         trace!("Looking up cache entry with key: {}", key);
         let path = self.cache_dir.join(key);
 
@@ -132,11 +132,11 @@ impl CoverCache {
 
     pub fn store(
         &self,
-        metadata: &Metadata,
+        metadata_source: &MetadataSource,
         provider: &str,
         url: &str,
     ) -> Result<(), CoverArtError> {
-        let key = self.generate_key(metadata);
+        let key = self.generate_key(metadata_source);
         trace!("Storing cache entry with key: {}", key);
         let path = self.cache_dir.join(key);
 
@@ -200,16 +200,16 @@ impl CoverCache {
         Ok(cleaned)
     }
 
-    fn generate_key(&self, metadata: &Metadata) -> String {
-        trace!("Generating cache key from metadata");
+    fn generate_key(&self, metadata_source: &MetadataSource) -> String {
+        trace!("Generating cache key from metadata source");
         let mut hasher = Hasher::new();
 
-        if let Some(album) = metadata.album_name() {
+        if let Some(album) = metadata_source.album() {
             trace!("Using album information for cache key");
             hasher.update(b"album:");
             hasher.update(album.as_bytes());
 
-            if let Some(artists) = metadata.album_artists() {
+            if let Some(artists) = metadata_source.album_artists() {
                 for artist in artists {
                     hasher.update(artist.as_bytes());
                 }
@@ -218,12 +218,12 @@ impl CoverCache {
             trace!("Using track information for cache key");
             hasher.update(b"track:");
 
-            if let Some(id) = metadata.track_id() {
+            if let Some(id) = metadata_source.track_id() {
                 hasher.update(id.to_string().as_bytes());
-            } else if let Some(title) = metadata.title() {
+            } else if let Some(title) = metadata_source.title() {
                 hasher.update(title.as_bytes());
 
-                if let Some(artists) = metadata.artists() {
+                if let Some(artists) = metadata_source.artists() {
                     for artist in artists {
                         hasher.update(artist.as_bytes());
                     }

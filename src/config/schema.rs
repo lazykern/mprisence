@@ -330,18 +330,15 @@ impl Default for ImgBBConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Copy)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ActivityType {
+    #[default]
     Listening,
     Watching,
     Playing,
     Competing,
 }
 
-impl Default for ActivityType {
-    fn default() -> Self {
-        ActivityType::Listening
-    }
-}
 
 impl From<ActivityType> for discord_rich_presence::activity::ActivityType {
     fn from(activity_type: ActivityType) -> Self {

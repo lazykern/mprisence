@@ -1,10 +1,10 @@
 use async_trait::async_trait;
-use mpris::Metadata;
-use reqwest::{Client, header};
+use reqwest::{header, Client};
 use std::time::Duration;
 
 use crate::cover::error::CoverArtError;
 use crate::cover::sources::ArtSource;
+use crate::metadata::MetadataSource;
 
 pub mod imgbb;
 pub mod musicbrainz;
@@ -54,12 +54,12 @@ pub fn create_shared_client() -> Client {
 #[async_trait]
 pub trait CoverArtProvider: Send + Sync {
     fn name(&self) -> &'static str;
-    
+
     fn supports_source_type(&self, source: &ArtSource) -> bool;
-    
+
     async fn process(
-        &self, 
-        source: ArtSource, 
-        metadata: &Metadata
+        &self,
+        source: ArtSource,
+        metadata_source: &MetadataSource,
     ) -> Result<Option<CoverResult>, CoverArtError>;
 }

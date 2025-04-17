@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use log::{debug, info, trace, warn};
-use mpris::Metadata;
 use std::sync::Arc;
 use std::time::Duration;
 use imgbb::ImgBB;
@@ -8,6 +7,7 @@ use imgbb::ImgBB;
 use crate::cover::error::CoverArtError;
 use crate::cover::sources::ArtSource;
 use crate::config::schema::ImgBBConfig;
+use crate::metadata::MetadataSource;
 use super::{CoverArtProvider, CoverResult};
 
 pub struct ImgbbProvider {
@@ -25,13 +25,12 @@ impl ImgbbProvider {
         }
     }
 
-    fn generate_image_name(&self, metadata: &Metadata) -> String {
-        let artist = metadata.artists()
+    fn generate_image_name(&self, metadata_source: &MetadataSource) -> String {
+        let artist = metadata_source.artists()
             .and_then(|artists| artists.first().map(ToString::to_string))
             .unwrap_or_default();
         
-        let title = metadata.title()
-            .map(ToString::to_string)
+        let title = metadata_source.title()
             .unwrap_or_default();
         
         if artist.is_empty() && title.is_empty() {
@@ -60,14 +59,18 @@ impl CoverArtProvider for ImgbbProvider {
         )
     }
     
-    async fn process(&self, source: ArtSource, metadata: &Metadata) -> Result<Option<CoverResult>, CoverArtError> {
+    async fn process(
+        &self, 
+        source: ArtSource, 
+        metadata_source: &MetadataSource
+    ) -> Result<Option<CoverResult>, CoverArtError> {
         if self.config.api_key.is_none() {
             warn!("ImgBB provider is disabled (no API key configured)");
             return Ok(None);
         }
         
         debug!("Processing cover art with ImgBB provider");
-        let image_name = self.generate_image_name(metadata);
+        let image_name = self.generate_image_name(metadata_source);
         
         let mut builder = self.client.upload_builder().name(&image_name);
         
@@ -102,7 +105,7 @@ impl CoverArtProvider for ImgbbProvider {
         }
 
         let expiration = if self.config.expiration > 0 {
-            Some(Duration::from_secs(self.config.expiration as u64))
+            Some(Duration::from_secs(self.config.expiration))
         } else {
             None
         };

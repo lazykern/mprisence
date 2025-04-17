@@ -113,14 +113,10 @@ impl TemplateManager {
         handlebars.register_helper("eq", Box::new(eq));
         
         // Register templates
-        handlebars.register_template_string("detail", detail)
-            .map_err(|e| e)?;
-        handlebars.register_template_string("state", state)
-            .map_err(|e| e)?;
-        handlebars.register_template_string("large_text", large_text)
-            .map_err(|e| e)?;
-        handlebars.register_template_string("small_text", small_text)
-            .map_err(|e| e)?;
+        handlebars.register_template_string("detail", detail)?;
+        handlebars.register_template_string("state", state)?;
+        handlebars.register_template_string("large_text", large_text)?;
+        handlebars.register_template_string("small_text", small_text)?;
             
         Ok(Self { handlebars })
     }

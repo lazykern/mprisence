@@ -6,7 +6,7 @@ use lofty::{
     prelude::*,
     properties::FileProperties,
 };
-use log::trace;
+use log::{trace, warn};
 use mpris::Metadata;
 use serde::Serialize;
 use url::Url;
@@ -115,6 +115,7 @@ macro_rules! impl_metadata_getter {
 /// A template-friendly representation of metadata with non-optional fields and sensible defaults.
 /// This struct is designed to be easily used with handlebars templates.
 #[derive(Debug, Clone, Serialize)]
+#[derive(Default)]
 pub struct MediaMetadata {
     pub title: Option<String>,
     pub artists: Vec<String>, // Keep as Vec since empty vec is semantically correct
@@ -175,63 +176,6 @@ pub struct MediaMetadata {
     pub movement_display: Option<String>, // "1/3" format like track_display
 }
 
-impl Default for MediaMetadata {
-    fn default() -> Self {
-        Self {
-            title: None,
-            artists: vec![],
-            artist_display: None,
-            album: None,
-            album_artists: vec![],
-            album_artist_display: None,
-            track_number: None,
-            track_total: None,
-            track_display: None,
-            disc_number: None,
-            disc_total: None,
-            disc_display: None,
-            genres: vec![],
-            genre_display: None,
-            year: None,
-            duration_secs: None,
-            duration_display: None,
-            initial_key: None,
-            bpm: None,
-            mood: None,
-            bitrate_display: None,
-            sample_rate_display: None,
-            bit_depth_display: None,
-            channels_display: None,
-            isrc: None,
-            barcode: None,
-            catalog_number: None,
-            label: None,
-            musicbrainz_track_id: None,
-            musicbrainz_album_id: None,
-            musicbrainz_artist_id: None,
-            musicbrainz_album_artist_id: None,
-            musicbrainz_release_group_id: None,
-            composer: None,
-            lyricist: None,
-            conductor: None,
-            remixer: None,
-            language: None,
-            encoded_by: None,
-            encoder_settings: None,
-            copyright: None,
-            publisher: None,
-            url: None,
-            comment: None,
-            content_created: None,
-            last_used: None,
-            use_count: None,
-            movement: None,
-            movement_number: None,
-            movement_total: None,
-            movement_display: None,
-        }
-    }
-}
 
 pub struct MetadataSource {
     mpris_metadata: Option<Metadata>,
@@ -256,8 +200,17 @@ impl MetadataSource {
     fn lofty_tag_from_url<S: AsRef<str>>(url: S) -> Result<TaggedFile, String> {
         let url = Url::parse(url.as_ref()).map_err(|e| e.to_string())?;
         if url.scheme() == "file" {
-            let path = url.path();
-            Self::lofty_tag_from_path(path)
+            let encoded_path = url.path();
+            match urlencoding::decode(encoded_path) {
+                Ok(decoded_cow) => {
+                    let decoded_path = decoded_cow.into_owned();
+                    Self::lofty_tag_from_path(&decoded_path)
+                }
+                Err(e) => {
+                    warn!("Failed to URL-decode path '{}': {}. Lofty might fail.", encoded_path, e);
+                    Self::lofty_tag_from_path(encoded_path)
+                }
+            }
         } else {
             Err(format!("Unsupported URL scheme: {}", url.scheme()))
         }
@@ -336,6 +289,14 @@ impl MetadataSource {
                     .and_then(|tag| tag.get_string(&ItemKey::AlbumArtist))
                     .map(|artist| vec![artist.to_string()])
             })
+    }
+
+    pub fn track_id(&self) -> Option<String> {
+        trace!("Getting track ID from MPRIS metadata");
+        self.mpris_metadata
+            .as_ref()
+            .and_then(|m| m.track_id())
+            .map(|id| id.to_string())
     }
 
     pub fn length(&self) -> Option<Duration> {

@@ -1,12 +1,12 @@
 use async_trait::async_trait;
 use log::{debug, info, trace, warn};
-use mpris::Metadata;
 use reqwest::Client;
 use serde::Deserialize;
 
 use super::{CoverArtProvider, CoverResult, create_shared_client};
 use crate::cover::error::CoverArtError;
 use crate::cover::sources::ArtSource;
+use crate::metadata::MetadataSource;
 
 const MUSICBRAINZ_API: &str = "https://musicbrainz.org/ws/2";
 const COVERART_API: &str = "https://coverartarchive.org";
@@ -47,8 +47,14 @@ pub struct MusicbrainzProvider {
     client: Client,
 }
 
+impl Default for MusicbrainzProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MusicbrainzProvider {
-    const MIN_SCORE: u8 = 90; // Only accept matches with 90% or higher confidence
+    const MIN_SCORE: u8 = 95;
     
     // Thumbnail sizes to try in order of preference
     const THUMBNAIL_SIZES: [u16; 3] = [500, 250, 1200];
@@ -137,10 +143,10 @@ impl MusicbrainzProvider {
         trace!("Encoded MusicBrainz query: {}", encoded_query);
         
         let (release_groups, releases) = futures::join!(
-            self.client.get(&format!("{}/release-group?query={}&limit=5&fmt=json", 
+            self.client.get(format!("{}/release-group?query={}&limit=5&fmt=json", 
                 MUSICBRAINZ_API, encoded_query))
                 .send(),
-            self.client.get(&format!("{}/release?query={}&limit=5&fmt=json", 
+            self.client.get(format!("{}/release?query={}&limit=5&fmt=json", 
                 MUSICBRAINZ_API, encoded_query))
                 .send()
         );
@@ -267,33 +273,61 @@ impl CoverArtProvider for MusicbrainzProvider {
     async fn process(
         &self,
         _source: ArtSource,
-        metadata: &Metadata,
+        metadata_source: &MetadataSource
     ) -> Result<Option<CoverResult>, CoverArtError> {
         info!("Processing metadata with MusicBrainz provider");
         trace!(
             "Metadata details: album={:?}, title={:?}, artists={:?}, album_artists={:?}, length={:?}",
-            metadata.album_name(),
-            metadata.title(),
-            metadata.artists(),
-            metadata.album_artists(),
-            metadata.length()
+            metadata_source.album(),
+            metadata_source.title(),
+            metadata_source.artists(),
+            metadata_source.album_artists(),
+            metadata_source.length()
         );
 
-        let artists = metadata.artists().unwrap_or_default();
-        let album_artists = metadata.album_artists().unwrap_or_default();
+        let mut cover_sources = Vec::new();
 
-        if let Some(album) = metadata.album_name() {
-            let search_artists = if !album_artists.is_empty() {
+        if let Some(id) = metadata_source.musicbrainz_release_group_id() {
+            debug!("Found MusicBrainz Release Group ID: {}", id);
+            cover_sources.push(("release-group".to_string(), id));
+        }
+        if let Some(id) = metadata_source.musicbrainz_album_id() {
+            debug!("Found MusicBrainz Album/Release ID: {}", id);
+            cover_sources.push(("release".to_string(), id));
+        }
+
+        if !cover_sources.is_empty() {
+            debug!("Attempting fetch using {} direct MusicBrainz IDs", cover_sources.len());
+            if let Some(url) = self.try_cover_art_sources(cover_sources).await? {
+                info!("Successfully found cover art via direct MusicBrainz ID");
+                trace!("Cover art URL: {}", url);
+                return Ok(Some(CoverResult {
+                    url,
+                    provider: self.name().to_string(),
+                    expiration: None,
+                }));
+            }
+            debug!("Fetching via direct ID failed or yielded no results.");
+        } else {
+            debug!("No direct MusicBrainz IDs found in metadata.");
+        }
+
+        info!("Falling back to MusicBrainz search based on metadata");
+        let artists = metadata_source.artists().unwrap_or_default();
+        let album_artists = metadata_source.album_artists().unwrap_or_default();
+
+        if let Some(album) = metadata_source.album() {
+            let search_artists_refs: Vec<&String> = if !album_artists.is_empty() {
                 trace!("Using album artists for search: {:?}", album_artists);
-                album_artists.as_slice()
+                album_artists.iter().collect()
             } else {
                 trace!("Using track artists for search: {:?}", artists);
-                artists.as_slice()
+                artists.iter().collect()
             };
 
-            if !search_artists.is_empty() {
+            if !search_artists_refs.is_empty() {
                 debug!("Attempting album-based search for '{}' with artists", album);
-                if let Some(url) = self.search_album(album, search_artists).await? {
+                if let Some(url) = self.search_album(&album, &search_artists_refs).await? {
                     info!("Successfully found cover art via album search");
                     trace!("Cover art URL: {}", url);
                     return Ok(Some(CoverResult {
@@ -308,14 +342,15 @@ impl CoverArtProvider for MusicbrainzProvider {
             }
         }
 
-        if let Some(title) = metadata.title() {
+        if let Some(title) = metadata_source.title() {
             if !artists.is_empty() {
-                let duration = metadata.length().map(|d| d.as_millis());
+                let duration = metadata_source.length().map(|d| d.as_millis());
                 debug!("Attempting track-based search for '{}' with artists", title);
                 trace!("Track duration: {:?}ms", duration);
+                let artists_refs: Vec<&String> = artists.iter().collect();
 
                 if let Some(url) = self
-                    .search_track(title, artists.as_slice(), duration)
+                    .search_track(&title, &artists_refs, duration)
                     .await?
                 {
                     info!("Successfully found cover art via track search");

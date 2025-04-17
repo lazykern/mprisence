@@ -57,7 +57,7 @@ impl Command {
                     for mut player in players {
                         player.set_dbus_timeout_ms(5000);
                         let identity = player.identity();
-                        let normalized = normalize_player_identity(&identity);
+                        let normalized = normalize_player_identity(identity);
                         let status = player
                             .get_playback_status()
                             .map(|s| format!("{:?}", s))

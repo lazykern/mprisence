@@ -15,6 +15,9 @@ use mime_guess::mime;
 use mpris::{PlaybackStatus, Player};
 use parking_lot::Mutex;
 
+use lofty::file::AudioFile as _;
+use lofty::prelude::TaggedFileExt as _;
+
 use crate::{
     config::{
         schema::{ActivityType, ActivityTypesConfig, PlayerConfig},
@@ -313,6 +316,33 @@ impl Presence {
         trace!("Metadata: {:?}", metadata);
 
         let metadata_source = metadata::MetadataSource::from_mpris(metadata.clone());
+
+        // --- DEBUG LOGGING START ---
+        info!("--- Raw Metadata Debug Start ---");
+        if let Some(mpris_meta) = metadata_source.mpris_metadata() {
+            info!("MPRIS Metadata Map:");
+            for (key, value) in mpris_meta.iter() {
+                info!("  MPRIS Key: '{}', Value: {:?}", key, value);
+            }
+        } else {
+            info!("No MPRIS Metadata available in source.");
+        }
+        if let Some(lofty_tag) = metadata_source.lofty_tag() {
+            info!("Lofty Primary Tag ({:?}):", lofty_tag.file_type());
+            if let Some(tag) = lofty_tag.primary_tag() {
+                for item in tag.items() {
+                    info!("  Lofty Key: {:?}, Value: {:?}", item.key(), item.value());
+                }
+            } else {
+                info!("  No primary tag found by Lofty.");
+            }
+            info!("Lofty Properties: {:?}", lofty_tag.properties());
+        } else {
+            info!("No Lofty TaggedFile available in source (likely not a local file or read failed).");
+        }
+        info!("--- Raw Metadata Debug End ---");
+        // --- DEBUG LOGGING END ---
+
         let media_metadata = metadata_source.to_media_metadata();
 
         let player_config = self.config.get_player_config(player.identity());
@@ -327,7 +357,7 @@ impl Presence {
             trace!("Player position: {:?}", position);
             let start_dur = now.checked_sub(position).unwrap_or_default();
             trace!("Start duration: {:?}", start_dur);
-            let start_s = Some(start_dur.as_secs() as u64);
+            let start_s = Some(start_dur.as_secs());
             trace!("Start seconds: {:?}", start_s);
 
             let length = metadata.length().unwrap_or_default();
@@ -335,7 +365,7 @@ impl Presence {
             let end_s = if !as_elapsed && !length.is_zero() {
                 start_dur.checked_add(length).map(|end| {
                     trace!("End duration: {:?}", end); // Fix: Log the end duration
-                    end.as_secs() as u64
+                    end.as_secs()
                 })
             } else {
                 None
@@ -354,7 +384,7 @@ impl Presence {
         let cover_art_url = if let Some(art_source) = metadata_source.art_source() {
             match self
                 .cover_manager
-                .get_cover_art(art_source, &metadata)
+                .get_cover_art(art_source, &metadata_source)
                 .await
             {
                 Ok(Some(url)) => {
@@ -380,7 +410,7 @@ impl Presence {
         let activity_type = self.determine_activity_type(
             &self.config.activity_type_config(),
             &player_config,
-            metadata.url(),
+            metadata_source.url().as_deref(),
         );
 
         let mut activity = Activity::default().activity_type(activity_type.into());
