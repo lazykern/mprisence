@@ -132,7 +132,13 @@ impl Mprisence {
         let iter_players = finder.iter_players()?;
 
         for player in iter_players {
-            let player = player?;
+            let player = match player {
+                Ok(player) => player,
+                Err(e) => {
+                    error!("Failed to get player: {}", e);
+                    continue;
+                }
+            };
             let id = PlayerIdentifier::from(&player);
 
             let player_config = self.config.get_player_config(&id.identity);
