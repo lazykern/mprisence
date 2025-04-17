@@ -2,6 +2,11 @@
 
 All notable changes to mprisence will be documented in this file.
 
+## [1.0.6](https://github.com/lazykern/mprisence/compare/v1.0.5...v1.0.6) (2025-04-18)
+
+* Prevent program crash when updating presence fails
+* Set D-Bus timeout before fetching players to 5 seconds
+
 ## [1.0.5](https://github.com/lazykern/mprisence/compare/v1.0.4...v1.0.5) (2025-04-13)
 
 * Create `PlayerFinder` within the update loop instead of storing it in app state.
