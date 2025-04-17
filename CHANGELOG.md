@@ -5,6 +5,7 @@ All notable changes to mprisence will be documented in this file.
 ## [1.1.0](https://github.com/lazykern/mprisence/compare/v1.0.6...v1.1.0)
 
 * Use MusicBrainz ID from tags to fetch cover art if available
+* Increased base MusicBrainz query score from 90% to 95%
 
 ## [1.0.6](https://github.com/lazykern/mprisence/compare/v1.0.5...v1.0.6)
 
