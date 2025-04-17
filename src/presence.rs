@@ -317,31 +317,29 @@ impl Presence {
 
         let metadata_source = metadata::MetadataSource::from_mpris(metadata.clone());
 
-        // --- DEBUG LOGGING START ---
-        info!("--- Raw Metadata Debug Start ---");
+        debug!("--- Raw Metadata Start ---");
         if let Some(mpris_meta) = metadata_source.mpris_metadata() {
-            info!("MPRIS Metadata Map:");
+            debug!("MPRIS Metadata Map:");
             for (key, value) in mpris_meta.iter() {
-                info!("  MPRIS Key: '{}', Value: {:?}", key, value);
+                debug!("  MPRIS Key: '{}', Value: {:?}", key, value);
             }
         } else {
-            info!("No MPRIS Metadata available in source.");
+            debug!("No MPRIS Metadata available in source.");
         }
         if let Some(lofty_tag) = metadata_source.lofty_tag() {
-            info!("Lofty Primary Tag ({:?}):", lofty_tag.file_type());
+            debug!("Lofty Primary Tag ({:?}):", lofty_tag.file_type());
             if let Some(tag) = lofty_tag.primary_tag() {
                 for item in tag.items() {
-                    info!("  Lofty Key: {:?}, Value: {:?}", item.key(), item.value());
+                    debug!("  Lofty Key: {:?}, Value: {:?}", item.key(), item.value());
                 }
             } else {
-                info!("  No primary tag found by Lofty.");
+                debug!("  No primary tag found by Lofty.");
             }
-            info!("Lofty Properties: {:?}", lofty_tag.properties());
+            debug!("Lofty Properties: {:?}", lofty_tag.properties());
         } else {
-            info!("No Lofty TaggedFile available in source (likely not a local file or read failed).");
+            debug!("No Lofty TaggedFile available in source (likely not a local file or read failed).");
         }
-        info!("--- Raw Metadata Debug End ---");
-        // --- DEBUG LOGGING END ---
+        debug!("--- Raw Metadata End ---");
 
         let media_metadata = metadata_source.to_media_metadata();
 
