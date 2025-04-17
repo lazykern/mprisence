@@ -61,7 +61,6 @@ impl MusicbrainzProvider {
 
     pub fn new() -> Self {
         info!("Initializing MusicBrainz provider");
-        trace!("Creating HTTP client for MusicBrainz API");
         Self {
             client: create_shared_client(),
         }
@@ -70,7 +69,6 @@ impl MusicbrainzProvider {
     async fn get_cover_art(&self, entity_type: &str, mbid: &str) -> Result<Option<String>, CoverArtError> {
         trace!("Attempting to fetch cover art for {} ({})", entity_type, mbid);
         
-        // Try each thumbnail size in order
         for size in Self::THUMBNAIL_SIZES {
             let url = format!("{}/{}/{}/front-{}", COVERART_API, entity_type, mbid, size);
             debug!("Requesting cover art from: {} ({}px)", url, size);
@@ -105,8 +103,12 @@ impl MusicbrainzProvider {
             trace!("Trying source {}/{}: {} ({})", idx + 1, source_count, entity_type, id);
             match self.get_cover_art(&entity_type, &id).await {
                 Ok(Some(url)) => {
-                    info!("Found valid cover art URL from source {}/{}", idx + 1, source_count);
-                    trace!("Cover art URL: {}", url);
+                    debug!(
+                        "Found valid cover art URL from source {}/{}: {}",
+                        idx + 1, 
+                        source_count, 
+                        url
+                    );
                     return Ok(Some(url));
                 }
                 Ok(None) => {
@@ -299,8 +301,10 @@ impl CoverArtProvider for MusicbrainzProvider {
         if !cover_sources.is_empty() {
             debug!("Attempting fetch using {} direct MusicBrainz IDs", cover_sources.len());
             if let Some(url) = self.try_cover_art_sources(cover_sources).await? {
-                info!("Successfully found cover art via direct MusicBrainz ID");
-                trace!("Cover art URL: {}", url);
+                info!(
+                    "Successfully found cover art via direct MusicBrainz ID: {}",
+                    url
+                );
                 return Ok(Some(CoverResult {
                     url,
                     provider: self.name().to_string(),
@@ -328,8 +332,10 @@ impl CoverArtProvider for MusicbrainzProvider {
             if !search_artists_refs.is_empty() {
                 debug!("Attempting album-based search for '{}' with artists", album);
                 if let Some(url) = self.search_album(&album, &search_artists_refs).await? {
-                    info!("Successfully found cover art via album search");
-                    trace!("Cover art URL: {}", url);
+                    info!(
+                        "Successfully found cover art via album search: {}",
+                        url
+                    );
                     return Ok(Some(CoverResult {
                         url,
                         provider: self.name().to_string(),
@@ -353,8 +359,10 @@ impl CoverArtProvider for MusicbrainzProvider {
                     .search_track(&title, &artists_refs, duration)
                     .await?
                 {
-                    info!("Successfully found cover art via track search");
-                    trace!("Cover art URL: {}", url);
+                    info!(
+                        "Successfully found cover art via track search: {}",
+                        url
+                    );
                     return Ok(Some(CoverResult {
                         url,
                         provider: self.name().to_string(),
