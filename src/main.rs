@@ -124,21 +124,15 @@ impl Mprisence {
         let mut current_ids = std::collections::HashSet::new();
 
         trace!("Scanning for active media players");
+        
+        let mut player_finder = PlayerFinder::new()?;
 
-        let mut finder = PlayerFinder::new()?;
+        player_finder.set_player_timeout_ms(5000);
 
-        finder.set_player_timeout_ms(5000);
-
-        let iter_players = finder.iter_players()?;
+        let iter_players = player_finder.iter_players()?;
 
         for player in iter_players {
-            let player = match player {
-                Ok(player) => player,
-                Err(e) => {
-                    error!("Failed to get player: {}", e);
-                    continue;
-                }
-            };
+            let player = player?;
             let id = PlayerIdentifier::from(&player);
 
             let player_config = self.config.get_player_config(&id.identity);
@@ -214,7 +208,9 @@ impl Mprisence {
             tokio::select! {
                 _ = interval.tick() => {
                     trace!("Running periodic presence update");
-                    self.update().await?;
+                    if let Err(e) = self.update().await {
+                        error!("Failed to update presence: {}", e);
+                    }
                 },
                 _ = cache_cleanup_interval.tick() => {
                     debug!("Starting periodic cache cleanup");
