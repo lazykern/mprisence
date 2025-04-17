@@ -43,7 +43,9 @@ impl Command {
         match self {
             Command::Players { command } => match command {
                 PlayersCommand::List { detailed } => {
-                    let finder = PlayerFinder::new()?;
+                    let mut finder = PlayerFinder::new()?;
+                    finder.set_player_timeout_ms(5000);
+
                     let players = finder.find_all()?;
 
                     if players.is_empty() {
@@ -52,7 +54,8 @@ impl Command {
                     }
 
                     println!("Found {} MPRIS player(s):", players.len());
-                    for player in players {
+                    for mut player in players {
+                        player.set_dbus_timeout_ms(5000);
                         let identity = player.identity();
                         let normalized = normalize_player_identity(&identity);
                         let status = player

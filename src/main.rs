@@ -124,22 +124,15 @@ impl Mprisence {
         let mut current_ids = std::collections::HashSet::new();
 
         trace!("Scanning for active media players");
-        let players = PlayerFinder::new()?.iter_players().map_err(|e| {
-            error!("Failed to get MPRIS players: {}", e);
-            MprisenceError::DBus(e)
-        })?;
 
-        for player_result in players {
-            let mut player = match player_result {
-                Ok(p) => p,
-                Err(e) => {
-                    warn!("Failed to get a player: {}", e);
-                    continue;
-                }
-            };
+        let mut finder = PlayerFinder::new()?;
 
-            player.set_dbus_timeout_ms(5000);
+        finder.set_player_timeout_ms(5000);
 
+        let iter_players = finder.iter_players()?;
+
+        for player in iter_players {
+            let player = player?;
             let id = PlayerIdentifier::from(&player);
 
             let player_config = self.config.get_player_config(&id.identity);

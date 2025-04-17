@@ -40,6 +40,9 @@ pub enum MprisenceError {
 
     #[error("Discord error: {0}")]
     Discord(#[from] DiscordError),
+
+    #[error("Player finding error: {0}")]
+    PlayerFinding(#[from] FindingError),
 }
 
 #[derive(Error, Debug)]
