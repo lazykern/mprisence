@@ -6,6 +6,10 @@
 
 A highly customizable daemon for showing MPRIS media playback in Discord Rich Presence. Supports VLC, MPV, RhythmBox, and more.
 
+![mprisence Example](assets/example.gif)
+
+*(Note: Actual appearance depends on your configuration and the specific media player)*
+
 ## Features
 
 - **Universal Media Player Support**: Works with any MPRIS  media player
@@ -45,6 +49,37 @@ make install-local ENABLE_SERVICE=0
 make uninstall-local
 ```
 
+See [Autostarting / Service Management](#autostarting--service-management) for details on managing the systemd service.
+
+## Autostarting / Service Management
+
+If you installed using `make` or enabled the service manually, `mprisence` will run as a systemd user service.
+
+You can manage the service using `systemctl --user`:
+
+```bash
+# Check service status
+systemctl --user status mprisence
+
+# Start the service
+systemctl --user start mprisence
+
+# Stop the service
+systemctl --user stop mprisence
+
+# Restart the service (needed after config changes if running as a service)
+systemctl --user restart mprisence
+
+# Enable the service to start on login
+systemctl --user enable mprisence
+
+# Disable the service from starting on login
+systemctl --user disable mprisence
+
+# View detailed logs
+journalctl --user -u mprisence -f
+```
+
 ## Configuration
 
 The configuration file is located at:
@@ -58,6 +93,24 @@ For a complete configuration reference:
 - See [`config.default.toml`](./config/config.default.toml) for default configurations of popular media players
 - See [`src/metadata.rs`](./src/metadata.rs) for all available template variables and their implementations
 - See [`src/template.rs`](./src/template.rs) for template rendering system details
+
+### Key Template Variables
+Some commonly used variables available in templates:
+
+- `{{player}}`: Name of the media player (e.g., `vlc`, `spotify`).
+- `{{status}}`: Playback status (`Playing`, `Paused`, `Stopped`).
+- `{{status_icon}}`: Icon representing the status (`▶`, `⏸`, `⏹`).
+- `{{title}}`: Track title.
+- `{{artists}}`: List of track artists.
+- `{{artist_display}}`: Comma-separated track artists.
+- `{{album}}`: Album title.
+- `{{album_artists}}`: List of album artists.
+- `{{album_artist_display}}`: Comma-separated album artists.
+- `{{year}}`: Release year.
+- `{{duration_display}}`: Formatted track duration (e.g., `03:45`).
+- `{{track_display}}`: Formatted track number (e.g., `1/12`).
+
+(See `src/metadata.rs` for the complete list)
 
 ### Basic Configuration Example
 ```toml
@@ -103,6 +156,7 @@ as_elapsed = true
 ```toml
 [cover.provider]
 # Cover art providers in order of preference
+# (imgbb will be used as a fallback if musicbrainz fails)
 provider = ["musicbrainz", "imgbb"]
 
 [cover.provider.imgbb]
@@ -114,7 +168,7 @@ expiration = 86400
 
 ### Player-Specific Configuration
 ```toml
-# Use 'mprisence players' to get the correct player name
+# Use 'mprisence players' to get the correct player identity
 [player.vlc_media_player]
 # Discord application ID (get yours at: https://discord.com/developers/docs/quick-start/overview-of-apps)
 app_id = "YOUR_APP_ID_HERE"
@@ -146,8 +200,8 @@ mprisence config
 # Show version
 mprisence version
 
-# Enable debug logging
-RUST_LOG=debug mprisence
+# Enable more verbose logging
+RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
 ```
 
 ## Troubleshooting
@@ -157,10 +211,13 @@ RUST_LOG=debug mprisence
 1. **Discord Presence Not Showing**
    - Check if your media player is MPRIS-compatible (try running `mprisence players`)
    - Ensure the correct Discord App ID is configured
+   - Verify Discord is running and detects external applications in its settings.
 
 2. **Cover Art Not Displaying**
-   - Check if the media file has embedded artwork
-   - Verify ImgBB API key if using ImgBB provider
+   - Check if the media file has embedded artwork or if metadata matches MusicBrainz.
+   - If ImgBB is used
+     - Check if the media file has embedded artwork or if the folder of the media file has an image file matching `cover.file_names` in `config.toml`.
+     - Check if the `api_key` in `[cover.provider.imgbb]` is valid.
 
 3. **Service Issues**
    ```bash
@@ -170,14 +227,15 @@ RUST_LOG=debug mprisence
    # View detailed logs
    journalctl --user -u mprisence
    
-   # Restart service
+   # Restart service (e.g., after config changes)
    systemctl --user restart mprisence
    ```
 
 4. **Configuration Issues**
-   - Validate your TOML syntax
-   - Check logs for parsing errors
-   - Try with the default configuration first
+   - Validate your TOML syntax (use an online validator if unsure).
+   - Check logs for parsing errors (`journalctl --user -u mprisence` or run `RUST_LOG=debug mprisence` directly).
+   - Try with the default configuration first (remove or rename your config file).
+   - **Incorrect Player Identity**: Ensure the `[player.<identity>]` section in your config uses the exact identity shown by `mprisence players`. Player names are normalized (lowercase, spaces replaced with underscores). For example, "VLC media player" becomes `vlc_media_player`.
 
 ## License
 
