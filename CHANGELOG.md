@@ -2,6 +2,11 @@
 
 All notable changes to mprisence will be documented in this file.
 
+## [1.1.2](https://github.com/lazykern/mprisence/compare/v1.1.1...v1.1.2)
+
+* Fix [#41](https://github.com/lazykern/mprisence/issues/41) 
+* Check discord status with a IPC socket connection attempt instead of `SingletonLock`
+
 ## [1.1.1](https://github.com/lazykern/mprisence/compare/v1.1.0...v1.1.1)
 
 * Fixed issue when hot reloading config only updates when the config file is changed for the first time
@@ -22,7 +27,7 @@ All notable changes to mprisence will be documented in this file.
 
 ## [1.0.4](https://github.com/lazykern/mprisence/compare/v1.0.3...v1.0.4)
 
-* Fix potential panic when fetching player status due to D-Bus errors (Fixes #41)
+* Fix potential panic when fetching player status due to D-Bus errors
 * Refine position jump detection logic to reduce false positives caused by D-Bus latency
 * Set D-Bus timeout explicitly when iterating players to 5 seconds
 
