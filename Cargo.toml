@@ -42,3 +42,6 @@ base64 = "0.22.1"
 lofty = "0.22.3"
 semver = "1.0.26"
 walkdir = "2.5.0"
+interprocess = "2.2.3"
+
+[dev-dependencies]
