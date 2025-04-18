@@ -5,7 +5,7 @@ use interprocess::local_socket::{prelude::*, GenericFilePath, Stream};
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(unix)]
-use std::io::{self, ErrorKind};
+use std::io::{ErrorKind};
 #[cfg(unix)]
 use std::collections::HashMap;
 
@@ -77,33 +77,28 @@ pub fn is_discord_running() -> bool {
                 debug!("Connection errors encountered: [{}]", error_summary);
             }
 
-            if !DISCORD_CONNECTION_ERROR_LOGGED.load(Ordering::Relaxed) {
-                if DISCORD_CONNECTION_ERROR_LOGGED
+            if !DISCORD_CONNECTION_ERROR_LOGGED.load(Ordering::Relaxed) && DISCORD_CONNECTION_ERROR_LOGGED
                     .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-                    .is_ok()
-                {
-                    log::info!(
-                        "Could not connect to Discord IPC socket. Presence updates will be disabled until connection succeeds."
-                    );
-                }
+                    .is_ok() {
+                log::info!(
+                    "Could not connect to Discord IPC socket. Presence updates will be disabled until connection succeeds."
+                );
             }
             false
         }
-    } else {
-        if let Some(lock_path) = get_discord_lock_path() {
-            match std::fs::symlink_metadata(&lock_path) {
-                Ok(_) => {
-                    trace!("Discord SingletonLock found at {:?}", lock_path);
-                    true
-                }
-                Err(_) => {
-                    trace!("Discord SingletonLock not found at {:?}", lock_path);
-                    false
-                }
+    } else if let Some(lock_path) = get_discord_lock_path() {
+        match std::fs::symlink_metadata(&lock_path) {
+            Ok(_) => {
+                trace!("Discord SingletonLock found at {:?}", lock_path);
+                true
             }
-        } else {
-            trace!("Could not determine Discord check method on non-unix, assuming running");
-            true
+            Err(_) => {
+                trace!("Discord SingletonLock not found at {:?}", lock_path);
+                false
+            }
         }
+    } else {
+        trace!("Could not determine Discord check method on non-unix, assuming running");
+        true
     }
 }
