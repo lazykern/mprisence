@@ -4,7 +4,7 @@
 [![GitHub license](https://img.shields.io/github/license/lazykern/mprisence)](https://github.com/lazykern/mprisence/blob/main/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/lazykern/mprisence)](https://github.com/lazykern/mprisence/stargazers)
 
-A highly customizable daemon for showing MPRIS media playback in Discord Rich Presence. Supports VLC, MPV, RhythmBox, and more.
+A highly customizable daemon for showing MPRIS media playback in Discord Rich Presence. Supports VLC, MPV, RhythmBox, and many other Linux music and media players.
 
 ![mprisence Example](assets/example.gif)
 
@@ -12,7 +12,9 @@ A highly customizable daemon for showing MPRIS media playback in Discord Rich Pr
 
 ## Features
 
-- **Universal Media Player Support**: Works with any MPRIS  media player
+**Display your Linux media player activity on Discord**
+
+- **Universal Media Player Support**: Works with any MPRIS-compatible Linux media player.
 - **Hot Reload**: Configuration changes are applied instantly without restart
 - **Cover Art Integration**: Supports local files, MusicBrainz, and ImgBB hosting
 -  **Content Based Activity Type**: Shows "Listening" for music, "Watching" for videos automatically (configurable)
