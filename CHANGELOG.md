@@ -2,6 +2,10 @@
 
 All notable changes to mprisence will be documented in this file.
 
+## [1.1.1](https://github.com/lazykern/mprisence/compare/v1.1.0...v1.1.1)
+
+* Fixed issue when hot reloading config only updates when the config file is changed for the first time
+
 ## [1.1.0](https://github.com/lazykern/mprisence/compare/v1.0.6...v1.1.0)
 
 * Use MusicBrainz ID from tags to fetch cover art if available
