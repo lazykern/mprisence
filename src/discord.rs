@@ -1,15 +1,12 @@
 use log::{debug, trace};
+use std::io::ErrorKind;
 use std::path::PathBuf;
 
 use interprocess::local_socket::{prelude::*, GenericFilePath, Stream};
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
-#[cfg(unix)]
-use std::io::{ErrorKind};
-#[cfg(unix)]
 use std::collections::HashMap;
 
-#[cfg(unix)]
 static DISCORD_CONNECTION_ERROR_LOGGED: AtomicBool = AtomicBool::new(false);
 
 fn get_discord_lock_path() -> Option<PathBuf> {
