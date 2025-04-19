@@ -1503,6 +1503,7 @@ dependencies = [
  "mpris",
  "notify",
  "parking_lot",
+ "regex",
  "reqwest",
  "semver",
  "serde",

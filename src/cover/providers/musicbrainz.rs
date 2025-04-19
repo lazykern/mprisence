@@ -2,6 +2,8 @@ use async_trait::async_trait;
 use log::{debug, info, trace, warn};
 use reqwest::Client;
 use serde::Deserialize;
+use regex::Regex;
+use std::sync::OnceLock;
 
 use super::{create_shared_client, CoverArtProvider, CoverResult};
 use crate::cover::error::CoverArtError;
@@ -11,6 +13,16 @@ use crate::config::schema::MusicbrainzConfig;
 
 const MUSICBRAINZ_API: &str = "https://musicbrainz.org/ws/2";
 const COVERART_API: &str = "https://coverartarchive.org";
+
+static LUCENE_SPECIAL_CHARS_REGEX: OnceLock<Regex> = OnceLock::new();
+
+fn escape_lucene(value: &str) -> String {
+    let regex = LUCENE_SPECIAL_CHARS_REGEX.get_or_init(|| {
+        // Characters that need escaping: + - && || ! ( ) { } [ ] ^ " ~ * ? : \ /
+        Regex::new(r#"([+\-&|!(){}\[\]^"~*?:\/])"#).expect("Invalid Regex pattern")
+    });
+    regex.replace_all(value, r"\$1").to_string()
+}
 
 #[derive(Debug, Deserialize)]
 struct MusicBrainzResponse<T> {
@@ -157,36 +169,36 @@ impl MusicbrainzProvider {
         album: S,
         artists: &[S],
     ) -> Result<Option<String>, CoverArtError> {
-        debug!(
-            "Searching MusicBrainz for album: {} by [{}]",
-            album.as_ref(),
-            artists
-                .iter()
-                .map(|a| a.as_ref())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
+        // Escape album title
+        let escaped_album = escape_lucene(album.as_ref());
+        let mut query = format!("release-group:{}", escaped_album);
 
-        let mut query = format!("release-group:{}", album.as_ref());
         if let Some(artist) = artists.first() {
-            query.push_str(&format!(" AND artist:{}", artist.as_ref()));
+            // Escape artist name
+            let escaped_artist = escape_lucene(artist.as_ref());
+            query.push_str(&format!(" AND artist:{}", escaped_artist));
         }
 
         let encoded_query = urlencoding::encode(&query);
         trace!("Encoded MusicBrainz query: {}", encoded_query);
 
+        let release_group_url = format!(
+            "{}/release-group?query={}&limit=5&fmt=json",
+            MUSICBRAINZ_API, encoded_query
+        );
+        let release_url = format!(
+            "{}/release?query={}&limit=5&fmt=json",
+            MUSICBRAINZ_API, encoded_query
+        );
+        debug!("Searching MusicBrainz Release Groups: {}", release_group_url);
+        debug!("Searching MusicBrainz Releases: {}", release_url);
+
         let (release_groups, releases) = futures::join!(
             self.client
-                .get(format!(
-                    "{}/release-group?query={}&limit=5&fmt=json",
-                    MUSICBRAINZ_API, encoded_query
-                ))
+                .get(&release_group_url)
                 .send(),
             self.client
-                .get(format!(
-                    "{}/release?query={}&limit=5&fmt=json",
-                    MUSICBRAINZ_API, encoded_query
-                ))
+                .get(&release_url)
                 .send()
         );
 
@@ -254,29 +266,33 @@ impl MusicbrainzProvider {
         &self,
         track: S,
         artists: &[S],
+        album: Option<S>,
         duration_ms: Option<u128>,
     ) -> Result<Option<String>, CoverArtError> {
-        debug!(
-            "Searching MusicBrainz for track: {} by [{}]",
-            track.as_ref(),
-            artists
-                .iter()
-                .map(|a| a.as_ref())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-
-        let mut query = format!("recording:{}", track.as_ref());
+        // Escape track title
+        let escaped_track = escape_lucene(track.as_ref());
+        let mut query = format!("recording:{}", escaped_track);
 
         if let Some(artist) = artists.first() {
-            query.push_str(&format!(" AND artist:{}", artist.as_ref()));
+            // Escape artist name
+            let escaped_artist = escape_lucene(artist.as_ref());
+            query.push_str(&format!(" AND artist:{}", escaped_artist));
+        }
+
+        if let Some(album_ref) = album.as_ref() {
+            let album_str = album_ref.as_ref();
+            if !album_str.is_empty() {
+                // Escape album title
+                let escaped_album = escape_lucene(album_str);
+                query.push_str(&format!(" AND album:{}", escaped_album));
+            }
         }
 
         if let Some(duration) = duration_ms {
             let duration_range = format!(
                 " AND dur:[{} TO {}]",
-                duration.saturating_sub(3000),
-                duration + 3000
+                duration.saturating_sub(5000),
+                duration.saturating_add(5000)
             );
             query.push_str(&duration_range);
             trace!("Added duration range to query: {}", duration_range);
@@ -289,6 +305,7 @@ impl MusicbrainzProvider {
             "{}/recording?query={}&limit=5&fmt=json",
             MUSICBRAINZ_API, encoded_query
         );
+        debug!("Searching MusicBrainz Recordings: {}", url);
 
         if let Ok(response) = self.client.get(&url).send().await {
             if let Ok(data) = response.json::<MusicBrainzResponse<Recording>>().await {
@@ -437,11 +454,12 @@ impl CoverArtProvider for MusicbrainzProvider {
         if let Some(title) = metadata_source.title() {
             if !artists.is_empty() {
                 let duration = metadata_source.length().map(|d| d.as_millis());
+                let album = metadata_source.album();
                 debug!("Attempting track-based search for '{}' with artists", title);
-                trace!("Track duration: {:?}ms", duration);
+                trace!("Track album: {:?}, duration: {:?}ms", album, duration);
                 let artists_refs: Vec<&String> = artists.iter().collect();
 
-                if let Some(url) = self.search_track(&title, &artists_refs, duration).await? {
+                if let Some(url) = self.search_track(&title, &artists_refs, album.as_ref(), duration).await? {
                     info!("Successfully found cover art via track search: {}", url);
                     return Ok(Some(CoverResult {
                         url,
