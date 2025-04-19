@@ -117,11 +117,12 @@ if [ "$PUBLISH_RELEASE" = true ]; then
     print "Updating release package..."
     cp packaging/arch/release/PKGBUILD "$RELEASE_REPO/PKGBUILD"
     cp packaging/arch/release/.SRCINFO "$RELEASE_REPO/.SRCINFO"
+    cp packaging/arch/release/mprisence.install "$RELEASE_REPO/mprisence.install"
 
     print "Publishing release package..."
     (
         cd "$RELEASE_REPO"
-        git add PKGBUILD .SRCINFO
+        git add PKGBUILD .SRCINFO mprisence.install
         git commit -m "Update to version $VERSION"
         git push
     )
@@ -141,11 +142,12 @@ if [ "$PUBLISH_GIT" = true ]; then
     print "Updating git package..."
     cp packaging/arch/git/PKGBUILD "$GIT_REPO/PKGBUILD"
     cp packaging/arch/git/.SRCINFO "$GIT_REPO/.SRCINFO"
+    cp packaging/arch/git/mprisence-git.install "$GIT_REPO/mprisence-git.install"
 
     print "Publishing git package..."
     (
         cd "$GIT_REPO"
-        git add PKGBUILD .SRCINFO
+        git add PKGBUILD .SRCINFO mprisence-git.install
         git commit -m "Update to version $VERSION"
         git push
     )
