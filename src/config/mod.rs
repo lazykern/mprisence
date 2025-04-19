@@ -298,7 +298,6 @@ fn get_config_path() -> Result<PathBuf, ConfigError> {
 }
 
 fn ensure_config_exists(path: &Path) -> Result<(), ConfigError> {
-    // Only ensure parent directory exists, don't create the file
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(ConfigError::IO)?;
     }
@@ -312,7 +311,6 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
         "../../config/config.default.toml"
     )));
 
-    // Merge user config if it exists
     if path.exists() {
         log::debug!("Merging user config from {}", path.display());
         let user_config = Figment::new().merge(Toml::file(path));
