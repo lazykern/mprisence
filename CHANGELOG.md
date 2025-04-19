@@ -2,6 +2,12 @@
 
 All notable changes to mprisence will be documented in this file.
 
+## [1.2.1](https://github.com/lazykern/mprisence/compare/v1.2.0...v1.2.1)
+
+* Cover Art
+  * Use album artists for MusicBrainz release group search
+
+
 ## [1.2.0](https://github.com/lazykern/mprisence/compare/v1.1.2...v1.2.0)
 
 * Config
@@ -10,9 +16,8 @@ All notable changes to mprisence will be documented in this file.
 * Cover Art
   * Increased MusicBrainz query duration range from 3 seconds to 5 seconds
   * Added album name to MusicBrainz track search query
-  * Use album artists for MusicBrainz release group search
   * Escape Lucene special characters in MusicBrainz search queries
-  
+
 ## [1.1.2](https://github.com/lazykern/mprisence/compare/v1.1.1...v1.1.2)
 
 * Fix [#41](https://github.com/lazykern/mprisence/issues/41) 
