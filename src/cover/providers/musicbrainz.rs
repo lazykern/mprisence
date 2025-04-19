@@ -167,14 +167,12 @@ impl MusicbrainzProvider {
     async fn search_album<S: AsRef<str>>(
         &self,
         album: S,
-        artists: &[S],
+        album_artists: &[S],
     ) -> Result<Option<String>, CoverArtError> {
-        // Escape album title
         let escaped_album = escape_lucene(album.as_ref());
         let mut query = format!("release-group:{}", escaped_album);
 
-        if let Some(artist) = artists.first() {
-            // Escape artist name
+        if let Some(artist) = album_artists.first() {
             let escaped_artist = escape_lucene(artist.as_ref());
             query.push_str(&format!(" AND artist:{}", escaped_artist));
         }
@@ -269,12 +267,10 @@ impl MusicbrainzProvider {
         album: Option<S>,
         duration_ms: Option<u128>,
     ) -> Result<Option<String>, CoverArtError> {
-        // Escape track title
         let escaped_track = escape_lucene(track.as_ref());
         let mut query = format!("recording:{}", escaped_track);
 
         if let Some(artist) = artists.first() {
-            // Escape artist name
             let escaped_artist = escape_lucene(artist.as_ref());
             query.push_str(&format!(" AND artist:{}", escaped_artist));
         }
@@ -282,7 +278,6 @@ impl MusicbrainzProvider {
         if let Some(album_ref) = album.as_ref() {
             let album_str = album_ref.as_ref();
             if !album_str.is_empty() {
-                // Escape album title
                 let escaped_album = escape_lucene(album_str);
                 query.push_str(&format!(" AND album:{}", escaped_album));
             }
@@ -423,20 +418,11 @@ impl CoverArtProvider for MusicbrainzProvider {
 
         if let Some(album) = metadata_source.album() {
             if !album.is_empty() {
-                let search_artists_refs: Vec<&String> = if !album_artists.is_empty() {
-                    trace!("Using album artists for search: {:?}", album_artists);
-                    album_artists.iter().collect()
-                } else if !artists.is_empty() {
-                    trace!("Using track artists for search: {:?}", artists);
-                    artists.iter().collect()
-                } else {
-                    debug!("No artists available for search");
-                    return Ok(None);
-                };
 
-                if !search_artists_refs.is_empty() {
+                if !album_artists.is_empty() {
+                    let album_artists_refs: Vec<&String> = album_artists.iter().collect();
                     debug!("Attempting album-based search for '{}' with artists", album);
-                    if let Some(url) = self.search_album(&album, &search_artists_refs).await? {
+                    if let Some(url) = self.search_album(&album, &album_artists_refs).await? {
                         info!("Successfully found cover art via album search: {}", url);
                         return Ok(Some(CoverResult {
                             url,
