@@ -2,6 +2,16 @@
 
 All notable changes to mprisence will be documented in this file.
 
+## [1.2.0](https://github.com/lazykern/mprisence/compare/v1.1.2...v1.2.0)
+
+* Config
+  * Added `cover.provider.musicbrainz.min_score` to set the minimum score for MusicBrainz cover art
+  * Added `cover.local_search_depth` to set the depth of local cover art search
+* Cover Art
+  * Increased MusicBrainz query duration range from 3 seconds to 5 seconds
+  * Added album name to MusicBrainz track search query
+  * Escape Lucene special characters in MusicBrainz search queries
+
 ## [1.1.2](https://github.com/lazykern/mprisence/compare/v1.1.1...v1.1.2)
 
 * Fix [#41](https://github.com/lazykern/mprisence/issues/41) 
