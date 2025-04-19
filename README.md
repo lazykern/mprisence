@@ -122,9 +122,9 @@ journalctl --user -u mprisence -f
 4.  You can refer to `config.default.toml` (in the source repository or installation files) to see the default settings applied to specific players if you don't override them.
 
 ### Configuration Reference
-- [`config.example.toml`](./config.example.toml): Detailed options and explanations.
+- [`config.example.toml`](./config/config.example.toml): Detailed options and explanations.
 - [`config.default.toml`](./config/config.default.toml): Default configurations for popular players.
-- `src/metadata.rs`: Definitive source for all available template variables.
+- [`src/metadata.rs`](./src/metadata.rs): Definitive source for all available template variables.
 
 ---
 
