@@ -17,12 +17,16 @@ default = "listening"
 
 [cover]
 file_names = ["cover", "folder", "front", "album", "art"]
+local_search_depth = 2
 
 [cover.provider]
 provider = ["musicbrainz", "imgbb"]
 
 [cover.provider.imgbb]
 expiration = 86400
+
+[cover.provider.musicbrainz]
+min_score = 95
 
 [player]
 default = { ignore = false, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false }
@@ -91,7 +95,6 @@ icon = "https://dashboard.snapcraft.io/site_media/appmedia/2022/09/io.bassi.Ambe
 app_id = "1125077752756834314"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/SMPlayer_icon.svg/1200px-SMPlayer_icon.svg.png"
 
-# STREAMING
 [player.spotify]
 ignore = true
 
@@ -100,7 +103,6 @@ app_id = "1125082278339559505"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/768px-Youtube_Music_icon.svg.png"
 allow_streaming = true
 
-# BROWSERS
 [player.microsoft_edge]
 ignore = true
 allow_streaming = true

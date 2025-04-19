@@ -123,9 +123,14 @@ as_elapsed = false
 # Cover Art Settings
 # ------------------
 [cover]
-# Local cover art files to look for (if cover art is not found in the tag)
-# Searches in the same directory as the media file
+# List of file names (without extension) to search for local cover art.
+# Files are searched in the order listed.
+# Extensions like .jpg, .jpeg, .png, .gif are automatically checked.
 file_names = ["cover", "folder", "front", "album", "art"]
+
+# How many parent directories to search upwards from the media file's location
+# for local cover art. 0 means only search in the same directory.
+local_search_depth = 2
 
 [cover.provider]
 # Cover art providers (in order of preference)
@@ -134,13 +139,18 @@ file_names = ["cover", "folder", "front", "album", "art"]
 provider = ["musicbrainz", "imgbb"]
 
 [cover.provider.imgbb]
-# Your ImgBB API key for cover art hosting
-# Get one at: https://api.imgbb.com/
-# api_key = "YOUR_IMGBB_API_KEY"
+# Your ImgBB API key (required to use the imgbb provider).
+# Obtain from https://api.imgbb.com/
+# api_key = "your_api_key"
 
-# How long to keep uploaded images (in seconds)
-# Default: 1 day (86400 seconds)
-expiration = 86400
+# Expiration time in seconds for images uploaded to ImgBB.
+# 0 means the image never expires.
+expiration = 86400 # 24 hours
+
+[cover.provider.musicbrainz]
+# Minimum score (0-100) required for a MusicBrainz result to be considered valid.
+# Higher values mean stricter matching, lower values allow more potential matches and are more likely to be false positives.
+min_score = 95
 
 # ------------------
 # Player Settings
@@ -168,4 +178,14 @@ show_icon = true
 allow_streaming = true
 # override_activity_type = "watching"
 
-# For more examples of player configurations, see config.default.toml
+# You can add more player-specific configurations below, like:
+# [player.spotify]
+# ignore = true # Example: ignore Spotify
+#
+# [player.mpv]
+# app_id = "YOUR_MPV_DISCORD_APP_ID"
+# icon = "URL_TO_MPV_ICON"
+# show_icon = true
+# override_activity_type = "watching"
+
+# For more examples of player configurations, see config.default.toml (after running the app once to generate it)

@@ -25,6 +25,8 @@ const DEFAULT_TEMPLATE_SMALL_TEXT: &str = "Playing on {{{player}}}";
 
 const DEFAULT_COVER_FILE_NAMES: [&str; 5] = ["cover", "folder", "front", "album", "art"];
 const DEFAULT_COVER_PROVIDERS: [&str; 2] = ["musicbrainz", "imgbb"];
+const DEFAULT_COVER_LOCAL_SEARCH_DEPTH: usize = 2;
+const DEFAULT_MUSICBRAINZ_MIN_SCORE: u8 = 95;
 
 mod normalized_string {
     use crate::utils::normalize_player_identity;
@@ -272,7 +274,7 @@ fn default_cover_file_names() -> Vec<String> {
 }
 
 fn default_cover_local_search_depth() -> usize {
-    2
+    DEFAULT_COVER_LOCAL_SEARCH_DEPTH
 }
 
 impl Default for CoverConfig {
@@ -286,12 +288,33 @@ impl Default for CoverConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MusicbrainzConfig {
+    #[serde(default = "default_musicbrainz_min_score")]
+    pub min_score: u8,
+}
+
+fn default_musicbrainz_min_score() -> u8 {
+    DEFAULT_MUSICBRAINZ_MIN_SCORE
+}
+
+impl Default for MusicbrainzConfig {
+    fn default() -> Self {
+        Self {
+            min_score: default_musicbrainz_min_score(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoverProviderConfig {
     #[serde(default = "default_cover_providers")]
     pub provider: Vec<String>,
 
     #[serde(default)]
     pub imgbb: ImgBBConfig,
+
+    #[serde(default)]
+    pub musicbrainz: MusicbrainzConfig,
 }
 
 fn default_cover_providers() -> Vec<String> {
@@ -303,6 +326,7 @@ impl Default for CoverProviderConfig {
         CoverProviderConfig {
             provider: default_cover_providers(),
             imgbb: ImgBBConfig::default(),
+            musicbrainz: MusicbrainzConfig::default(),
         }
     }
 }
