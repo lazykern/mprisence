@@ -203,33 +203,55 @@ impl CoverCache {
     fn generate_key(&self, metadata_source: &MetadataSource) -> String {
         trace!("Generating cache key from metadata source");
         let mut hasher = Hasher::new();
+        let mut key_components = Vec::new();
 
-        if let Some(album) = metadata_source.album() {
-            trace!("Using album information for cache key");
-            hasher.update(b"album:");
-            hasher.update(album.as_bytes());
-
-            if let Some(artists) = metadata_source.album_artists() {
-                for artist in artists {
-                    hasher.update(artist.as_bytes());
-                }
-            }
-        } else {
-            trace!("Using track information for cache key");
-            hasher.update(b"track:");
-
-            if let Some(id) = metadata_source.track_id() {
-                hasher.update(id.to_string().as_bytes());
-            } else if let Some(title) = metadata_source.title() {
-                hasher.update(title.as_bytes());
-
-                if let Some(artists) = metadata_source.artists() {
-                    for artist in artists {
-                        hasher.update(artist.as_bytes());
-                    }
-                }
+        // 1. Title
+        if let Some(title) = metadata_source.title() {
+            if !title.is_empty() {
+                 key_components.push(format!("title:{}", title));
             }
         }
+
+        // 2. Track Artists (sorted)
+        if let Some(artists) = metadata_source.artists() {
+            if !artists.is_empty() {
+                let mut sorted_artists = artists.clone();
+                sorted_artists.sort_unstable();
+                key_components.push(format!("artists:{}", sorted_artists.join("|")));
+            }
+        }
+
+        // 3. Album (if non-empty)
+        if let Some(album) = metadata_source.album() {
+            if !album.is_empty() {
+                 key_components.push(format!("album:{}", album));
+                 // 4. Album Artists (if available, non-empty, and different from track artists)
+                 if let Some(album_artists) = metadata_source.album_artists() {
+                    if !album_artists.is_empty() && Some(&album_artists) != metadata_source.artists().as_ref() {
+                        let mut sorted_album_artists = album_artists.clone();
+                        sorted_album_artists.sort_unstable();
+                        key_components.push(format!("album_artists:{}", sorted_album_artists.join("|")));
+                    }
+                 }
+            }
+        }
+
+        // 5. URL (as fallback or additional differentiator)
+         if let Some(url) = metadata_source.url() {
+             if !url.is_empty() {
+                key_components.push(format!("url:{}", url));
+             }
+         }
+
+        // If somehow still empty, use a default
+        if key_components.is_empty() {
+            warn!("Could not generate meaningful cache key components, using default key");
+            key_components.push("default_mprisence_key".to_string());
+        }
+
+        let combined_key_data = key_components.join("||"); // Use a distinct separator
+        trace!("Hashing data for key: {}", combined_key_data);
+        hasher.update(combined_key_data.as_bytes());
 
         let key = hasher.finalize().to_hex().to_string();
         trace!("Generated cache key: {}", key);
