@@ -130,16 +130,12 @@ pub struct Config {
     #[serde(default = "default_interval")]
     pub interval: u64,
 
-    #[serde(default)]
     pub template: TemplateConfig,
 
-    #[serde(default)]
     pub time: TimeConfig,
 
-    #[serde(default)]
     pub cover: CoverConfig,
 
-    #[serde(default)]
     pub activity_type: ActivityTypesConfig,
 
     #[serde(default)]

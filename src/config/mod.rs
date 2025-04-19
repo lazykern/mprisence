@@ -315,7 +315,8 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     // Merge user config if it exists
     if path.exists() {
         log::debug!("Merging user config from {}", path.display());
-        figment = figment.merge(Toml::file(path));
+        let user_config = Figment::new().merge(Toml::file(path));
+        figment = figment.merge(user_config);
     }
 
     figment.extract().map_err(ConfigError::Figment)
