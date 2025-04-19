@@ -144,7 +144,7 @@ Some commonly used variables available in templates:
 - `{{duration_display}}`: Formatted track duration (e.g., `03:45`).
 - `{{track_display}}`: Formatted track number (e.g., `1/12`).
 
-*(See `config.example.toml` or `src/metadata.rs` for the complete list)*
+*(See [`config.example.toml`](https://github.com/lazykern/mprisence/blob/main/config/config.example.toml) or `src/metadata.rs` for the complete list. The example config file contains comments listing *all* available variables.)*
 
 ---
 
@@ -170,8 +170,9 @@ state = "{{#each artists}}{{this}}{{#unless @last}} & {{/unless}}{{/each}}"
 # Text shown when hovering over the large image - using conditional helpers
 large_text = "{{#if album}}{{{album}}}{{#if year}} ({{year}}){{/if}}{{#if album_artist_display}} by {{{album_artist_display}}}{{/if}}{{/if}}"
 
-# Text shown when hovering over the small image - using equality helper
-small_text = "{{#if (eq status \"playing\")}}▶{{else}}⏸{{/if}} on {{{player}}}"
+# Text shown when hovering over the small image (player icon)
+# Only visible when show_icon = true in player settings
+small_text = "{{#if player}}Playing on {{{player}}}{{else}}MPRIS{{/if}}"
 
 # Activity type settings
 [activity_type]
@@ -192,10 +193,20 @@ as_elapsed = true
 
 ### Cover Art Setup
 ```toml
+[cover]
+# File names (without extension) to search for local art (e.g., cover.jpg, folder.png)
+file_names = ["cover", "folder", "front", "album", "art"]
+# How many parent directories to search upwards for local art (0 = same dir only)
+local_search_depth = 2
+
 [cover.provider]
 # Cover art providers in order of preference
-# (imgbb will be used as a fallback if musicbrainz fails)
-provider = ["musicbrainz", "imgbb"]
+# (imgbb will be used as a fallback if musicbrainz fails or local art isn't found)
+provider = ["musicbrainz", "imgbb"] # Also checks local files first based on above
+
+[cover.provider.musicbrainz]
+# Minimum score (0-100) for MusicBrainz matches. Higher = stricter.
+min_score = 95
 
 [cover.provider.imgbb]
 # Your ImgBB API key (get one at: https://api.imgbb.com/)
@@ -208,18 +219,28 @@ expiration = 86400
 
 ### Player-Specific Configuration
 ```toml
-# Use 'mprisence players list' to get the correct player identity
+# Use 'mprisence players list' to get the correct player identity (e.g., vlc_media_player)
+
+# Default settings applied to ALL players unless overridden below
+[player.default]
+ignore = false # Set to true to disable presence for all players by default
+app_id = "1121632048155742288" # Default Discord Application ID
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png" # Default icon URL
+show_icon = false # Show player icon as small image by default?
+allow_streaming = false # Allow web/streaming content by default?
+
+# Override settings for a specific player (VLC in this example)
 [player.vlc_media_player]
-# Discord application ID (get yours at: https://discord.com/developers/docs/quick-start/overview-of-apps)
-app_id = "YOUR_APP_ID_HERE"
-# Player icon URL (shown as small image)
-icon = "https://example.com/vlc-icon.png"
-# Show player icon in Discord as small image
-show_icon = true
-# Allow Discord presence for web/streaming content
-allow_streaming = true
-# Override activity type for this player
-override_activity_type = "listening"
+# You can override any key from [player.default] here
+app_id = "YOUR_VLC_APP_ID_HERE" # Use a VLC-specific Discord App ID
+icon = "https://example.com/vlc-icon.png" # Use a VLC-specific icon
+show_icon = true # Show the VLC icon
+allow_streaming = true # Allow streaming content for VLC
+# You could also add 'override_activity_type = "watching"' here if desired
+
+# Example: Ignore Spotify
+# [player.spotify]
+# ignore = true
 ```
 
 ## CLI Commands
