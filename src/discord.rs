@@ -61,7 +61,7 @@ pub fn is_discord_running() -> bool {
         }
 
         if let Some(path) = successful_path {
-            debug!("Successfully connected via {:?}.", path);
+            trace!("Successfully connected via {:?}.", path);
             true
         } else {
             debug!("Could not connect to Discord IPC socket. Assuming not running.");
