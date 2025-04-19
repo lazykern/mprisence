@@ -130,6 +130,10 @@ clear_on_pause = true
 # How often to update Discord presence (in milliseconds)
 interval = 2000
 
+# Note: Triple braces `{{{variable}}}` are used to prevent HTML escaping, 
+# which is generally desired for Discord presence fields. 
+# See: https://handlebarsjs.com/guide/#html-escaping
+
 # Display template
 [template]
 # First line in Discord presence
@@ -141,7 +145,7 @@ state = "{{#each artists}}{{this}}{{#unless @last}} & {{/unless}}{{/each}}"
 # state = "{{{artist_display}}}"
 
 # Text shown when hovering over the large image - using conditional helpers
-large_text = "{{#if album}}{{{album}}}{{#if year}} ({{year}}){{/if}}{{#if album_artist_display}} by {{{album_artist_display}}}{{/if}}{{/if}}"
+large_text = "{{#if album}}{{{album}}}{{#if year}} ({{{year}}}){{/if}}{{#if album_artist_display}} by {{{album_artist_display}}}{{/if}}{{/if}}"
 
 # Text shown when hovering over the small image (player icon)
 # Only visible when show_icon = true in player settings
