@@ -12,6 +12,7 @@ All notable changes to mprisence will be documented in this file.
   * Added album name to MusicBrainz track search query
   * Use album artists for MusicBrainz release group search
   * Escape Lucene special characters in MusicBrainz search queries
+  
 ## [1.1.2](https://github.com/lazykern/mprisence/compare/v1.1.1...v1.1.2)
 
 * Fix [#41](https://github.com/lazykern/mprisence/issues/41) 
