@@ -291,14 +291,6 @@ impl MetadataSource {
             })
     }
 
-    pub fn track_id(&self) -> Option<String> {
-        trace!("Getting track ID from MPRIS metadata");
-        self.mpris_metadata
-            .as_ref()
-            .and_then(|m| m.track_id())
-            .map(|id| id.to_string())
-    }
-
     pub fn length(&self) -> Option<Duration> {
         trace!("Getting track length from metadata sources");
         self.mpris_metadata

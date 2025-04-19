@@ -35,7 +35,9 @@ impl CoverManager {
             match provider_name.as_str() {
                 "musicbrainz" => {
                     debug!("Adding MusicBrainz provider");
-                    providers.push(Box::new(providers::musicbrainz::MusicbrainzProvider::new()));
+                    providers.push(Box::new(providers::musicbrainz::MusicbrainzProvider::new(
+                        cover_config.provider.musicbrainz.clone(),
+                    )));
                 }
                 "imgbb" => {
                     if cover_config.provider.imgbb.api_key.is_some() {

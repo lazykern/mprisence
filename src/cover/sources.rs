@@ -80,7 +80,6 @@ pub fn search_local_cover_art(
         .follow_links(true)
         .into_iter()
         .filter_entry(|e| {
-            // Only traverse into directories or consider files
             e.file_type().is_dir() || e.file_type().is_file()
         });
 
@@ -104,13 +103,9 @@ pub fn search_local_cover_art(
         if let Some(file_stem) = file_path.file_stem().and_then(|s| s.to_str()) {
             if let Some(extension) = file_path.extension().and_then(|s| s.to_str()) {
                 let lower_ext = extension.to_lowercase();
-                // Check extension first
-                if supported_extensions.contains(lower_ext.as_str()) {
-                    // Then check stem
-                    if target_stems.contains(&file_stem.to_lowercase()) {
-                        info!("Found matching local cover art file: {:?} (format: {})", file_path, lower_ext);
-                        return Ok(Some(ArtSource::File(file_path.to_path_buf())));
-                    }
+                if supported_extensions.contains(lower_ext.as_str()) && target_stems.contains(&file_stem.to_lowercase()) {
+                    info!("Found matching local cover art file: {:?} (format: {})", file_path, lower_ext);
+                    return Ok(Some(ArtSource::File(file_path.to_path_buf())));
                 }
             }
         }
