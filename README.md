@@ -101,18 +101,9 @@ journalctl --user -u mprisence -f
     ```bash
     mkdir -p ~/.config/mprisence
     ```
-2.  **Copy the example configuration:**
-    *   **If installed via AUR or package manager:**
-        ```bash
-        # The exact path might vary slightly depending on the package.
-        # Check with 'pacman -Ql mprisence | grep config.example.toml' if unsure.
-        cp /usr/share/mprisence/config.example.toml ~/.config/mprisence/config.toml
-        ```
-    *   **If built manually from source:** Navigate to the cloned repository directory and run:
-        ```bash
-        cp config/config.example.toml ~/.config/mprisence/config.toml
-        ```
-    *   **Alternatively, download the latest example directly:**
+2.  **Copy the example configuration:** Copy `config.example.toml` to `~/.config/mprisence/config.toml`.
+    *   You can find the example file in the source repository (`config/config.example.toml`) or in the installation directory (e.g., `/usr/share/mprisence/config.example.toml` if installed via package manager - use `pacman -Ql mprisence | grep config.example.toml` on Arch to find the exact path).
+    *   Alternatively, download the latest example directly:
         ```bash
         curl -o ~/.config/mprisence/config.toml https://raw.githubusercontent.com/lazykern/mprisence/main/config/config.example.toml
         ```
@@ -128,27 +119,9 @@ journalctl --user -u mprisence -f
 
 ---
 
-### Key Template Variables
-Some commonly used variables available in templates:
+<details>
+<summary>Basic Configuration Example</summary>
 
-- `{{player}}`: Name of the media player (e.g., `vlc`, `spotify`).
-- `{{status}}`: Playback status (`Playing`, `Paused`, `Stopped`).
-- `{{status_icon}}`: Icon representing the status (`▶`, `⏸`, `⏹`).
-- `{{title}}`: Track title.
-- `{{artists}}`: List of track artists.
-- `{{artist_display}}`: Comma-separated track artists.
-- `{{album}}`: Album title.
-- `{{album_artists}}`: List of album artists.
-- `{{album_artist_display}}`: Comma-separated album artists.
-- `{{year}}`: Release year.
-- `{{duration_display}}`: Formatted track duration (e.g., `03:45`).
-- `{{track_display}}`: Formatted track number (e.g., `1/12`).
-
-*(See [`config.example.toml`](https://github.com/lazykern/mprisence/blob/main/config/config.example.toml) or `src/metadata.rs` for the complete list. The example config file contains comments listing *all* available variables.)*
-
----
-
-### Basic Configuration Example
 ```toml
 # Basic settings
 # Whether to clear Discord activity when media is paused
@@ -188,10 +161,13 @@ show = true
 # true = show elapsed time, false = show remaining time
 as_elapsed = true
 ```
+</details>
 
 ---
 
-### Cover Art Setup
+<details>
+<summary>Cover Art Setup</summary>
+
 ```toml
 [cover]
 # File names (without extension) to search for local art (e.g., cover.jpg, folder.png)
@@ -214,10 +190,13 @@ api_key = "YOUR_API_KEY_HERE"
 # How long to keep uploaded images (in seconds, default: 1 day)
 expiration = 86400
 ```
+</details>
 
 ---
 
-### Player-Specific Configuration
+<details>
+<summary>Player-Specific Configuration</summary>
+
 ```toml
 # Use 'mprisence players list' to get the correct player identity (e.g., vlc_media_player)
 
@@ -242,6 +221,7 @@ allow_streaming = true # Allow streaming content for VLC
 # [player.spotify]
 # ignore = true
 ```
+</details>
 
 ## CLI Commands
 
@@ -268,7 +248,8 @@ mprisence version
 RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
 ```
 
-## Troubleshooting
+<details>
+<summary>Troubleshooting</summary>
 
 ### Common Issues
 
@@ -291,22 +272,12 @@ RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
     *   **Cache:** Try clearing the cache (`rm -rf ~/.cache/mprisence/cover_art`) if you suspect stale entries.
 
 3.  **Service Issues**
-    ```bash
-    # Check service status
-    systemctl --user status mprisence
-
-    # View detailed logs
-    journalctl --user -u mprisence
-
-    # Restart service (e.g., after config changes)
-    systemctl --user restart mprisence
-    ```
+    *   Use the commands mentioned in the [Autostarting / Service Management](#autostarting--service-management) section to check status (`status`), view logs (`journalctl`), and manage the service (`start`, `stop`, `restart`).
 
 4.  **Configuration Issues**
     *   **Syntax Errors:** Validate your `config.toml` using an online TOML validator or `toml-lint`.
-    *   **Logs:** Check for parsing errors: `journalctl --user -u mprisence` or `RUST_LOG=debug mprisence`.
-    *   **Incorrect Player Identity:**  Ensure the `[player.<identity>]` section uses the **exact, normalized** identity shown by running `mprisence players list`. Player names are typically converted to lowercase, and special characters/spaces are replaced with underscores (e.g., "VLC media player" becomes `vlc_media_player`).
     *   **Defaults:** If unsure, temporarily remove your `~/.config/mprisence/config.toml` to test with the built-in defaults.
+</details>
 
 ## Contributing
 
