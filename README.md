@@ -8,7 +8,7 @@ A highly customizable Discord Rich Presence client for MPRIS media players. Supp
 
 ![mprisence Example](assets/example.gif)
 
-*(Note: Actual appearance depends on your configuration and the specific media player)*
+_(Note: Actual appearance depends on your configuration and the specific media player)_
 
 ## Preconfigured Players
 
@@ -20,32 +20,36 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
 
 ## Features
 
-- **Universal Media Player Support**: Works with any MPRIS-compatible Linux media player.
-- **Advanced Templating**: Utilize the power of Handlebars templates for complete control over your presence text, including conditionals and helpers.
-- **Sophisticated Cover Art**: Fetches cover art from MusicBrainz, uploads local art via ImgBB (optional), caches results, and uses metadata intelligently.
-- **Live Configuration (Hot Reload)**: Change your `config.toml` and see the updates reflected instantly without restarting the service.
-- **Content-Aware Activity**: Automatically sets your Discord status to "Listening", "Watching", etc., based on the media type (configurable).
-- **Player-Specific Settings**: Customize Discord App IDs, icons, and behavior for individual players.
-- **Detailed Metadata**: Access a rich set of metadata (including technical audio details) within your templates.
+|                                 |                                                                                                                              |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Universal Media Player Support  | Works with any MPRIS-compatible Linux media player.                                                                          |
+| Advanced Templating             | Utilize the power of Handlebars templates for complete control over your presence text, including conditionals and helpers.  |
+| Sophisticated Cover Art         | Fetches cover art from MusicBrainz, uploads local art via ImgBB (optional), caches results, and uses metadata intelligently. |
+| Live Configuration (Hot Reload) | Change your `config.toml` and see the updates reflected instantly without restarting the service.                            |
+| Content-Aware Activity          | Automatically sets your Discord status to "Listening", "Watching", etc., based on the media type (configurable).             |
+| Player-Specific Settings        | Customize Discord App IDs, icons, and behavior for individual players.                                                       |
+| Detailed Metadata               | Access a rich set of metadata (including technical audio details) within your templates.                                     |
 
 ## Prerequisites
 
 - **For running:** A desktop environment with an active D-Bus session (standard on most Linux desktops).
 - **For service management:** `systemd` (user instance).
 - **For manual installation/building from source:**
-    - `rustc` and `cargo` (latest stable version recommended)
-    - `make`
-    - `git` (to clone the repository)
+  - `rustc` and `cargo` (latest stable version recommended)
+  - `make`
+  - `git` (to clone the repository)
 
 ## Installation
 
 ### Arch Linux
+
 ```bash
 # Install from AUR
 yay -S mprisence
 ```
 
 ### Manual Installation
+
 ```bash
 # Clone the repository
 git clone https://github.com/lazykern/mprisence.git
@@ -61,7 +65,7 @@ make install-local ENABLE_SERVICE=0
 make uninstall-local
 ```
 
-*If you installed using `make` (without `ENABLE_SERVICE=0`), the systemd service will be enabled. See the next section for how to manage it.*
+_If you installed using `make` (without `ENABLE_SERVICE=0`), the systemd service will be enabled. See the next section for how to manage it._
 
 ## Autostarting / Service Management
 
@@ -97,22 +101,26 @@ journalctl --user -u mprisence -f
 `mprisence` is highly configurable via `~/.config/mprisence/config.toml` (or `$XDG_CONFIG_HOME/mprisence/config.toml`).
 
 ### Getting Started
+
 1.  **Ensure the configuration directory exists:**
     ```bash
     mkdir -p ~/.config/mprisence
     ```
 2.  **Copy the example configuration:** Copy `config.example.toml` to `~/.config/mprisence/config.toml`.
-    *   You can find the example file in the source repository (`config/config.example.toml`) or in the installation directory (e.g., `/usr/share/mprisence/config.example.toml` if installed via package manager - use `pacman -Ql mprisence | grep config.example.toml` on Arch to find the exact path).
-    *   Alternatively, download the latest example directly:
-        ```bash
-        curl -o ~/.config/mprisence/config.toml https://raw.githubusercontent.com/lazykern/mprisence/main/config/config.example.toml
-        ```
+
+    - You can find the example file in the source repository (`config/config.example.toml`) or in the installation directory (e.g., `/usr/share/mprisence/config.example.toml` if installed via package manager - use `pacman -Ql mprisence | grep config.example.toml` on Arch to find the exact path).
+    - Alternatively, download the latest example directly:
+      ```bash
+      curl -o ~/.config/mprisence/config.toml https://raw.githubusercontent.com/lazykern/mprisence/main/config/config.example.toml
+      ```
 
     This file contains detailed explanations of all options.
+
 3.  **Modify** `~/.config/mprisence/config.toml` to your liking.
 4.  You can refer to `config.default.toml` (in the source repository or installation files) to see the default settings applied to specific players if you don't override them.
 
 ### Configuration Reference
+
 - [`config.example.toml`](./config/config.example.toml): Detailed options and explanations.
 - [`config.default.toml`](./config/config.default.toml): Default configurations for popular players.
 - [`src/metadata.rs`](./src/metadata.rs): Definitive source for all available template variables.
@@ -130,8 +138,8 @@ clear_on_pause = true
 # How often to update Discord presence (in milliseconds)
 interval = 2000
 
-# Note: Triple braces `{{{variable}}}` are used to prevent HTML escaping, 
-# which is generally desired for Discord presence fields. 
+# Note: Triple braces `{{{variable}}}` are used to prevent HTML escaping,
+# which is generally desired for Discord presence fields.
 # See: https://handlebarsjs.com/guide/#html-escaping
 
 # Display template
@@ -165,6 +173,7 @@ show = true
 # true = show elapsed time, false = show remaining time
 as_elapsed = true
 ```
+
 </details>
 
 ---
@@ -194,6 +203,7 @@ api_key = "YOUR_API_KEY_HERE"
 # How long to keep uploaded images (in seconds, default: 1 day)
 expiration = 86400
 ```
+
 </details>
 
 ---
@@ -225,6 +235,7 @@ allow_streaming = true # Allow streaming content for VLC
 # [player.spotify]
 # ignore = true
 ```
+
 </details>
 
 ## CLI Commands
@@ -258,29 +269,32 @@ RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
 ### Common Issues
 
 1.  **Discord Presence Not Showing / Updating**
-    *   **Is Discord running?** Ensure the Discord desktop client is open.
-    *   **Is your player running and MPRIS-compatible?** Run `mprisence players list` to see detectable players.
-    *   **Is the service running?** `systemctl --user status mprisence`
-    *   **Discord Settings:** Check `Discord Settings -> Registered Games / Activity Privacy`. Ensure `Display current activity as a status message.` is ON. Sometimes toggling this off and on helps. Add `mprisence` if it's not listed.
-    *   **Correct App ID?** Verify the `app_id` in your config matches a valid Discord application ID.
-    *   **Logs:** Check `journalctl --user -u mprisence -f` or run `RUST_LOG=debug mprisence` for errors.
+
+    - **Is Discord running?** Ensure the Discord desktop client is open.
+    - **Is your player running and MPRIS-compatible?** Run `mprisence players list` to see detectable players.
+    - **Is the service running?** `systemctl --user status mprisence`
+    - **Discord Settings:** Check `Discord Settings -> Registered Games / Activity Privacy`. Ensure `Display current activity as a status message.` is ON. Sometimes toggling this off and on helps. Add `mprisence` if it's not listed.
+    - **Correct App ID?** Verify the `app_id` in your config matches a valid Discord application ID.
+    - **Logs:** Check `journalctl --user -u mprisence -f` or run `RUST_LOG=debug mprisence` for errors.
 
 2.  **Cover Art Not Displaying**
-    *   **Check the logs:** Run with `RUST_LOG=debug mprisence` to see the cover art process.
-    *   **Provider Order:** Cover art is checked in this order: Cache -> Direct URL (from metadata) -> Local Files -> Configured Providers (e.g., MusicBrainz, ImgBB).
-    *   **MusicBrainz:** Does the track metadata (title, artist, album) accurately match the MusicBrainz database? Check the `min_score` in your config.
-    *   **ImgBB:**
-        *   Is a local file available (embedded or matching `file_names` in the folder/parent folders)? ImgBB is primarily used to *upload* local art.
-        *   Is your `api_key` in `[cover.provider.imgbb]` correct and valid?
-        *   Is the image file format supported and readable?
-    *   **Cache:** Try clearing the cache (`rm -rf ~/.cache/mprisence/cover_art`) if you suspect stale entries.
+
+    - **Check the logs:** Run with `RUST_LOG=debug mprisence` to see the cover art process.
+    - **Provider Order:** Cover art is checked in this order: Cache -> Direct URL (from metadata) -> Local Files -> Configured Providers (e.g., MusicBrainz, ImgBB).
+    - **MusicBrainz:** Does the track metadata (title, artist, album) accurately match the MusicBrainz database? Check the `min_score` in your config.
+    - **ImgBB:**
+      - Is a local file available (embedded or matching `file_names` in the folder/parent folders)? ImgBB is primarily used to _upload_ local art.
+      - Is your `api_key` in `[cover.provider.imgbb]` correct and valid?
+      - Is the image file format supported and readable?
+    - **Cache:** Try clearing the cache (`rm -rf ~/.cache/mprisence/cover_art`) if you suspect stale entries.
 
 3.  **Service Issues**
-    *   Use the commands mentioned in the [Autostarting / Service Management](#autostarting--service-management) section to check status (`status`), view logs (`journalctl`), and manage the service (`start`, `stop`, `restart`).
+
+    - Use the commands mentioned in the [Autostarting / Service Management](#autostarting--service-management) section to check status (`status`), view logs (`journalctl`), and manage the service (`start`, `stop`, `restart`).
 
 4.  **Configuration Issues**
-    *   **Syntax Errors:** Validate your `config.toml` using an online TOML validator or `toml-lint`.
-    *   **Defaults:** If unsure, temporarily remove your `~/.config/mprisence/config.toml` to test with the built-in defaults.
+_ **Syntax Errors:** Validate your `config.toml` using an online TOML validator or `toml-lint`.
+_ **Defaults:** If unsure, temporarily remove your `~/.config/mprisence/config.toml` to test with the built-in defaults.
 </details>
 
 ## Contributing
