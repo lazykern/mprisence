@@ -95,6 +95,10 @@ icon = "https://dashboard.snapcraft.io/site_media/appmedia/2022/09/io.bassi.Ambe
 app_id = "1125077752756834314"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/SMPlayer_icon.svg/1200px-SMPlayer_icon.svg.png"
 
+[player.fooyin]
+app_id = "1396689706246209606"
+icon = "https://dl.flathub.org/media/org/fooyin/fooyin/ef334d703743511632d5c616bea80c43/icons/128x128@2/org.fooyin.fooyin.png"
+
 [player.spotify]
 ignore = true
 
