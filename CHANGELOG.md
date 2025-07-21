@@ -2,6 +2,11 @@
 
 All notable changes to mprisence will be documented in this file.
 
+## [1.2.2](https://github.com/lazykern/mprisence/compare/v1.2.1...v1.2.2)
+
+* Config
+  * Added fooyin music player to default config
+
 ## [1.2.1](https://github.com/lazykern/mprisence/compare/v1.2.0...v1.2.1)
 
 * Cover Art
