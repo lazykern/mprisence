@@ -24,7 +24,7 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Universal Media Player Support  | Works with any MPRIS-compatible Linux media player.                                                                          |
 | Advanced Templating             | Utilize the power of Handlebars templates for complete control over your presence text, including conditionals and helpers.  |
-| Sophisticated Cover Art         | Fetches cover art from MusicBrainz, uploads local art via ImgBB (optional), caches results, and uses metadata intelligently. |
+| Online/Local Cover Arts         | Automatically finds and displays the right album or video art. It can grab it from the web or use your own local files. |
 | Live Configuration (Hot Reload) | Change your `config.toml` and see the updates reflected instantly without restarting the service.                            |
 | Content-Aware Activity          | Automatically sets your Discord status to "Listening", "Watching", etc., based on the media type (configurable).             |
 | Player-Specific Settings        | Customize Discord App IDs, icons, and behavior for individual players.                                                       |
