@@ -2,6 +2,13 @@
 
 All notable changes to mprisence will be documented in this file.
 
+## [1.2.3](https://github.com/lazykern/mprisence/compare/v1.2.2...v1.2.3)
+
+* Dependencies
+  * Bumped `notify` from 8.0.0 to 8.1.0
+  * Upgraded `toml` from 0.8.20 to 0.9
+  * Upgraded `blake3` from 1.8.1 to 1.8.2
+
 ## [1.2.2](https://github.com/lazykern/mprisence/compare/v1.2.1...v1.2.2)
 
 * Config

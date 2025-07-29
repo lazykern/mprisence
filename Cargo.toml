@@ -1,6 +1,6 @@
 [package]
 name = "mprisence"
-version = "1.2.2"
+version = "1.2.3"
 edition = "2021"
 authors = ["Phusit Somboonyingsuk"]
 readme = "README.md"
@@ -21,16 +21,16 @@ handlebars_misc_helpers = { version = "0.17.0", features = ["string"] }
 log = "0.4.27"
 mime_guess = "2.0.5"
 mpris = "2.0.1"
-notify = "8.0.0"
+notify = "8.1.0"
 parking_lot = "0.12"
 serde = { version = "1.0.219", features = ["derive"] }
 smallvec = "1.15"
 smol_str = "0.3.2"
 thiserror = "2.0.12"
 tokio = { version = "1.44.2", features = ["full"] }
-toml = "0.8.20"
+toml = "0.9"
 url = "2.5.4"
-blake3 = "1.8.1"
+blake3 = "1.8.2"
 async-trait = "0.1.88"
 reqwest = { version = "0.12.15", features = ["json", "multipart"] }
 imgbb = "1.4.0"
