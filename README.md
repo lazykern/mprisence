@@ -38,91 +38,125 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
   - `rustc` and `cargo` (latest stable version recommended)
   - `git` (to clone the repository)
 
-## Installation
+## Installation and Setup
 
-### Arch Linux
+#### Arch Linux
 
 ```bash
-# Install from AUR
+# Install the stable version
 yay -S mprisence
+
+# Or, install the latest development version
+yay -S mprisence-git
 ```
 
-### From Source
+#### Debian, Ubuntu, and derivatives
 
-1. **Install the binary:**
+Download the `.deb` package from the [**GitHub Releases page**](https://github.com/lazykern/mprisence/releases) and install it:
+```bash
+sudo dpkg -i /path/to/mprisence_*.deb
+```
 
+### Manual Installation
+
+This method is for other Linux distributions, or if you prefer to install from source or crates.io. It requires a few manual setup steps.
+
+#### Step 1: Install the `mprisence` binary
+
+Choose **one** of the following ways to get the executable:
+
+<details>
+<summary><b>Option A: From Crates.io (requires Rust)</b></summary>
+
+```bash
+cargo install mprisence
+```
+This will install the binary to `~/.cargo/bin/`. Ensure this directory is in your `$PATH`.
+
+</details>
+
+<details>
+<summary><b>Option B: From GitHub Releases (pre-compiled)</b></summary>
+
+Download the `...-unknown-linux-gnu.tar.gz` archive from the [**GitHub Releases page**](https://github.com/lazykern/mprisence/releases). Extract it, and place the `mprisence` binary in a directory included in your system's `$PATH` (e.g., `~/.local/bin` or `/usr/local/bin`).
+
+</details>
+
+<details>
+<summary><b>Option C: From Source (for development)</b></summary>
+
+```bash
+# Clone the repository
+git clone https://github.com/lazykern/mprisence.git
+cd mprisence
+
+# Install from local source
+cargo install --path .
+```
+This also installs the binary to `~/.cargo/bin/`.
+
+</details>
+
+#### Step 2: Set up Configuration
+
+`mprisence` looks for its configuration at `~/.config/mprisence/config.toml`.
+
+1.  **Create the configuration directory:**
     ```bash
-    cargo install --path .
+    mkdir -p ~/.config/mprisence
     ```
 
-    This command compiles and installs the `mprisence` binary to `~/.cargo/bin/mprisence`. Ensure `~/.cargo/bin` is in your system's `PATH`.
-
-2. **Set up Configuration:**
-    Follow the instructions in the [Configuration](#configuration) section to set up your `config.toml` file.
-
-3. **Set up the Systemd Service (for autostarting):**
-    To run `mprisence` automatically on login, you need to set up the systemd user service.
-
+2.  **Download the example configuration:**
     ```bash
-    # Create the systemd user directory if it doesn't exist
+    curl -o ~/.config/mprisence/config.toml https://raw.githubusercontent.com/lazykern/mprisence/main/config/config.example.toml
+    ```
+    Now you can edit this file to customize mprisence. See the [Configuration Reference](#configuration-reference) section for more details.
+
+#### Step 3: Set up and Run the Service
+
+To have `mprisence` start automatically on login, set up the systemd user service.
+
+1.  **Create the systemd user directory if it doesn't exist:**
+    ```bash
     mkdir -p ~/.config/systemd/user
-
-    # Copy the service file
-    cp mprisence.service ~/.config/systemd/user/mprisence.service
     ```
 
-    The service file is pre-configured to work with `cargo install`.
+2.  **Download the service file:**
+    The provided service file is configured to find the `mprisence` binary in `~/.cargo/bin/`.
+    ```bash
+    curl -o ~/.config/systemd/user/mprisence.service https://raw.githubusercontent.com/lazykern/mprisence/main/mprisence.service
+    ```
+    > **Note:** If you placed the binary in a different location (e.g., `/usr/local/bin`), you must edit `~/.config/systemd/user/mprisence.service` and change the `ExecStart` path.
 
-    Finally, enable and start the service as described in the next section.
+3.  **Enable and start the service:**
+    ```bash
+    systemctl --user enable --now mprisence
+    ```
+    This command enables `mprisence` to start at login and starts it immediately.
 
-## Autostarting / Service Management
+### Managing the Service
 
-If you installed from an AUR package or set up the service manually, `mprisence` will run as a systemd user service.
-
-You can manage the service using `systemctl --user`:
+Once the service is installed (either manually or via a package), you can manage it using `systemctl --user`:
 
 ```bash
 # Check service status
 systemctl --user status mprisence
 
-# Restart the service
+# Restart the service after changing the config
 systemctl --user restart mprisence
-
-# Enable the service to start on login
-systemctl --user enable --now mprisence
-
-# Disable the service from starting on login
-systemctl --user disable --now mprisence
 
 # View detailed logs
 journalctl --user -u mprisence -f
+
+# Stop and disable the service
+systemctl --user disable --now mprisence
 ```
 
 ## Configuration
 
 `mprisence` is highly configurable via `~/.config/mprisence/config.toml` (or `$XDG_CONFIG_HOME/mprisence/config.toml`).
 
-### Getting Started
-
-1. **Ensure the configuration directory exists:**
-
-    ```bash
-    mkdir -p ~/.config/mprisence
-    ```
-
-2. **Copy the example configuration:** Copy `config.example.toml` to `~/.config/mprisence/config.toml`.
-
-    - You can find the example file in the source repository (`config/config.example.toml`) or in the installation directory (e.g., `/usr/share/mprisence/config.example.toml` if installed via package manager - use `pacman -Ql mprisence | grep config.example.toml` on Arch to find the exact path).
-    - Alternatively, download the latest example directly:
-
-      ```bash
-      curl -o ~/.config/mprisence/config.toml https://raw.githubusercontent.com/lazykern/mprisence/main/config/config.example.toml
-      ```
-
-    This file contains detailed explanations of all options.
-
-3. **Modify** `~/.config/mprisence/config.toml` to your liking.
-4. You can refer to `config.default.toml` (in the source repository or installation files) to see the default settings applied to specific players if you don't override them.
+After following the installation steps, you can modify `~/.config/mprisence/config.toml` to your liking. The application will hot-reload most configuration changes automatically.
 
 ### Configuration Reference
 
