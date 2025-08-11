@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+echo "Reloading systemd user daemon..."
+systemctl --user daemon-reload >/dev/null 2>&1 || :
+
+echo
+echo ">>> Run the following command to enable and start the mprisence service:"
+echo ">>> systemctl --user enable --now mprisence.service"
+
+exit 0

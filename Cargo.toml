@@ -46,3 +46,15 @@ interprocess = "2.2.3"
 regex = "1"
 
 [dev-dependencies]
+
+[package.metadata.deb]
+maintainer = "Phusit Somboonyingsuk <lazykern@gmail.com>"
+copyright = "2025, Phusit Somboonyingsuk"
+license-file = ["LICENSE", "0"]
+depends = "libdbus-1-3, libgcc-s1, libc6"
+assets = [
+    ["target/release/mprisence", "usr/bin/mprisence", "755"],
+    ["config/config.example.toml", "etc/mprisence/config.example.toml", "644"],
+    ["packaging/deb/mprisence.service", "usr/lib/systemd/user/mprisence.service", "644"]
+]
+maintainer-scripts = "packaging/deb"

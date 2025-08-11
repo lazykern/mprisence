@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+
+echo "Reloading systemd user daemon..."
+systemctl --user daemon-reload >/dev/null 2>&1 || :
+
+exit 0
