@@ -334,8 +334,7 @@ mprisence version
 RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
 ```
 
-<details>
-<summary>Troubleshooting</summary>
+## Troubleshooting
 
 ### Common Issues
 
@@ -366,8 +365,6 @@ RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
 4. **Configuration Issues**
 _**Syntax Errors:** Validate your `config.toml` using an online TOML validator or `toml-lint`.
 _ **Defaults:** If unsure, temporarily remove your `~/.config/mprisence/config.toml` to test with the built-in defaults.
-
-</details>
 
 ## Contributing
 
