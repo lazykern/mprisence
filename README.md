@@ -49,17 +49,20 @@ yay -S mprisence
 
 ### From Source
 
-1.  **Install the binary:**
+1. **Install the binary:**
+
     ```bash
     cargo install --path .
     ```
+
     This command compiles and installs the `mprisence` binary to `~/.cargo/bin/mprisence`. Ensure `~/.cargo/bin` is in your system's `PATH`.
 
-2.  **Set up Configuration:**
+2. **Set up Configuration:**
     Follow the instructions in the [Configuration](#configuration) section to set up your `config.toml` file.
 
-3.  **Set up the Systemd Service (for autostarting):**
+3. **Set up the Systemd Service (for autostarting):**
     To run `mprisence` automatically on login, you need to set up the systemd user service.
+
     ```bash
     # Create the systemd user directory if it doesn't exist
     mkdir -p ~/.config/systemd/user
@@ -67,6 +70,7 @@ yay -S mprisence
     # Copy the service file
     cp mprisence.service ~/.config/systemd/user/mprisence.service
     ```
+
     The service file is pre-configured to work with `cargo install`.
 
     Finally, enable and start the service as described in the next section.
@@ -100,22 +104,25 @@ journalctl --user -u mprisence -f
 
 ### Getting Started
 
-1.  **Ensure the configuration directory exists:**
+1. **Ensure the configuration directory exists:**
+
     ```bash
     mkdir -p ~/.config/mprisence
     ```
-2.  **Copy the example configuration:** Copy `config.example.toml` to `~/.config/mprisence/config.toml`.
+
+2. **Copy the example configuration:** Copy `config.example.toml` to `~/.config/mprisence/config.toml`.
 
     - You can find the example file in the source repository (`config/config.example.toml`) or in the installation directory (e.g., `/usr/share/mprisence/config.example.toml` if installed via package manager - use `pacman -Ql mprisence | grep config.example.toml` on Arch to find the exact path).
     - Alternatively, download the latest example directly:
+
       ```bash
       curl -o ~/.config/mprisence/config.toml https://raw.githubusercontent.com/lazykern/mprisence/main/config/config.example.toml
       ```
 
     This file contains detailed explanations of all options.
 
-3.  **Modify** `~/.config/mprisence/config.toml` to your liking.
-4.  You can refer to `config.default.toml` (in the source repository or installation files) to see the default settings applied to specific players if you don't override them.
+3. **Modify** `~/.config/mprisence/config.toml` to your liking.
+4. You can refer to `config.default.toml` (in the source repository or installation files) to see the default settings applied to specific players if you don't override them.
 
 ### Configuration Reference
 
@@ -266,7 +273,7 @@ RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
 
 ### Common Issues
 
-1.  **Discord Presence Not Showing / Updating**
+1. **Discord Presence Not Showing / Updating**
 
     - **Is Discord running?** Ensure the Discord desktop client is open.
     - **Is your player running and MPRIS-compatible?** Run `mprisence players list` to see detectable players.
@@ -275,7 +282,7 @@ RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
     - **Correct App ID?** Verify the `app_id` in your config matches a valid Discord application ID.
     - **Logs:** Check `journalctl --user -u mprisence -f` or run `RUST_LOG=debug mprisence` for errors.
 
-2.  **Cover Art Not Displaying**
+2. **Cover Art Not Displaying**
 
     - **Check the logs:** Run with `RUST_LOG=debug mprisence` to see the cover art process.
     - **Provider Order:** Cover art is checked in this order: Cache -> Direct URL (from metadata) -> Local Files -> Configured Providers (e.g., MusicBrainz, ImgBB).
@@ -286,13 +293,14 @@ RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
       - Is the image file format supported and readable?
     - **Cache:** Try clearing the cache (`rm -rf ~/.cache/mprisence/cover_art`) if you suspect stale entries.
 
-3.  **Service Issues**
+3. **Service Issues**
 
     - Use the commands mentioned in the [Autostarting / Service Management](#autostarting--service-management) section to check status (`status`), view logs (`journalctl`), and manage the service (`start`, `stop`, `restart`).
 
-4.  **Configuration Issues**
-_ **Syntax Errors:** Validate your `config.toml` using an online TOML validator or `toml-lint`.
+4. **Configuration Issues**
+_**Syntax Errors:** Validate your `config.toml` using an online TOML validator or `toml-lint`.
 _ **Defaults:** If unsure, temporarily remove your `~/.config/mprisence/config.toml` to test with the built-in defaults.
+
 </details>
 
 ## Contributing
