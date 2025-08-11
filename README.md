@@ -40,6 +40,8 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
 
 ## Installation and Setup
 
+### Package Manager
+
 #### Arch Linux
 
 ```bash
@@ -168,6 +170,23 @@ systemctl --user disable --now mprisence
 `mprisence` is highly configurable via `~/.config/mprisence/config.toml` (or `$XDG_CONFIG_HOME/mprisence/config.toml`).
 
 After following the installation steps, you can modify `~/.config/mprisence/config.toml` to your liking. The application will hot-reload most configuration changes automatically.
+
+### Local Album Covers
+
+mprisence uses Imgbb as image hosting provider to host your local album covers, you need to get an ImgBB API key (get one at: https://api.imgbb.com/ after you logged in) and update the config as below
+
+```toml
+# [cover.provider]
+# provider = ["imgbb", "musicbrainz"] # this will prioritize imgbb (originally ["musicbrainz", "imgbb"])
+# or just set it to ["imgbb"] so it will only use local cover art only
+
+[cover.provider.imgbb]
+api_key = "YOUR_API_KEY_HERE"
+```
+
+Notes:
+
+- Clear cache: `rm -rf ~/.cache/mprisence/cover_art`.
 
 ### Configuration Reference
 
