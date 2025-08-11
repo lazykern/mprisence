@@ -2,6 +2,7 @@ use log::{debug, info, trace, warn};
 use std::sync::Arc;
 use std::time::Duration;
 use std::path::PathBuf;
+use url::{Host, Url};
 
 use crate::config;
 use crate::metadata::MetadataSource;
@@ -13,7 +14,7 @@ pub mod sources;
 
 use cache::CoverCache;
 use error::CoverArtError;
-use providers::CoverArtProvider;
+use providers::{CoverArtProvider, create_shared_client};
 use sources::{ArtSource, search_local_cover_art};
 
 const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 24 hours
@@ -62,6 +63,32 @@ impl CoverManager {
         Ok(Self { providers, cache, config: config.clone() })
     }
 
+    fn is_local_or_private_url(url_str: &str) -> bool {
+        if let Ok(parsed) = Url::parse(url_str) {
+            if let Some(host) = parsed.host() {
+                match host {
+                    Host::Domain(d) => {
+                        let dl = d.to_ascii_lowercase();
+                        if dl == "localhost" || dl.ends_with(".localhost") {
+                            return true;
+                        }
+                    }
+                    Host::Ipv4(ip) => {
+                        if ip.is_loopback() || ip.is_private() || ip.is_link_local() || ip.is_unspecified() {
+                            return true;
+                        }
+                    }
+                    Host::Ipv6(ip) => {
+                        if ip.is_loopback() || ip.is_unique_local() || ip.is_unicast_link_local() || ip.is_unspecified() {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
     pub async fn get_cover_art(
         &self,
         source: ArtSource,
@@ -74,11 +101,39 @@ impl CoverManager {
         }
         trace!("No valid cache entry found.");
 
-        // 2. If we have a direct URL, use and cache it immediately
+        // Prepare a potentially transformed source for providers
+        let mut source_for_providers = source.clone();
+
+        // 2. If we have a direct URL, decide whether to use it or transform
         if let ArtSource::Url(ref url) = source {
-            debug!("Using direct URL from source: {}", url);
-            self.cache.store(metadata_source, "direct", url)?;
-            return Ok(Some(url.clone()));
+            if Self::is_local_or_private_url(url) {
+                warn!("Detected local/private URL; will not use directly: {}", url);
+                // Try to fetch bytes so providers like ImgBB can upload
+                let client = create_shared_client();
+                match client.get(url).send().await {
+                    Ok(resp) if resp.status().is_success() => {
+                        match resp.bytes().await {
+                            Ok(bytes) => {
+                                debug!("Fetched image bytes from local URL ({} bytes)", bytes.len());
+                                source_for_providers = ArtSource::Bytes(bytes.to_vec());
+                            }
+                            Err(e) => {
+                                warn!("Failed to read bytes from local URL response: {}", e);
+                            }
+                        }
+                    }
+                    Ok(resp) => {
+                        warn!("Local URL fetch returned non-success status: {}", resp.status());
+                    }
+                    Err(e) => {
+                        warn!("Failed to fetch local URL: {}", e);
+                    }
+                }
+            } else {
+                debug!("Using direct URL from source: {}", url);
+                self.cache.store(metadata_source, "direct", url)?;
+                return Ok(Some(url.clone()));
+            }
         }
 
         // 3. Try to find local cover art if we have a file path
@@ -116,15 +171,15 @@ impl CoverManager {
             }
         }
 
-        // 4. Try configured providers with the original source
+        // 4. Try configured providers with the prepared source
         for provider in &self.providers {
-            if !provider.supports_source_type(&source) {
+            if !provider.supports_source_type(&source_for_providers) {
                 trace!("Provider {} does not support source type", provider.name());
                 continue;
             }
 
             debug!("Attempting cover art retrieval with {}", provider.name());
-            match provider.process(source.clone(), metadata_source).await {
+            match provider.process(source_for_providers.clone(), metadata_source).await {
                 Ok(Some(result)) => {
                     info!("Successfully retrieved cover art from {}", provider.name());
                     self.cache.store(metadata_source, &result.provider, &result.url)?;
