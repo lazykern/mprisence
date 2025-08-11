@@ -10,6 +10,13 @@ license = "MIT"
 description = "A powerful Discord Rich Presence for MPRIS media players"
 keywords = ["discord", "mpris", "linux", "media", "rich-presence"]
 categories = ["multimedia", "command-line-utilities"]
+exclude = [
+    ".github/",
+    "assets/",
+    "packaging/",
+    "dist/",
+    "*.sh",
+]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
