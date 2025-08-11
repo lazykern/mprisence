@@ -51,7 +51,7 @@ else
 fi
 
 # Check if running from the root of the project
-if [ ! -f "Makefile" ]; then
+if [ ! -f "Cargo.toml" ]; then
     echo -e "${RED}Error: This script must be run from the root of the project${NC}"
     exit 1
 fi
@@ -97,8 +97,9 @@ if [[ "$VERSION" == *"-"* ]]; then
 fi
 
 # Sync version across package files
-print "Syncing version across package files..."
-make sync-version
+print "Syncing version ${VERSION} to PKGBUILD files..."
+sed -i "s/^pkgver=.*/pkgver=${VERSION}/" packaging/arch/release/PKGBUILD
+sed -i "s/^pkgver=.*/pkgver=${VERSION}/" packaging/arch/git/PKGBUILD
 
 # Paths to the AUR package repos
 RELEASE_REPO="aur-mprisence"
@@ -118,11 +119,12 @@ if [ "$PUBLISH_RELEASE" = true ]; then
     cp packaging/arch/release/PKGBUILD "$RELEASE_REPO/PKGBUILD"
     cp packaging/arch/release/.SRCINFO "$RELEASE_REPO/.SRCINFO"
     cp packaging/arch/release/mprisence.install "$RELEASE_REPO/mprisence.install"
+    cp packaging/arch/mprisence.service "$RELEASE_REPO/mprisence.service"
 
     print "Publishing release package..."
     (
         cd "$RELEASE_REPO"
-        git add PKGBUILD .SRCINFO mprisence.install
+        git add PKGBUILD .SRCINFO mprisence.install mprisence.service
         git commit -m "Update to version $VERSION"
         git push
     )
@@ -143,11 +145,12 @@ if [ "$PUBLISH_GIT" = true ]; then
     cp packaging/arch/git/PKGBUILD "$GIT_REPO/PKGBUILD"
     cp packaging/arch/git/.SRCINFO "$GIT_REPO/.SRCINFO"
     cp packaging/arch/git/mprisence-git.install "$GIT_REPO/mprisence-git.install"
+    cp packaging/arch/mprisence.service "$GIT_REPO/mprisence.service"
 
     print "Publishing git package..."
     (
         cd "$GIT_REPO"
-        git add PKGBUILD .SRCINFO mprisence-git.install
+        git add PKGBUILD .SRCINFO mprisence-git.install mprisence.service
         git commit -m "Update to version $VERSION"
         git push
     )
