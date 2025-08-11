@@ -341,11 +341,11 @@ RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
 
 1. **Discord Presence Not Showing / Updating**
 
-    - **Is Discord running?** Ensure the Discord desktop client is open.
     - **Is your player running and MPRIS-compatible?** Run `mprisence players list` to see detectable players.
     - **Is the service running?** `systemctl --user status mprisence`
     - **Discord Settings:** Check `Discord Settings -> Registered Games / Activity Privacy`. Ensure `Display current activity as a status message.` is ON. Sometimes toggling this off and on helps. Add `mprisence` if it's not listed.
     - **Correct App ID?** Verify the `app_id` in your config matches a valid Discord application ID.
+    - **Using Vesktop Flatpak?** Set up the Discord IPC symlink as described in the Vesktop Flatpak guide: [Native applications](https://github.com/flathub/dev.vencord.Vesktop?tab=readme-ov-file#native-applications).
     - **Logs:** Check `journalctl --user -u mprisence -f` or run `RUST_LOG=debug mprisence` for errors.
 
 2. **Cover Art Not Displaying**
