@@ -99,6 +99,14 @@ icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/SMPlayer_icon.
 app_id = "1396689706246209606"
 icon = "https://dl.flathub.org/media/org/fooyin/fooyin/ef334d703743511632d5c616bea80c43/icons/128x128@2/org.fooyin.fooyin.png"
 
+[player.supersonic]
+app_id = "1404479711106568202"
+icon = "https://github.com/dweymouth/supersonic/blob/main/res/appicon-256.png?raw=true"
+
+[player.feishin]
+app_id = "1404479248428826645"
+icon = "https://github.com/jeffvli/feishin/blob/development/assets/icons/256x256.png?raw=true"
+
 [player.spotify]
 ignore = true
 
