@@ -2,6 +2,11 @@
 
 All notable changes to mprisence will be documented in this file.
 
+## [1.2.4](https://github.com/lazykern/mprisence/compare/v1.2.3...v1.2.4)
+
+* Config
+  * Added Supersonic and Feishin to default config
+
 ## [1.2.3](https://github.com/lazykern/mprisence/compare/v1.2.2...v1.2.3)
 
 * Dependencies
