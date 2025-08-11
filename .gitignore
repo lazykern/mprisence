@@ -1,14 +1,12 @@
 /target
 
-# Profiling
 heaptrack*
 flamegraph*
 
-# Editor
 .vscode
 .idea
 
-# Packaging
+/dist/
 .SRCINFO
 /aur-mprisence/
 /aur-mprisence-git/
