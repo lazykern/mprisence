@@ -36,7 +36,6 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
 - **For service management:** `systemd` (user instance).
 - **For manual installation/building from source:**
   - `rustc` and `cargo` (latest stable version recommended)
-  - `make`
   - `git` (to clone the repository)
 
 ## Installation
@@ -48,28 +47,33 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
 yay -S mprisence
 ```
 
-### Manual Installation
+### From Source
 
-```bash
-# Clone the repository
-git clone https://github.com/lazykern/mprisence.git
-cd mprisence
+1.  **Install the binary:**
+    ```bash
+    cargo install --path .
+    ```
+    This command compiles and installs the `mprisence` binary to `~/.cargo/bin/mprisence`. Ensure `~/.cargo/bin` is in your system's `PATH`.
 
-# Build and install (includes service activation by default)
-make
+2.  **Set up Configuration:**
+    Follow the instructions in the [Configuration](#configuration) section to set up your `config.toml` file.
 
-# Install without enabling service
-make install-local ENABLE_SERVICE=0
+3.  **Set up the Systemd Service (for autostarting):**
+    To run `mprisence` automatically on login, you need to set up the systemd user service.
+    ```bash
+    # Create the systemd user directory if it doesn't exist
+    mkdir -p ~/.config/systemd/user
 
-# Uninstall
-make uninstall-local
-```
+    # Copy the service file
+    cp mprisence.service ~/.config/systemd/user/mprisence.service
+    ```
+    The service file is pre-configured to work with `cargo install`.
 
-_If you installed using `make` (without `ENABLE_SERVICE=0`), the systemd service will be enabled. See the next section for how to manage it._
+    Finally, enable and start the service as described in the next section.
 
 ## Autostarting / Service Management
 
-If you installed using `make` or enabled the service manually, `mprisence` will run as a systemd user service.
+If you installed from an AUR package or set up the service manually, `mprisence` will run as a systemd user service.
 
 You can manage the service using `systemctl --user`:
 
@@ -77,20 +81,14 @@ You can manage the service using `systemctl --user`:
 # Check service status
 systemctl --user status mprisence
 
-# Start the service
-systemctl --user start mprisence
-
-# Stop the service
-systemctl --user stop mprisence
-
 # Restart the service
 systemctl --user restart mprisence
 
 # Enable the service to start on login
-systemctl --user enable mprisence
+systemctl --user enable --now mprisence
 
 # Disable the service from starting on login
-systemctl --user disable mprisence
+systemctl --user disable --now mprisence
 
 # View detailed logs
 journalctl --user -u mprisence -f
