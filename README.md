@@ -53,6 +53,7 @@ yay -S mprisence-git
 #### Debian, Ubuntu, and derivatives
 
 Download the `.deb` package from the [**GitHub Releases page**](https://github.com/lazykern/mprisence/releases) and install it:
+
 ```bash
 sudo dpkg -i /path/to/mprisence_*.deb
 ```
@@ -71,6 +72,7 @@ Choose **one** of the following ways to get the executable:
 ```bash
 cargo install mprisence
 ```
+
 This will install the binary to `~/.cargo/bin/`. Ensure this directory is in your `$PATH`.
 
 </details>
@@ -93,6 +95,7 @@ cd mprisence
 # Install from local source
 cargo install --path .
 ```
+
 This also installs the binary to `~/.cargo/bin/`.
 
 </details>
@@ -101,37 +104,45 @@ This also installs the binary to `~/.cargo/bin/`.
 
 `mprisence` looks for its configuration at `~/.config/mprisence/config.toml`.
 
-1.  **Create the configuration directory:**
+1. **Create the configuration directory:**
+
     ```bash
     mkdir -p ~/.config/mprisence
     ```
 
-2.  **Download the example configuration:**
+2. **Download the example configuration:**
+
     ```bash
     curl -o ~/.config/mprisence/config.toml https://raw.githubusercontent.com/lazykern/mprisence/main/config/config.example.toml
     ```
+
     Now you can edit this file to customize mprisence. See the [Configuration Reference](#configuration-reference) section for more details.
 
 #### Step 3: Set up and Run the Service
 
 To have `mprisence` start automatically on login, set up the systemd user service.
 
-1.  **Create the systemd user directory if it doesn't exist:**
+1. **Create the systemd user directory if it doesn't exist:**
+
     ```bash
     mkdir -p ~/.config/systemd/user
     ```
 
-2.  **Download the service file:**
+2. **Download the service file:**
     The provided service file is configured to find the `mprisence` binary in `~/.cargo/bin/`.
+
     ```bash
     curl -o ~/.config/systemd/user/mprisence.service https://raw.githubusercontent.com/lazykern/mprisence/main/mprisence.service
     ```
+
     > **Note:** If you placed the binary in a different location (e.g., `/usr/local/bin`), you must edit `~/.config/systemd/user/mprisence.service` and change the `ExecStart` path.
 
-3.  **Enable and start the service:**
+3. **Enable and start the service:**
+
     ```bash
     systemctl --user enable --now mprisence
     ```
+
     This command enables `mprisence` to start at login and starts it immediately.
 
 ### Managing the Service
