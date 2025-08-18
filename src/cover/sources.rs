@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use walkdir::WalkDir;
 use std::collections::HashSet;
-
 use crate::cover::error::CoverArtError;
 
 #[derive(Debug, Clone)]
@@ -32,7 +31,10 @@ impl ArtSource {
         }
 
         let path = if url.starts_with("file://") {
-            url[7..].parse().ok()
+            match urlencoding::decode(&url[7..]) {
+                Ok(dec) => dec.parse().ok(),
+                Err(_) => return None,
+            }
         } else {
             url.parse().ok()
         };
