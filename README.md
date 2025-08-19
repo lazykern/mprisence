@@ -1,8 +1,7 @@
 # mprisence
 
 [![AUR version](https://img.shields.io/aur/version/mprisence)](https://aur.archlinux.org/packages/mprisence)
-[![GitHub license](https://img.shields.io/github/license/lazykern/mprisence)](https://github.com/lazykern/mprisence/blob/main/LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/lazykern/mprisence)](https://github.com/lazykern/mprisence/stargazers)
+[![Nixpkgs](https://img.shields.io/badge/NixOS-nixpkgs-blue?logo=nixos)](https://search.nixos.org/packages?query=mprisence)
 
 A highly customizable Discord Rich Presence client for MPRIS media players. Supports VLC, MPV, RhythmBox, and many other Linux music and media players.
 
@@ -52,6 +51,24 @@ yay -S mprisence
 
 # Or, install the latest development version
 yay -S mprisence-git
+```
+
+#### Nix (NixOS, Linux, macOS)
+
+Available in `nixpkgs`
+
+```bash
+# without flakes:
+nix-env -iA nixpkgs.mprisence
+
+# with flakes:
+nix profile install nixpkgs#mprisence
+```
+
+NixOS configuration:
+
+```nix
+environment.systemPackages = [ pkgs.mprisence ];
 ```
 
 #### Debian, Ubuntu, and derivatives
