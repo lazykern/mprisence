@@ -53,7 +53,7 @@ yay -S mprisence
 yay -S mprisence-git
 ```
 
-#### Nix (NixOS, Linux, macOS)
+#### Nix (NixOS, Linux)
 
 Available in `nixpkgs`
 
