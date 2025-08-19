@@ -2,6 +2,11 @@
 
 All notable changes to mprisence will be documented in this file.
 
+## [1.2.5](https://github.com/lazykern/mprisence/compare/v1.2.4...v1.2.5)
+
+* Cover Art
+  * Fixed album cover path that is derived from artUrl (`file://`) not getting decoded #51
+
 ## [1.2.4](https://github.com/lazykern/mprisence/compare/v1.2.3...v1.2.4)
 
 * Config
