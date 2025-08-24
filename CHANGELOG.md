@@ -2,6 +2,11 @@
 
 All notable changes to mprisence will be documented in this file.
 
+## [1.2.6](https://github.com/lazykern/mprisence/compare/v1.2.5...v1.2.6)
+
+* Config
+  * Added kew to default config
+
 ## [1.2.5](https://github.com/lazykern/mprisence/compare/v1.2.4...v1.2.5)
 
 * Cover Art
