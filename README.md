@@ -13,7 +13,7 @@ _(Note: Actual appearance depends on your configuration and the specific media p
 
 Ready to use with popular media players (configured in [`config.default.toml`](./config/config.default.toml)):
 
-- **Media Players**: VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer, Supersonic, Feishin
+- **Media Players**: VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer, Supersonic, Feishin, kew
 - **Streaming**: YouTube Music, Spotify (disabled by default)
 - **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
 
