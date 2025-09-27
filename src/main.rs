@@ -1,5 +1,5 @@
-#[cfg(not(target_os = "linux"))]
-compile_error!("mprisence only supports Linux systems as it relies on MPRIS (Media Player Remote Interfacing Specification)");
+// #[cfg(not(target_os = "linux"))]
+// compile_error!("mprisence only supports Linux systems as it relies on MPRIS (Media Player Remote Interfacing Specification)");
 
 use clap::Parser;
 use config::{get_config, ConfigManager};
