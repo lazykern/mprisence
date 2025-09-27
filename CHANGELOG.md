@@ -2,7 +2,7 @@
 
 All notable changes to mprisence will be documented in this file.
 
-## [1.2.7](https://github.com/lazykern/mprisence/compare/v1.2.5...v1.2.6)
+## [1.2.7](https://github.com/lazykern/mprisence/compare/v1.2.6...v1.2.7)
 
 * Template
   * No escape for handlebars
