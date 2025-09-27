@@ -1,14 +1,12 @@
-use log::{debug, info, trace, error};
+use log::{debug, error, info, trace};
 use std::sync::Arc;
 
-use handlebars::{handlebars_helper, Handlebars};
+use handlebars::{handlebars_helper, no_escape, Handlebars};
 use mpris::Player;
 use serde::Serialize;
 
 use crate::{
-    config::ConfigManager,
-    error::TemplateError,
-    metadata::MediaMetadata,
+    config::ConfigManager, error::TemplateError, metadata::MediaMetadata,
     utils::format_playback_status_icon,
 };
 
@@ -28,10 +26,13 @@ pub struct RenderContext {
 
 impl RenderContext {
     pub fn new(player: &Player, metadata: MediaMetadata) -> Self {
-        let status = player.get_playback_status()
-            .map(|s| format!("{:?}", s)).ok();
+        let status = player
+            .get_playback_status()
+            .map(|s| format!("{:?}", s))
+            .ok();
 
-        let status_icon = player.get_playback_status()
+        let status_icon = player
+            .get_playback_status()
             .map(format_playback_status_icon)
             .map(String::from)
             .ok();
@@ -65,6 +66,7 @@ impl TemplateManager {
     pub fn new(config: &Arc<ConfigManager>) -> Result<Self, TemplateError> {
         info!("Initializing template manager");
         let mut handlebars = Handlebars::new();
+        handlebars.register_escape_fn(no_escape);
         let template_config = config.template_config();
 
         trace!("Registering custom template helpers");
@@ -108,16 +110,17 @@ impl TemplateManager {
         small_text: &str,
     ) -> Result<Self, TemplateError> {
         let mut handlebars = Handlebars::new();
-        
+        handlebars.register_escape_fn(no_escape);
+
         // Register our helper
         handlebars.register_helper("eq", Box::new(eq));
-        
+
         // Register templates
         handlebars.register_template_string("detail", detail)?;
         handlebars.register_template_string("state", state)?;
         handlebars.register_template_string("large_text", large_text)?;
         handlebars.register_template_string("small_text", small_text)?;
-            
+
         Ok(Self { handlebars })
     }
 
@@ -133,9 +136,13 @@ impl TemplateManager {
         })
     }
 
-    pub fn render_activity_texts(&self, player: Player, metadata: MediaMetadata) -> Result<ActivityTexts, TemplateError> {
+    pub fn render_activity_texts(
+        &self,
+        player: Player,
+        metadata: MediaMetadata,
+    ) -> Result<ActivityTexts, TemplateError> {
         trace!("Creating activity texts for player: {}", player.identity());
-        
+
         debug!("Creating render context with player and metadata information");
         let render_context = RenderContext::new(&player, metadata);
 
