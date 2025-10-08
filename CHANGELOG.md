@@ -2,6 +2,11 @@
 
 All notable changes to mprisence will be documented in this file.
 
+## [1.2.8](https://github.com/lazykern/mprisence/compare/v1.2.7...v1.2.8)
+
+* Config
+  * Added Gapless and Harmony Music to default config
+
 ## [1.2.7](https://github.com/lazykern/mprisence/compare/v1.2.6...v1.2.7)
 
 * Template
