@@ -111,6 +111,15 @@ icon = "https://github.com/jeffvli/feishin/blob/development/assets/icons/256x256
 app_id = "1408882241198620782"
 show_icon = false
 
+[player.gapless]
+app_id = "1425518060688769146"
+icon = "https://res.cloudinary.com/canonical/image/fetch/f_auto,q_auto,fl_sanitize,w_256/https%3A%2F%2Fdashboard.snapcraft.io%2Fsite_media%2Fappmedia%2F2023%2F07%2Fapp.svg.png"
+
+[player.harmony_music_notification]
+app_id = "1425521209633669242"
+icon = "https://raw.githubusercontent.com/anandnet/Harmony-Music/refs/heads/main/assets/icons/icon.png"
+allow_streaming = true
+
 [player.spotify]
 ignore = true
 
