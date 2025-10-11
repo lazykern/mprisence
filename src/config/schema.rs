@@ -1,6 +1,7 @@
 use log::warn;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use regex::Regex;
 
 use crate::utils::normalize_player_identity;
 
@@ -171,9 +172,32 @@ impl Config {
     }
 
     pub fn get_player_config_normalized(&self, normalized_identity: &str) -> PlayerConfig {
-        // First try to get the specific player config
         if let Some(config) = self.player.get(normalized_identity) {
             return config.clone();
+        }
+
+        let mut best_match: Option<(usize, usize, PlayerConfig)> = None;
+        for (pattern_key, cfg) in &self.player {
+            if !is_wildcard_pattern(pattern_key) {
+                continue;
+            }
+
+            if wildcard_match(pattern_key, normalized_identity) {
+                let specificity = pattern_specificity(pattern_key);
+                let total_len = pattern_key.len();
+                match &best_match {
+                    Some((best_spec, best_len, _)) => {
+                        if specificity > *best_spec || (specificity == *best_spec && total_len > *best_len) {
+                            best_match = Some((specificity, total_len, cfg.clone()));
+                        }
+                    }
+                    None => best_match = Some((specificity, total_len, cfg.clone())),
+                }
+            }
+        }
+
+        if let Some((_, _, cfg)) = best_match {
+            return cfg;
         }
 
         // If not found, try to get the default config
@@ -182,6 +206,82 @@ impl Config {
             warn!("No default player config found, using built-in defaults");
             PlayerConfig::default()
         })
+    }
+}
+
+fn is_wildcard_pattern(s: &str) -> bool {
+    s.contains('*') || s.contains('?')
+}
+
+fn pattern_specificity(s: &str) -> usize {
+    s.chars().filter(|&c| c != '*' && c != '?').count()
+}
+
+fn wildcard_match(pattern: &str, text: &str) -> bool {
+    // Convert a simple glob-like pattern to a regex
+    let mut regex_str = String::from("^");
+    for ch in pattern.chars() {
+        match ch {
+            '*' => regex_str.push_str(".*"),
+            '?' => regex_str.push('.'),
+            _ => regex_str.push_str(&regex::escape(&ch.to_string())),
+        }
+    }
+    regex_str.push('$');
+
+    if let Ok(re) = Regex::new(&regex_str) {
+        re.is_match(text)
+    } else {
+        false
+    }
+}
+
+#[cfg(test)]
+mod wildcard_tests {
+    use super::*;
+
+    fn pc(show_icon: bool, ignore: bool, app_id: &str) -> PlayerConfig {
+        let mut cfg = PlayerConfig::default();
+        cfg.show_icon = show_icon;
+        cfg.ignore = ignore;
+        cfg.app_id = app_id.to_string();
+        cfg
+    }
+
+    #[test]
+    fn matches_exact_before_wildcard() {
+        let mut cfg = Config::default();
+        cfg.player.insert("vlc*".to_string(), pc(true, false, "A"));
+        cfg.player.insert("vlc_media_player".to_string(), pc(false, false, "B"));
+
+        let res = cfg.get_player_config("VLC Media Player");
+        assert_eq!(res.app_id, "B");
+        assert_eq!(res.show_icon, false);
+    }
+
+    #[test]
+    fn chooses_more_specific_wildcard() {
+        let mut cfg = Config::default();
+        cfg.player.insert("vlc_*".to_string(), pc(true, false, "A"));
+        cfg.player.insert("vlc_media_*".to_string(), pc(false, false, "B"));
+
+        let res = cfg.get_player_config("vlc media classic");
+        assert_eq!(res.app_id, "B");
+        assert_eq!(res.show_icon, false);
+    }
+
+    #[test]
+    fn wildcard_only_then_default() {
+        let mut cfg = Config::default();
+        cfg.player.insert("*spotify*".to_string(), pc(true, true, "S"));
+        cfg.player.insert("default".to_string(), pc(false, false, "D"));
+
+        let sp = cfg.get_player_config("Spotify");
+        assert_eq!(sp.app_id, "S");
+        assert!(sp.ignore);
+
+        let other = cfg.get_player_config("Some Player");
+        assert_eq!(other.app_id, "D");
     }
 }
 

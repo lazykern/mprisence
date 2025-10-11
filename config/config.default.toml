@@ -123,7 +123,7 @@ allow_streaming = true
 [player.spotify]
 ignore = true
 
-[player.youtube_music]
+[player."*youtube_music*"]
 app_id = "1125082278339559505"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/768px-Youtube_Music_icon.svg.png"
 allow_streaming = true

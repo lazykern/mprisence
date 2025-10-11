@@ -322,6 +322,11 @@ allow_streaming = true # Allow streaming content for VLC
 # Example: Ignore Spotify
 # [player.spotify]
 # ignore = true
+
+# Example: Wildcard matches
+[player."*youtube_music*"]
+show_icon = true
+allow_streaming = true
 ```
 
 </details>
