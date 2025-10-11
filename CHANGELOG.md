@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.9](https://github.com/lazykern/mprisence/compare/v1.2.8...v1.2.9)
+
+* Config
+  * Added wildcard player config support
+  * Example:
+    ```
+    [player."*youtube_music*"]
+    show_icon = true
+    allow_streaming = true
+    ```
+
+
 All notable changes to mprisence will be documented in this file.
 
 ## [1.2.8](https://github.com/lazykern/mprisence/compare/v1.2.7...v1.2.8)
