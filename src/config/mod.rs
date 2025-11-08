@@ -8,6 +8,9 @@ use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 use log::trace;
 
+const CONFIG_READY_TIMEOUT: Duration = Duration::from_millis(500);
+const CONFIG_READY_POLL_INTERVAL: Duration = Duration::from_millis(25);
+
 mod error;
 pub mod schema;
 
@@ -167,6 +170,8 @@ impl ConfigManager {
     pub fn reload(&self) -> Result<(), ConfigError> {
         log::info!("Reloading configuration from {}", self.path.display());
 
+        wait_for_config_ready(&self.path);
+
         // Use the same loading logic as initial load
         let new_config = load_config_from_file(&self.path)?;
 
@@ -288,6 +293,37 @@ fn setup_file_watcher(config_path: PathBuf, config: Arc<ConfigManager>) -> Resul
     Ok(())
 }
 
+fn wait_for_config_ready(path: &Path) {
+    if path.exists() {
+        return;
+    }
+
+    let start = Instant::now();
+    trace!(
+        "Config file {} missing, waiting up to {:?} for it to reappear",
+        path.display(),
+        CONFIG_READY_TIMEOUT
+    );
+
+    while start.elapsed() < CONFIG_READY_TIMEOUT {
+        std::thread::sleep(CONFIG_READY_POLL_INTERVAL);
+        if path.exists() {
+            trace!(
+                "Config file {} detected again after {:?}",
+                path.display(),
+                start.elapsed()
+            );
+            return;
+        }
+    }
+
+    trace!(
+        "Config file {} still missing after waiting {:?}",
+        path.display(),
+        CONFIG_READY_TIMEOUT
+    );
+}
+
 fn get_config_path() -> Result<PathBuf, ConfigError> {
     let config_dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -318,4 +354,64 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     }
 
     figment.extract().map_err(ConfigError::Figment)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    fn temp_config_dir() -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time went backwards")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "mprisence-config-test-{}-{}",
+            std::process::id(),
+            unique
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("failed to create temp config dir");
+        dir
+    }
+
+    #[test]
+    fn reload_waits_for_config_file_to_reappear() {
+        let temp_dir = temp_config_dir();
+        let config_path = temp_dir.join("config.toml");
+
+        fs::write(
+            &config_path,
+            "[player.default]\nshow_icon = false\n",
+        )
+        .expect("failed to write initial config");
+
+        let manager = ConfigManager::new(config_path.clone()).expect("failed to build config manager");
+
+        fs::remove_file(&config_path).expect("failed to remove config file");
+
+        let writer_path = config_path.clone();
+        let writer = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            fs::write(
+                &writer_path,
+                "[player.default]\nshow_icon = true\n",
+            )
+            .expect("failed to write updated config");
+        });
+
+        manager
+            .reload()
+            .expect("reload should wait for config file to reappear");
+        writer.join().expect("writer thread panicked");
+
+        assert!(
+            manager.get_player_config("default").show_icon,
+            "reload should pick up the updated config content"
+        );
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }
