@@ -120,6 +120,16 @@ app_id = "1425521209633669242"
 icon = "https://raw.githubusercontent.com/anandnet/Harmony-Music/refs/heads/main/assets/icons/icon.png"
 allow_streaming = true
 
+[player."io.github.htkhiem.Euphonica"]
+app_id = "1435313000612630709"
+icon = "https://raw.githubusercontent.com/htkhiem/euphonica/refs/heads/main/data/icons/euphonica-hicolor.png"
+# icon = "https://i.ibb.co/5gjGJySX/music-icon.png" # Icon by Blackstar1069
+
+[player.quod_libet]
+app_id = "1265388809860677632"
+icon = "https://raw.githubusercontent.com/quodlibet/quodlibet/refs/heads/main/quodlibet/images/hicolor/256x256/apps/io.github.quodlibet.QuodLibet.png"
+# icon = "https://i.ibb.co/vvxWfTvd/io-github-quodlibet-Quod-Libet.png" # Icon by Blackstar1069
+
 [player.spotify]
 ignore = true
 
