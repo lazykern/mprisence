@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.10](https://github.com/lazykern/mprisence/compare/v1.2.9...v1.2.10)
+
+* Config
+  * Added a wait loop so hot reload pauses until the config file is written again, preventing reload failures when editors swap files
+  * Added Quod Libet and Euphonica player entries to the default configuration
+
 ## [1.2.9](https://github.com/lazykern/mprisence/compare/v1.2.8...v1.2.9)
 
 * Config
