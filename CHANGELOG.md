@@ -1,10 +1,11 @@
 # Changelog
 
-## [Unreleased]
+## [1.2.12](https://github.com/lazykern/mprisence/compare/v1.2.11...v1.2.12)
 
 * Presence
   * `allow_streaming = false` now enforces itself by clearing Discord activity for HTTP/HTTPS sources
-* Config ignore `firefox` by default (another identity of `mozilla_firefox`)
+* Config
+  * Ignore `firefox` by default (another identity of `mozilla_firefox`)
 
 ## [1.2.11](https://github.com/lazykern/mprisence/compare/v1.2.10...v1.2.11)
 
