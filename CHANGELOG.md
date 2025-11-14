@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.2.11](https://github.com/lazykern/mprisence/compare/v1.2.10...v1.2.11)
+
+* CLI
+  * `mprisence players list` now shows whether each detected player is currently ignored
+
 ## [1.2.10](https://github.com/lazykern/mprisence/compare/v1.2.9...v1.2.10)
 
 * Config
