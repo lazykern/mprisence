@@ -124,7 +124,7 @@ impl Mprisence {
         let mut current_ids = std::collections::HashSet::new();
 
         trace!("Scanning for active media players");
-        
+
         let mut player_finder = PlayerFinder::new()?;
 
         player_finder.set_player_timeout_ms(5000);

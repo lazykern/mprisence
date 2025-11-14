@@ -1,7 +1,7 @@
 use log::{debug, info, trace, warn};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use std::path::PathBuf;
 use url::{Host, Url};
 
 use crate::config;
@@ -14,8 +14,8 @@ pub mod sources;
 
 use cache::CoverCache;
 use error::CoverArtError;
-use providers::{CoverArtProvider, create_shared_client};
-use sources::{ArtSource, search_local_cover_art};
+use providers::{create_shared_client, CoverArtProvider};
+use sources::{search_local_cover_art, ArtSource};
 
 const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 24 hours
 
@@ -60,7 +60,11 @@ impl CoverManager {
             warn!("No cover art providers configured");
         }
 
-        Ok(Self { providers, cache, config: config.clone() })
+        Ok(Self {
+            providers,
+            cache,
+            config: config.clone(),
+        })
     }
 
     fn is_local_or_private_url(url_str: &str) -> bool {
@@ -74,12 +78,20 @@ impl CoverManager {
                         }
                     }
                     Host::Ipv4(ip) => {
-                        if ip.is_loopback() || ip.is_private() || ip.is_link_local() || ip.is_unspecified() {
+                        if ip.is_loopback()
+                            || ip.is_private()
+                            || ip.is_link_local()
+                            || ip.is_unspecified()
+                        {
                             return true;
                         }
                     }
                     Host::Ipv6(ip) => {
-                        if ip.is_loopback() || ip.is_unique_local() || ip.is_unicast_link_local() || ip.is_unspecified() {
+                        if ip.is_loopback()
+                            || ip.is_unique_local()
+                            || ip.is_unicast_link_local()
+                            || ip.is_unspecified()
+                        {
                             return true;
                         }
                     }
@@ -111,19 +123,20 @@ impl CoverManager {
                 // Try to fetch bytes so providers like ImgBB can upload
                 let client = create_shared_client();
                 match client.get(url).send().await {
-                    Ok(resp) if resp.status().is_success() => {
-                        match resp.bytes().await {
-                            Ok(bytes) => {
-                                debug!("Fetched image bytes from local URL ({} bytes)", bytes.len());
-                                source_for_providers = ArtSource::Bytes(bytes.to_vec());
-                            }
-                            Err(e) => {
-                                warn!("Failed to read bytes from local URL response: {}", e);
-                            }
+                    Ok(resp) if resp.status().is_success() => match resp.bytes().await {
+                        Ok(bytes) => {
+                            debug!("Fetched image bytes from local URL ({} bytes)", bytes.len());
+                            source_for_providers = ArtSource::Bytes(bytes.to_vec());
                         }
-                    }
+                        Err(e) => {
+                            warn!("Failed to read bytes from local URL response: {}", e);
+                        }
+                    },
                     Ok(resp) => {
-                        warn!("Local URL fetch returned non-success status: {}", resp.status());
+                        warn!(
+                            "Local URL fetch returned non-success status: {}",
+                            resp.status()
+                        );
                     }
                     Err(e) => {
                         warn!("Failed to fetch local URL: {}", e);
@@ -153,7 +166,7 @@ impl CoverManager {
                 if let Ok(Some(art_source)) = search_local_cover_art(
                     &parent.to_path_buf(),
                     &cover_config.file_names,
-                    cover_config.local_search_depth
+                    cover_config.local_search_depth,
                 ) {
                     // Process the found local cover art through providers
                     for provider in &self.providers {
@@ -161,12 +174,26 @@ impl CoverManager {
                             debug!("Processing local cover art with {}", provider.name());
                             match provider.process(art_source.clone(), metadata_source).await {
                                 Ok(Some(result)) => {
-                                    info!("Successfully processed local cover art with {}", provider.name());
-                                    self.cache.store(metadata_source, &result.provider, &result.url)?;
+                                    info!(
+                                        "Successfully processed local cover art with {}",
+                                        provider.name()
+                                    );
+                                    self.cache.store(
+                                        metadata_source,
+                                        &result.provider,
+                                        &result.url,
+                                    )?;
                                     return Ok(Some(result.url));
                                 }
-                                Ok(None) => debug!("Provider {} could not process local cover art", provider.name()),
-                                Err(e) => warn!("Provider {} failed to process local cover art: {}", provider.name(), e),
+                                Ok(None) => debug!(
+                                    "Provider {} could not process local cover art",
+                                    provider.name()
+                                ),
+                                Err(e) => warn!(
+                                    "Provider {} failed to process local cover art: {}",
+                                    provider.name(),
+                                    e
+                                ),
                             }
                         }
                     }
@@ -182,10 +209,14 @@ impl CoverManager {
             }
 
             debug!("Attempting cover art retrieval with {}", provider.name());
-            match provider.process(source_for_providers.clone(), metadata_source).await {
+            match provider
+                .process(source_for_providers.clone(), metadata_source)
+                .await
+            {
                 Ok(Some(result)) => {
                     info!("Successfully retrieved cover art from {}", provider.name());
-                    self.cache.store(metadata_source, &result.provider, &result.url)?;
+                    self.cache
+                        .store(metadata_source, &result.provider, &result.url)?;
                     return Ok(Some(result.url));
                 }
                 Ok(None) => debug!("Provider {} found no cover art", provider.name()),
@@ -201,7 +232,7 @@ impl CoverManager {
 pub async fn clean_cache() -> Result<(), CoverArtError> {
     info!("Starting periodic cache cleanup");
     let cache = CoverCache::new(CACHE_TTL)?;
-    
+
     let cleaned = cache.clean()?;
     if cleaned > 0 {
         info!("Cleaned {} expired cache entries", cleaned);
@@ -209,4 +240,3 @@ pub async fn clean_cache() -> Result<(), CoverArtError> {
 
     Ok(())
 }
-

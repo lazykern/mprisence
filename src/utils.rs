@@ -1,11 +1,12 @@
 use mime_guess::Mime;
-use url::Url;
 use mpris::PlaybackStatus;
 use semver::Version;
 use thiserror::Error;
+use url::Url;
 
 pub fn normalize_player_identity(input: &str) -> String {
-    input.trim()
+    input
+        .trim()
         .to_lowercase()
         .split_whitespace()
         .collect::<Vec<&str>>()
@@ -71,7 +72,6 @@ pub fn format_playback_status_icon(status: PlaybackStatus) -> &'static str {
     }
 }
 
-
 #[derive(Error, Debug)]
 pub enum VersionError {
     #[error("Invalid version format: {0}")]
@@ -102,7 +102,7 @@ mod tests {
         assert!(validate_version("1.0.0-beta.1").is_ok());
         assert!(validate_version("1.0.0+build.123").is_ok());
         assert!(validate_version("1.0.0-beta.1+build.123").is_ok());
-        
+
         // Invalid versions
         assert!(validate_version("1.0").is_err());
         assert!(validate_version("1.0.0.beta1").is_err());
@@ -118,7 +118,10 @@ mod tests {
     #[test]
     fn test_normalize_player_identity() {
         assert_eq!(normalize_player_identity("Spotify"), "spotify");
-        assert_eq!(normalize_player_identity("  VLC Media Player  "), "vlc_media_player");
+        assert_eq!(
+            normalize_player_identity("  VLC Media Player  "),
+            "vlc_media_player"
+        );
         assert_eq!(normalize_player_identity("RHYTHMBOX"), "rhythmbox");
     }
 
@@ -126,9 +129,9 @@ mod tests {
     fn test_format_duration() {
         assert_eq!(format_duration(0), "00:00");
         assert_eq!(format_duration(61), "01:01");
-        assert_eq!(format_duration(3600), "1:00:00");  // 1 hour
-        assert_eq!(format_duration(3723), "1:02:03");  // 1h 2m 3s
-        assert_eq!(format_duration(7323), "2:02:03");  // 2h 2m 3s
+        assert_eq!(format_duration(3600), "1:00:00"); // 1 hour
+        assert_eq!(format_duration(3723), "1:02:03"); // 1h 2m 3s
+        assert_eq!(format_duration(7323), "2:02:03"); // 2h 2m 3s
         assert_eq!(format_duration(45296), "12:34:56"); // 12h 34m 56s
     }
 
@@ -177,9 +180,27 @@ mod tests {
         let image_url = "file:///images/cover.jpg";
         let unknown_url = "file:///unknown/file.unknown"; // Changed extension to something mime_guess won't recognize
 
-        assert_eq!(get_content_type_from_metadata(audio_url).unwrap().type_().as_str(), "audio");
-        assert_eq!(get_content_type_from_metadata(video_url).unwrap().type_().as_str(), "video");
-        assert_eq!(get_content_type_from_metadata(image_url).unwrap().type_().as_str(), "image");
+        assert_eq!(
+            get_content_type_from_metadata(audio_url)
+                .unwrap()
+                .type_()
+                .as_str(),
+            "audio"
+        );
+        assert_eq!(
+            get_content_type_from_metadata(video_url)
+                .unwrap()
+                .type_()
+                .as_str(),
+            "video"
+        );
+        assert_eq!(
+            get_content_type_from_metadata(image_url)
+                .unwrap()
+                .type_()
+                .as_str(),
+            "image"
+        );
         assert!(get_content_type_from_metadata(unknown_url).is_none());
     }
 }

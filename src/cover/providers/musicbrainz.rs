@@ -1,15 +1,15 @@
 use async_trait::async_trait;
 use log::{debug, info, trace, warn};
+use regex::Regex;
 use reqwest::Client;
 use serde::Deserialize;
-use regex::Regex;
 use std::sync::OnceLock;
 
 use super::{create_shared_client, CoverArtProvider, CoverResult};
+use crate::config::schema::MusicbrainzConfig;
 use crate::cover::error::CoverArtError;
 use crate::cover::sources::ArtSource;
 use crate::metadata::MetadataSource;
-use crate::config::schema::MusicbrainzConfig;
 
 const MUSICBRAINZ_API: &str = "https://musicbrainz.org/ws/2";
 const COVERART_API: &str = "https://coverartarchive.org";
@@ -188,16 +188,15 @@ impl MusicbrainzProvider {
             "{}/release?query={}&limit=5&fmt=json",
             MUSICBRAINZ_API, encoded_query
         );
-        debug!("Searching MusicBrainz Release Groups: {}", release_group_url);
+        debug!(
+            "Searching MusicBrainz Release Groups: {}",
+            release_group_url
+        );
         debug!("Searching MusicBrainz Releases: {}", release_url);
 
         let (release_groups, releases) = futures::join!(
-            self.client
-                .get(&release_group_url)
-                .send(),
-            self.client
-                .get(&release_url)
-                .send()
+            self.client.get(&release_group_url).send(),
+            self.client.get(&release_url).send()
         );
 
         let mut cover_sources = Vec::new();
@@ -206,8 +205,7 @@ impl MusicbrainzProvider {
             if let Ok(data) = response.json::<MusicBrainzResponse<ReleaseGroup>>().await {
                 debug!(
                     "Found {} release groups (filtering by score >= {})",
-                    data.count,
-                    self.config.min_score
+                    data.count, self.config.min_score
                 );
                 cover_sources.extend(
                     data.entities
@@ -229,8 +227,7 @@ impl MusicbrainzProvider {
             if let Ok(data) = response.json::<MusicBrainzResponse<Release>>().await {
                 debug!(
                     "Found {} releases (filtering by score >= {})",
-                    data.count,
-                    self.config.min_score
+                    data.count, self.config.min_score
                 );
                 cover_sources.extend(
                     data.entities
@@ -306,12 +303,15 @@ impl MusicbrainzProvider {
             if let Ok(data) = response.json::<MusicBrainzResponse<Recording>>().await {
                 debug!(
                     "Found {} recordings (filtering by score >= {})",
-                    data.count,
-                    self.config.min_score
+                    data.count, self.config.min_score
                 );
                 let mut cover_sources = Vec::new();
 
-                for recording in data.entities.iter().filter(|r| r.score >= self.config.min_score) {
+                for recording in data
+                    .entities
+                    .iter()
+                    .filter(|r| r.score >= self.config.min_score)
+                {
                     trace!(
                         "Processing recording: {} (score: {})",
                         recording.id,
@@ -418,7 +418,6 @@ impl CoverArtProvider for MusicbrainzProvider {
 
         if let Some(album) = metadata_source.album() {
             if !album.is_empty() {
-
                 if !album_artists.is_empty() {
                     let album_artists_refs: Vec<&String> = album_artists.iter().collect();
                     debug!("Attempting album-based search for '{}' with artists", album);
@@ -445,7 +444,10 @@ impl CoverArtProvider for MusicbrainzProvider {
                 trace!("Track album: {:?}, duration: {:?}ms", album, duration);
                 let artists_refs: Vec<&String> = artists.iter().collect();
 
-                if let Some(url) = self.search_track(&title, &artists_refs, album.as_ref(), duration).await? {
+                if let Some(url) = self
+                    .search_track(&title, &artists_refs, album.as_ref(), duration)
+                    .await?
+                {
                     info!("Successfully found cover art via track search: {}", url);
                     return Ok(Some(CoverResult {
                         url,

@@ -1,7 +1,7 @@
 use log::warn;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use regex::Regex;
 
 use crate::utils::normalize_player_identity;
 
@@ -14,14 +14,16 @@ pub const DEFAULT_TIME_AS_ELAPSED: bool = false;
 pub const DEFAULT_IMGBB_EXPIRATION: u64 = 86400;
 
 pub const DEFAULT_PLAYER_APP_ID: &str = "1121632048155742288";
-pub const DEFAULT_PLAYER_ICON: &str = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png";
+pub const DEFAULT_PLAYER_ICON: &str =
+    "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png";
 pub const DEFAULT_PLAYER_IGNORE: bool = false;
 pub const DEFAULT_PLAYER_SHOW_ICON: bool = false;
 pub const DEFAULT_PLAYER_ALLOW_STREAMING: bool = false;
 
 const DEFAULT_TEMPLATE_DETAIL: &str = "{{{title}}}";
 const DEFAULT_TEMPLATE_STATE: &str = "{{{artists}}}";
-const DEFAULT_TEMPLATE_LARGE_TEXT: &str = "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}";
+const DEFAULT_TEMPLATE_LARGE_TEXT: &str =
+    "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}";
 const DEFAULT_TEMPLATE_SMALL_TEXT: &str = "Playing on {{{player}}}";
 
 const DEFAULT_COVER_FILE_NAMES: [&str; 5] = ["cover", "folder", "front", "album", "art"];
@@ -51,12 +53,12 @@ mod normalized_string {
         D: Deserializer<'de>,
     {
         let temp_map = HashMap::<String, super::PlayerConfig>::deserialize(deserializer)?;
-        
+
         let mut final_map: HashMap<String, super::PlayerConfig> = HashMap::new();
-        
+
         for (key, value) in temp_map {
             let normalized_key = normalize_player_identity(&key);
-            
+
             if let Some(existing) = final_map.get(&normalized_key).cloned() {
                 // If we have a duplicate key after normalization, merge the configs
                 log::debug!(
@@ -64,7 +66,7 @@ mod normalized_string {
                     normalized_key,
                     key
                 );
-                
+
                 let merged = super::PlayerConfig {
                     ignore: value.ignore,
                     app_id: if value.app_id != super::DEFAULT_PLAYER_APP_ID {
@@ -79,9 +81,11 @@ mod normalized_string {
                     },
                     show_icon: value.show_icon,
                     allow_streaming: value.allow_streaming,
-                    override_activity_type: value.override_activity_type.or(existing.override_activity_type),
+                    override_activity_type: value
+                        .override_activity_type
+                        .or(existing.override_activity_type),
                 };
-                
+
                 final_map.insert(normalized_key, merged);
             } else {
                 log::debug!(
@@ -187,7 +191,9 @@ impl Config {
                 let total_len = pattern_key.len();
                 match &best_match {
                     Some((best_spec, best_len, _)) => {
-                        if specificity > *best_spec || (specificity == *best_spec && total_len > *best_len) {
+                        if specificity > *best_spec
+                            || (specificity == *best_spec && total_len > *best_len)
+                        {
                             best_match = Some((specificity, total_len, cfg.clone()));
                         }
                     }
@@ -252,7 +258,8 @@ mod wildcard_tests {
     fn matches_exact_before_wildcard() {
         let mut cfg = Config::default();
         cfg.player.insert("vlc*".to_string(), pc(true, false, "A"));
-        cfg.player.insert("vlc_media_player".to_string(), pc(false, false, "B"));
+        cfg.player
+            .insert("vlc_media_player".to_string(), pc(false, false, "B"));
 
         let res = cfg.get_player_config("VLC Media Player");
         assert_eq!(res.app_id, "B");
@@ -263,7 +270,8 @@ mod wildcard_tests {
     fn chooses_more_specific_wildcard() {
         let mut cfg = Config::default();
         cfg.player.insert("vlc_*".to_string(), pc(true, false, "A"));
-        cfg.player.insert("vlc_media_*".to_string(), pc(false, false, "B"));
+        cfg.player
+            .insert("vlc_media_*".to_string(), pc(false, false, "B"));
 
         let res = cfg.get_player_config("vlc media classic");
         assert_eq!(res.app_id, "B");
@@ -273,8 +281,10 @@ mod wildcard_tests {
     #[test]
     fn wildcard_only_then_default() {
         let mut cfg = Config::default();
-        cfg.player.insert("*spotify*".to_string(), pc(true, true, "S"));
-        cfg.player.insert("default".to_string(), pc(false, false, "D"));
+        cfg.player
+            .insert("*spotify*".to_string(), pc(true, true, "S"));
+        cfg.player
+            .insert("default".to_string(), pc(false, false, "D"));
 
         let sp = cfg.get_player_config("Spotify");
         assert_eq!(sp.app_id, "S");
@@ -366,7 +376,10 @@ pub struct CoverConfig {
 }
 
 fn default_cover_file_names() -> Vec<String> {
-    DEFAULT_COVER_FILE_NAMES.iter().map(|&s| s.to_string()).collect()
+    DEFAULT_COVER_FILE_NAMES
+        .iter()
+        .map(|&s| s.to_string())
+        .collect()
 }
 
 fn default_cover_local_search_depth() -> usize {
@@ -414,7 +427,10 @@ pub struct CoverProviderConfig {
 }
 
 fn default_cover_providers() -> Vec<String> {
-    DEFAULT_COVER_PROVIDERS.iter().map(|&s| s.to_string()).collect()
+    DEFAULT_COVER_PROVIDERS
+        .iter()
+        .map(|&s| s.to_string())
+        .collect()
 }
 
 impl Default for CoverProviderConfig {
@@ -458,7 +474,6 @@ pub enum ActivityType {
     Playing,
     Competing,
 }
-
 
 impl From<ActivityType> for discord_rich_presence::activity::ActivityType {
     fn from(activity_type: ActivityType) -> Self {

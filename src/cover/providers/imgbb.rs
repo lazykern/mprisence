@@ -1,14 +1,14 @@
 use async_trait::async_trait;
+use imgbb::ImgBB;
 use log::{debug, info, trace, warn};
 use std::sync::Arc;
 use std::time::Duration;
-use imgbb::ImgBB;
 
+use super::{CoverArtProvider, CoverResult};
+use crate::config::schema::ImgBBConfig;
 use crate::cover::error::CoverArtError;
 use crate::cover::sources::ArtSource;
-use crate::config::schema::ImgBBConfig;
 use crate::metadata::MetadataSource;
-use super::{CoverArtProvider, CoverResult};
 
 pub struct ImgbbProvider {
     config: ImgBBConfig,
@@ -19,20 +19,20 @@ impl ImgbbProvider {
     pub fn with_config(config: ImgBBConfig) -> Self {
         info!("Initializing ImgBB provider");
         let api_key = config.api_key.clone().expect("API key must be provided");
-        Self { 
+        Self {
             client: Arc::new(ImgBB::new(api_key)),
             config,
         }
     }
 
     fn generate_image_name(&self, metadata_source: &MetadataSource) -> String {
-        let artist = metadata_source.artists()
+        let artist = metadata_source
+            .artists()
             .and_then(|artists| artists.first().map(ToString::to_string))
             .unwrap_or_default();
-        
-        let title = metadata_source.title()
-            .unwrap_or_default();
-        
+
+        let title = metadata_source.title().unwrap_or_default();
+
         if artist.is_empty() && title.is_empty() {
             "mprisence_cover".to_string()
         } else if artist.is_empty() {
@@ -50,32 +50,34 @@ impl CoverArtProvider for ImgbbProvider {
     fn name(&self) -> &'static str {
         "imgbb"
     }
-    
+
     fn supports_source_type(&self, source: &ArtSource) -> bool {
-        matches!(source, 
-            ArtSource::Base64(_) | 
-            ArtSource::File(_) |
-            ArtSource::Bytes(_)
+        matches!(
+            source,
+            ArtSource::Base64(_) | ArtSource::File(_) | ArtSource::Bytes(_)
         )
     }
-    
+
     async fn process(
-        &self, 
-        source: ArtSource, 
-        metadata_source: &MetadataSource
+        &self,
+        source: ArtSource,
+        metadata_source: &MetadataSource,
     ) -> Result<Option<CoverResult>, CoverArtError> {
         if self.config.api_key.is_none() {
             warn!("ImgBB provider is disabled (no API key configured)");
             return Ok(None);
         }
-        
+
         debug!("Processing cover art with ImgBB provider");
         let image_name = self.generate_image_name(metadata_source);
-        
+
         let mut builder = self.client.upload_builder().name(&image_name);
-        
+
         if self.config.expiration > 0 {
-            trace!("Setting image expiration to {} seconds", self.config.expiration);
+            trace!(
+                "Setting image expiration to {} seconds",
+                self.config.expiration
+            );
             builder = builder.expiration(self.config.expiration);
         }
 
@@ -87,20 +89,20 @@ impl CoverArtProvider for ImgbbProvider {
                     CoverArtError::provider_error("imgbb", &format!("Failed to read file: {}", e))
                 })?;
                 builder.bytes(&data)
-            },
+            }
             ArtSource::Url(_) => return Ok(None),
-        }.upload().await.map_err(|e| {
-            CoverArtError::provider_error("imgbb", &format!("Upload failed: {}", e))
-        })?;
+        }
+        .upload()
+        .await
+        .map_err(|e| CoverArtError::provider_error("imgbb", &format!("Upload failed: {}", e)))?;
 
-        let url = response.data
-            .and_then(|data| data.url.or(data.display_url));
+        let url = response.data.and_then(|data| data.url.or(data.display_url));
 
         match &url {
             Some(url) => {
                 info!("Successfully uploaded image to ImgBB");
                 trace!("ImgBB provided URL: {}", url);
-            },
+            }
             None => warn!("ImgBB upload succeeded but no URL was returned"),
         }
 

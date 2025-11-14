@@ -1,9 +1,9 @@
-use log::{debug, info, warn, trace};
-use std::path::PathBuf;
-use base64::{Engine as _, engine::general_purpose::STANDARD};
-use walkdir::WalkDir;
-use std::collections::HashSet;
 use crate::cover::error::CoverArtError;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use log::{debug, info, trace, warn};
+use std::collections::HashSet;
+use std::path::PathBuf;
+use walkdir::WalkDir;
 
 #[derive(Debug, Clone)]
 pub enum ArtSource {
@@ -18,11 +18,10 @@ impl ArtSource {
         trace!("Converting art URL to source: {}", url);
 
         if url.starts_with("data:image/") && url.contains("base64,") {
-            return url.split("base64,").nth(1)
-                .map(|data| {
-                    debug!("Detected base64 encoded image data");
-                    Self::Base64(data.to_string())
-                });
+            return url.split("base64,").nth(1).map(|data| {
+                debug!("Detected base64 encoded image data");
+                Self::Base64(data.to_string())
+            });
         }
 
         if url.starts_with("http://") || url.starts_with("https://") {
@@ -59,7 +58,7 @@ impl ArtSource {
                 trace!("Converting bytes to base64");
                 Some(STANDARD.encode(data))
             }
-            _ => None
+            _ => None,
         }
     }
 }
@@ -70,31 +69,35 @@ pub fn search_local_cover_art(
     max_depth: usize,
 ) -> Result<Option<ArtSource>, CoverArtError> {
     if !directory.exists() || !directory.is_dir() {
-        debug!("Directory does not exist or is not a directory: {:?}", directory);
+        debug!(
+            "Directory does not exist or is not a directory: {:?}",
+            directory
+        );
         return Ok(None);
     }
 
-    debug!("Searching for cover art in directory: {:?} (max_depth: {})", directory, max_depth);
+    debug!(
+        "Searching for cover art in directory: {:?} (max_depth: {})",
+        directory, max_depth
+    );
     trace!("Using file names: {:?}", file_names);
 
     let walker = WalkDir::new(directory)
         .max_depth(max_depth)
         .follow_links(true)
         .into_iter()
-        .filter_entry(|e| {
-            e.file_type().is_dir() || e.file_type().is_file()
-        });
+        .filter_entry(|e| e.file_type().is_dir() || e.file_type().is_file());
 
     // Use HashSet for faster lookups
     let supported_extensions: HashSet<&str> = [
-        "jpg", "jpeg", "png", "bmp", "gif",
-        "tiff", "tif", "webp", "heic"
-    ].iter().cloned().collect();
+        "jpg", "jpeg", "png", "bmp", "gif", "tiff", "tif", "webp", "heic",
+    ]
+    .iter()
+    .cloned()
+    .collect();
 
     // Convert file_names to lowercase HashSet for efficient comparison
-    let target_stems: HashSet<String> = file_names.iter()
-        .map(|s| s.to_lowercase())
-        .collect();
+    let target_stems: HashSet<String> = file_names.iter().map(|s| s.to_lowercase()).collect();
 
     for entry in walker.filter_map(|e| e.ok()) {
         if !entry.file_type().is_file() {
@@ -105,15 +108,23 @@ pub fn search_local_cover_art(
         if let Some(file_stem) = file_path.file_stem().and_then(|s| s.to_str()) {
             if let Some(extension) = file_path.extension().and_then(|s| s.to_str()) {
                 let lower_ext = extension.to_lowercase();
-                if supported_extensions.contains(lower_ext.as_str()) && target_stems.contains(&file_stem.to_lowercase()) {
-                    info!("Found matching local cover art file: {:?} (format: {})", file_path, lower_ext);
+                if supported_extensions.contains(lower_ext.as_str())
+                    && target_stems.contains(&file_stem.to_lowercase())
+                {
+                    info!(
+                        "Found matching local cover art file: {:?} (format: {})",
+                        file_path, lower_ext
+                    );
                     return Ok(Some(ArtSource::File(file_path.to_path_buf())));
                 }
             }
         }
     }
 
-    debug!("No matching local cover art files found in directory: {:?}", directory);
+    debug!(
+        "No matching local cover art files found in directory: {:?}",
+        directory
+    );
     Ok(None)
 }
 
@@ -129,4 +140,4 @@ pub async fn load_file(path: PathBuf) -> Result<Option<ArtSource>, CoverArtError
             Ok(None)
         }
     }
-} 
+}

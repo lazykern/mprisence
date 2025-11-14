@@ -1,5 +1,5 @@
 use blake3::Hasher;
-use log::{debug, trace, warn, error};
+use log::{debug, error, trace, warn};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{
@@ -25,9 +25,12 @@ pub struct CoverCache {
 
 impl CoverCache {
     pub fn new(ttl: Duration) -> Result<Self, CoverArtError> {
-        trace!("Creating new cover cache instance with TTL: {}s", ttl.as_secs());
+        trace!(
+            "Creating new cover cache instance with TTL: {}s",
+            ttl.as_secs()
+        );
         let cache_dir = Self::get_cache_directory()?;
-        
+
         Self::ensure_directory(&cache_dir)?;
         debug!("Initialized cover cache in directory: {:?}", cache_dir);
 
@@ -52,7 +55,10 @@ impl CoverCache {
         Self::ensure_directory_with_options(dir, true)
     }
 
-    pub fn ensure_directory_with_options(dir: &PathBuf, verify_writable: bool) -> Result<(), CoverArtError> {
+    pub fn ensure_directory_with_options(
+        dir: &PathBuf,
+        verify_writable: bool,
+    ) -> Result<(), CoverArtError> {
         if !dir.exists() {
             debug!("Creating cache directory: {:?}", dir);
             fs::create_dir_all(dir).map_err(|e| {
@@ -118,7 +124,10 @@ impl CoverCache {
                     Ok(Some(entry.url))
                 }
                 Err(e) => {
-                    warn!("Failed to deserialize cache entry, removing corrupt file: {}", e);
+                    warn!(
+                        "Failed to deserialize cache entry, removing corrupt file: {}",
+                        e
+                    );
                     let _ = fs::remove_file(&path);
                     Ok(None)
                 }
@@ -156,7 +165,10 @@ impl CoverCache {
             e
         })?;
 
-        debug!("Successfully stored cache entry from provider: {}", provider);
+        debug!(
+            "Successfully stored cache entry from provider: {}",
+            provider
+        );
         trace!("Cache entry will expire at: {:?}", entry.expires_at);
 
         Ok(())
@@ -208,7 +220,7 @@ impl CoverCache {
         // 1. Title
         if let Some(title) = metadata_source.title() {
             if !title.is_empty() {
-                 key_components.push(format!("title:{}", title));
+                key_components.push(format!("title:{}", title));
             }
         }
 
@@ -224,24 +236,27 @@ impl CoverCache {
         // 3. Album (if non-empty)
         if let Some(album) = metadata_source.album() {
             if !album.is_empty() {
-                 key_components.push(format!("album:{}", album));
-                 // 4. Album Artists (if available, non-empty, and different from track artists)
-                 if let Some(album_artists) = metadata_source.album_artists() {
-                    if !album_artists.is_empty() && Some(&album_artists) != metadata_source.artists().as_ref() {
+                key_components.push(format!("album:{}", album));
+                // 4. Album Artists (if available, non-empty, and different from track artists)
+                if let Some(album_artists) = metadata_source.album_artists() {
+                    if !album_artists.is_empty()
+                        && Some(&album_artists) != metadata_source.artists().as_ref()
+                    {
                         let mut sorted_album_artists = album_artists.clone();
                         sorted_album_artists.sort_unstable();
-                        key_components.push(format!("album_artists:{}", sorted_album_artists.join("|")));
+                        key_components
+                            .push(format!("album_artists:{}", sorted_album_artists.join("|")));
                     }
-                 }
+                }
             }
         }
 
         // 5. URL (as fallback or additional differentiator)
-         if let Some(url) = metadata_source.url() {
-             if !url.is_empty() {
+        if let Some(url) = metadata_source.url() {
+            if !url.is_empty() {
                 key_components.push(format!("url:{}", url));
-             }
-         }
+            }
+        }
 
         // If somehow still empty, use a default
         if key_components.is_empty() {
@@ -257,4 +272,4 @@ impl CoverCache {
         trace!("Generated cache key: {}", key);
         key
     }
-} 
+}

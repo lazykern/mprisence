@@ -337,7 +337,9 @@ impl Presence {
             }
             debug!("Lofty Properties: {:?}", lofty_tag.properties());
         } else {
-            debug!("No Lofty TaggedFile available in source (likely not a local file or read failed).");
+            debug!(
+                "No Lofty TaggedFile available in source (likely not a local file or read failed)."
+            );
         }
         debug!("--- Raw Metadata End ---");
 

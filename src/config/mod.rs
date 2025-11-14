@@ -1,12 +1,12 @@
 use figment::providers::{Format, Toml};
 use figment::Figment;
+use log::trace;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
-use log::trace;
 
 const CONFIG_READY_TIMEOUT: Duration = Duration::from_millis(500);
 const CONFIG_READY_POLL_INTERVAL: Duration = Duration::from_millis(25);
@@ -216,9 +216,15 @@ fn setup_file_watcher(config_path: PathBuf, config: Arc<ConfigManager>) -> Resul
     let config_filename = config_path.file_name().map(|f| f.to_os_string()); // Get filename
 
     if config_filename.is_none() {
-        log::error!("Could not extract filename from config path: {}", config_path.display());
+        log::error!(
+            "Could not extract filename from config path: {}",
+            config_path.display()
+        );
         // Handle error appropriately, maybe return Err or panic depending on requirements
-        return Err(ConfigError::IO(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid config path")));
+        return Err(ConfigError::IO(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Invalid config path",
+        )));
     }
     let config_filename = config_filename.unwrap(); // Safe due to check above
 
@@ -234,39 +240,64 @@ fn setup_file_watcher(config_path: PathBuf, config: Arc<ConfigManager>) -> Resul
             move |res: Result<notify::Event, notify::Error>| {
                 match res {
                     Ok(event) => {
-                        trace!("File watcher event received: Kind={:?}, Paths={:?}", event.kind, event.paths);
+                        trace!(
+                            "File watcher event received: Kind={:?}, Paths={:?}",
+                            event.kind,
+                            event.paths
+                        );
 
                         let is_relevant_event = event.paths.iter().any(|p| {
-                            p.file_name().map_or(false, |name| name == config_filename.as_os_str())
+                            p.file_name()
+                                .map_or(false, |name| name == config_filename.as_os_str())
                         });
 
                         let event_kind_matches = matches!(
                             event.kind,
-                            notify::EventKind::Modify(_) |
-                            notify::EventKind::Create(_) |
-                            notify::EventKind::Remove(_)
+                            notify::EventKind::Modify(_)
+                                | notify::EventKind::Create(_)
+                                | notify::EventKind::Remove(_)
                         );
 
                         if event_kind_matches && is_relevant_event {
-                            log::debug!("Relevant file event detected for config: Kind={:?}, Paths={:?}", event.kind, event.paths);
+                            log::debug!(
+                                "Relevant file event detected for config: Kind={:?}, Paths={:?}",
+                                event.kind,
+                                event.paths
+                            );
                             let now = Instant::now();
                             if now.duration_since(last_reload) >= DEBOUNCE_DURATION {
                                 // Use the cloned Arc for reload
                                 match config_manager_clone.reload() {
                                     Ok(_) => {
                                         last_reload = now; // Update timestamp on success
-                                        log::debug!("Config reloaded successfully after event: Kind={:?}", event.kind);
-                                    },
+                                        log::debug!(
+                                            "Config reloaded successfully after event: Kind={:?}",
+                                            event.kind
+                                        );
+                                    }
                                     Err(e) => {
-                                        log::warn!("Failed to reload config after event Kind={:?}: {}", event.kind, e);
-                                        let _ = change_tx_clone.send(ConfigChange::Error(e.to_string()));
+                                        log::warn!(
+                                            "Failed to reload config after event Kind={:?}: {}",
+                                            event.kind,
+                                            e
+                                        );
+                                        let _ = change_tx_clone
+                                            .send(ConfigChange::Error(e.to_string()));
                                     }
                                 }
                             } else {
-                                trace!("Debounced config file change event (Kind={:?}, Paths={:?})", event.kind, event.paths);
+                                trace!(
+                                    "Debounced config file change event (Kind={:?}, Paths={:?})",
+                                    event.kind,
+                                    event.paths
+                                );
                             }
                         } else {
-                             trace!("Ignoring non-relevant file event: Kind={:?}, Paths={:?}", event.kind, event.paths);
+                            trace!(
+                                "Ignoring non-relevant file event: Kind={:?}, Paths={:?}",
+                                event.kind,
+                                event.paths
+                            );
                         }
                     }
                     Err(e) => {
@@ -285,7 +316,10 @@ fn setup_file_watcher(config_path: PathBuf, config: Arc<ConfigManager>) -> Resul
             .watch(&watched_dir, RecursiveMode::NonRecursive)
             .expect("Failed to watch config directory");
 
-        log::debug!("Config file watcher thread started for directory: {:?}", watched_dir);
+        log::debug!(
+            "Config file watcher thread started for directory: {:?}",
+            watched_dir
+        );
         std::thread::park();
         log::warn!("Config file watcher thread unparked unexpectedly!");
     });
@@ -382,24 +416,19 @@ mod tests {
         let temp_dir = temp_config_dir();
         let config_path = temp_dir.join("config.toml");
 
-        fs::write(
-            &config_path,
-            "[player.default]\nshow_icon = false\n",
-        )
-        .expect("failed to write initial config");
+        fs::write(&config_path, "[player.default]\nshow_icon = false\n")
+            .expect("failed to write initial config");
 
-        let manager = ConfigManager::new(config_path.clone()).expect("failed to build config manager");
+        let manager =
+            ConfigManager::new(config_path.clone()).expect("failed to build config manager");
 
         fs::remove_file(&config_path).expect("failed to remove config file");
 
         let writer_path = config_path.clone();
         let writer = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(100));
-            fs::write(
-                &writer_path,
-                "[player.default]\nshow_icon = true\n",
-            )
-            .expect("failed to write updated config");
+            fs::write(&writer_path, "[player.default]\nshow_icon = true\n")
+                .expect("failed to write updated config");
         });
 
         manager

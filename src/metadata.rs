@@ -1,6 +1,11 @@
 use std::path::Path;
 use std::time::Duration;
 
+use crate::cover::sources::ArtSource;
+use crate::utils::{
+    format_audio_channels, format_bit_depth, format_bitrate, format_duration, format_sample_rate,
+    format_track_number,
+};
 use lofty::{
     file::{AudioFile, TaggedFile, TaggedFileExt},
     prelude::*,
@@ -10,8 +15,6 @@ use log::{trace, warn};
 use mpris::Metadata;
 use serde::Serialize;
 use url::Url;
-use crate::utils::{format_duration, format_track_number, format_audio_channels, format_bitrate, format_sample_rate, format_bit_depth};
-use crate::cover::sources::ArtSource;
 
 macro_rules! impl_metadata_getter {
     // String getter with both MPRIS and Lofty
@@ -70,7 +73,12 @@ macro_rules! impl_metadata_getter {
                 .as_ref()
                 .and_then(|m| m.get($mpris_key))
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|g| g.as_str()).map(String::from).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|g| g.as_str())
+                        .map(String::from)
+                        .collect()
+                })
                 .or_else(|| {
                     self.tagged_file
                         .as_ref()
@@ -114,8 +122,7 @@ macro_rules! impl_metadata_getter {
 
 /// A template-friendly representation of metadata with non-optional fields and sensible defaults.
 /// This struct is designed to be easily used with handlebars templates.
-#[derive(Debug, Clone, Serialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Default)]
 pub struct MediaMetadata {
     pub title: Option<String>,
     pub artists: Vec<String>, // Keep as Vec since empty vec is semantically correct
@@ -176,7 +183,6 @@ pub struct MediaMetadata {
     pub movement_display: Option<String>, // "1/3" format like track_display
 }
 
-
 pub struct MetadataSource {
     mpris_metadata: Option<Metadata>,
     tagged_file: Option<TaggedFile>,
@@ -207,7 +213,10 @@ impl MetadataSource {
                     Self::lofty_tag_from_path(&decoded_path)
                 }
                 Err(e) => {
-                    warn!("Failed to URL-decode path '{}': {}. Lofty might fail.", encoded_path, e);
+                    warn!(
+                        "Failed to URL-decode path '{}': {}. Lofty might fail.",
+                        encoded_path, e
+                    );
                     Self::lofty_tag_from_path(encoded_path)
                 }
             }
@@ -229,19 +238,63 @@ impl MetadataSource {
 
     impl_metadata_getter!(isrc, "xesam:isrc", &ItemKey::Isrc);
     impl_metadata_getter!(barcode, "xesam:barcode", &ItemKey::Barcode);
-    impl_metadata_getter!(catalog_number, "xesam:catalogNumber", &ItemKey::CatalogNumber);
+    impl_metadata_getter!(
+        catalog_number,
+        "xesam:catalogNumber",
+        &ItemKey::CatalogNumber
+    );
     impl_metadata_getter!(label, "xesam:label", &ItemKey::Label);
 
-    impl_metadata_getter!(musicbrainz_track_id, "xesam:musicbrainzTrackID", &ItemKey::MusicBrainzTrackId);
-    impl_metadata_getter!(musicbrainz_album_id, "xesam:musicbrainzAlbumID", &ItemKey::MusicBrainzReleaseId);
-    impl_metadata_getter!(musicbrainz_artist_id, "xesam:musicbrainzArtistID", &ItemKey::MusicBrainzArtistId);
-    impl_metadata_getter!(musicbrainz_album_artist_id, "xesam:musicbrainzAlbumArtistID", &ItemKey::MusicBrainzReleaseArtistId);
-    impl_metadata_getter!(musicbrainz_release_group_id, "xesam:musicbrainzReleaseGroupID", &ItemKey::MusicBrainzReleaseGroupId);
+    impl_metadata_getter!(
+        musicbrainz_track_id,
+        "xesam:musicbrainzTrackID",
+        &ItemKey::MusicBrainzTrackId
+    );
+    impl_metadata_getter!(
+        musicbrainz_album_id,
+        "xesam:musicbrainzAlbumID",
+        &ItemKey::MusicBrainzReleaseId
+    );
+    impl_metadata_getter!(
+        musicbrainz_artist_id,
+        "xesam:musicbrainzArtistID",
+        &ItemKey::MusicBrainzArtistId
+    );
+    impl_metadata_getter!(
+        musicbrainz_album_artist_id,
+        "xesam:musicbrainzAlbumArtistID",
+        &ItemKey::MusicBrainzReleaseArtistId
+    );
+    impl_metadata_getter!(
+        musicbrainz_release_group_id,
+        "xesam:musicbrainzReleaseGroupID",
+        &ItemKey::MusicBrainzReleaseGroupId
+    );
 
-    impl_metadata_getter!(track_number, "xesam:trackNumber", &ItemKey::TrackNumber, parse_u32);
-    impl_metadata_getter!(track_total, "xesam:trackTotal", &ItemKey::TrackTotal, parse_u32);
-    impl_metadata_getter!(disc_number, "xesam:discNumber", &ItemKey::DiscNumber, parse_u32);
-    impl_metadata_getter!(disc_total, "xesam:discTotal", &ItemKey::DiscTotal, parse_u32);
+    impl_metadata_getter!(
+        track_number,
+        "xesam:trackNumber",
+        &ItemKey::TrackNumber,
+        parse_u32
+    );
+    impl_metadata_getter!(
+        track_total,
+        "xesam:trackTotal",
+        &ItemKey::TrackTotal,
+        parse_u32
+    );
+    impl_metadata_getter!(
+        disc_number,
+        "xesam:discNumber",
+        &ItemKey::DiscNumber,
+        parse_u32
+    );
+    impl_metadata_getter!(
+        disc_total,
+        "xesam:discTotal",
+        &ItemKey::DiscTotal,
+        parse_u32
+    );
     impl_metadata_getter!(year, "xesam:year", &ItemKey::Year, parse_u32);
 
     impl_metadata_getter!(composer, "xesam:composer", &ItemKey::Composer);
@@ -250,7 +303,11 @@ impl MetadataSource {
     impl_metadata_getter!(remixer, "xesam:remixer", &ItemKey::Remixer);
     impl_metadata_getter!(language, "xesam:language", &ItemKey::Language);
     impl_metadata_getter!(encoded_by, "xesam:encodedBy", &ItemKey::EncodedBy);
-    impl_metadata_getter!(encoder_settings, "xesam:encoderSettings", &ItemKey::EncoderSettings);
+    impl_metadata_getter!(
+        encoder_settings,
+        "xesam:encoderSettings",
+        &ItemKey::EncoderSettings
+    );
     impl_metadata_getter!(comment, "xesam:comment", &ItemKey::Comment);
 
     impl_metadata_getter!(genres, "xesam:genre", &ItemKey::Genre, array);
@@ -305,7 +362,7 @@ impl MetadataSource {
 
     pub fn art_source(&self) -> Option<ArtSource> {
         trace!("Getting art source from metadata");
-        
+
         self.mpris_metadata
             .as_ref()
             .and_then(|m| m.art_url())
@@ -435,7 +492,7 @@ impl MetadataSource {
         metadata.content_created = self.content_created();
         metadata.last_used = self.last_used();
         metadata.use_count = self.use_count();
-        
+
         metadata.movement = self.movement();
         metadata.movement_number = self.movement_number();
         metadata.movement_total = self.movement_total();

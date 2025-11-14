@@ -3,9 +3,9 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 
 use interprocess::local_socket::{prelude::*, GenericFilePath, Stream};
+use std::collections::HashMap;
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::collections::HashMap;
 
 static DISCORD_CONNECTION_ERROR_LOGGED: AtomicBool = AtomicBool::new(false);
 
@@ -74,9 +74,11 @@ pub fn is_discord_running() -> bool {
                 debug!("Connection errors encountered: [{}]", error_summary);
             }
 
-            if !DISCORD_CONNECTION_ERROR_LOGGED.load(Ordering::Relaxed) && DISCORD_CONNECTION_ERROR_LOGGED
+            if !DISCORD_CONNECTION_ERROR_LOGGED.load(Ordering::Relaxed)
+                && DISCORD_CONNECTION_ERROR_LOGGED
                     .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-                    .is_ok() {
+                    .is_ok()
+            {
                 log::info!(
                     "Could not connect to Discord IPC socket. Presence updates will be disabled until connection succeeds."
                 );

@@ -78,14 +78,8 @@ impl From<&Player> for PlaybackState {
             title: metadata
                 .as_ref()
                 .and_then(|m| m.title().map(|s| s.to_string().into_boxed_str())),
-            position: player
-                .get_position()
-                .map(|d| d.as_secs() as u32)
-                .ok(),
-            volume: player
-                .get_volume()
-                .map(|v| (v * 100.0) as u8)
-                .ok(),
+            position: player.get_position().map(|d| d.as_secs() as u32).ok(),
+            volume: player.get_volume().map(|v| (v * 100.0) as u8).ok(),
         }
     }
 }
