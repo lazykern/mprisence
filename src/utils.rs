@@ -37,6 +37,12 @@ pub fn get_content_type_from_metadata(url: &str) -> Option<Mime> {
     None
 }
 
+pub fn is_streaming_url(url: &str) -> bool {
+    Url::parse(url)
+        .map(|parsed| matches!(parsed.scheme(), "http" | "https"))
+        .unwrap_or(false)
+}
+
 pub fn format_track_number(number: u32, total: Option<u32>) -> String {
     match total {
         Some(total) => format!("{}/{}", number, total),
@@ -202,5 +208,13 @@ mod tests {
             "image"
         );
         assert!(get_content_type_from_metadata(unknown_url).is_none());
+    }
+
+    #[test]
+    fn test_is_streaming_url() {
+        assert!(is_streaming_url("https://example.com/track"));
+        assert!(is_streaming_url("http://example.com/stream"));
+        assert!(!is_streaming_url("file:///music/song.mp3"));
+        assert!(!is_streaming_url("not a valid url"));
     }
 }

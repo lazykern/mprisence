@@ -162,7 +162,7 @@ min_score = 95
 #   app_id: Discord application ID (get yours at: https://discord.com/developers/docs/quick-start/overview-of-apps)
 #   icon: Player icon URL (shown as small image)
 #   show_icon: Show player icon in Discord (as small image)
-#   allow_streaming: Enable Discord rich presence for web-based media (browsers, streaming services)
+#   allow_streaming: Enable Discord rich presence for web-based media (browsers, streaming services). When false, HTTP/HTTPS sources are skipped and any existing activity is cleared.
 #   override_activity_type: Will always show this activity type regardless of media content type
 default = { ignore = false, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false }
 

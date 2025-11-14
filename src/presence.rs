@@ -344,8 +344,25 @@ impl Presence {
         debug!("--- Raw Metadata End ---");
 
         let media_metadata = metadata_source.to_media_metadata();
+        let track_url: Option<String> = metadata_source.url();
+        let track_url_ref = track_url.as_deref();
 
         let player_config = self.config.get_player_config(player.identity());
+
+        if !player_config.allow_streaming && track_url_ref.map_or(false, utils::is_streaming_url) {
+            info!(
+                "Skipping Discord activity - streaming source blocked for player {}",
+                player.identity()
+            );
+            discord_client.lock().clear_activity().map_err(|err| {
+                if !self.error_logged.load(Ordering::Relaxed) {
+                    error!("Failed to clear Discord activity: {}", err);
+                    self.error_logged.store(true, Ordering::Relaxed);
+                }
+                DiscordError::ActivityError(err.to_string())
+            })?;
+            return Ok(());
+        }
         let as_elapsed = self.config.time_config().as_elapsed;
 
         let (start_s, end_s) = if playback_status == PlaybackStatus::Playing {
@@ -410,7 +427,7 @@ impl Presence {
         let activity_type = self.determine_activity_type(
             &self.config.activity_type_config(),
             &player_config,
-            metadata_source.url().as_deref(),
+            track_url_ref,
         );
 
         let mut activity = Activity::default().activity_type(activity_type.into());

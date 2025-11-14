@@ -150,6 +150,9 @@ allow_streaming = true
 ignore = true
 allow_streaming = true
 
+[player.firefox]
+ignore = true
+
 [player.mozilla_zen]
 ignore = true
 allow_streaming = true

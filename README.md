@@ -308,7 +308,7 @@ ignore = false # Set to true to disable presence for all players by default
 app_id = "1121632048155742288" # Default Discord Application ID
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png" # Default icon URL
 show_icon = false # Show player icon as small image by default?
-allow_streaming = false # Allow web/streaming content by default?
+allow_streaming = false # Allow HTTP/HTTPS streaming content? False clears Discord activity for those players.
 
 # Override settings for a specific player (VLC in this example)
 [player.vlc_media_player]
@@ -328,6 +328,8 @@ allow_streaming = true # Allow streaming content for VLC
 show_icon = true
 allow_streaming = true
 ```
+
+When `allow_streaming` is `false`, mprisence will skip HTTP/HTTPS sources for that player and clear any previously published Discord activity so browsers stay hidden unless explicitly enabled.
 
 </details>
 
