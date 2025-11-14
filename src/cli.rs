@@ -43,6 +43,8 @@ impl Command {
         match self {
             Command::Players { command } => match command {
                 PlayersCommand::List { detailed } => {
+                    let config = get_config();
+
                     let mut finder = PlayerFinder::new()?;
                     finder.set_player_timeout_ms(5000);
 
@@ -58,6 +60,7 @@ impl Command {
                         player.set_dbus_timeout_ms(5000);
                         let identity = player.identity();
                         let normalized = normalize_player_identity(identity);
+                        let player_config = config.get_player_config(&normalized);
                         let status = player
                             .get_playback_status()
                             .map(|s| format!("{:?}", s))
@@ -65,6 +68,7 @@ impl Command {
 
                         println!("\n{}", normalized);
                         println!("  Status: {}", status);
+                        println!("  Ignored: {}", player_config.ignore);
 
                         if detailed {
                             if let Ok(metadata) = player.get_metadata() {
@@ -89,13 +93,12 @@ impl Command {
                                 }
                             }
 
-                            let config = get_config().get_player_config(&normalized);
                             println!("  Configuration:");
-                            println!("    App ID: {}", config.app_id);
-                            println!("    Icon: {}", config.icon);
-                            println!("    Show Icon: {}", config.show_icon);
-                            println!("    Allow Streaming: {}", config.allow_streaming);
-                            if let Some(activity_type) = config.override_activity_type {
+                            println!("    App ID: {}", player_config.app_id);
+                            println!("    Icon: {}", player_config.icon);
+                            println!("    Show Icon: {}", player_config.show_icon);
+                            println!("    Allow Streaming: {}", player_config.allow_streaming);
+                            if let Some(activity_type) = player_config.override_activity_type {
                                 println!("    Activity Type: {:?}", activity_type);
                             }
                         }
@@ -136,7 +139,10 @@ impl Command {
                         if identity == "default" {
                             println!("\n  Default Configuration:");
                         } else {
-                            println!("\n  Player: {}", normalize_player_identity(identity.as_str()));
+                            println!(
+                                "\n  Player: {}",
+                                normalize_player_identity(identity.as_str())
+                            );
                         }
                         println!("    App ID: {}", cfg.app_id);
                         println!("    Icon: {}", cfg.icon);
