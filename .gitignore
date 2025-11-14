@@ -12,3 +12,5 @@ flamegraph*
 /aur-mprisence-git/
 *.pkg.tar.zst
 *.tar.gz
+
+AGENTS.md
