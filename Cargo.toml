@@ -25,21 +25,21 @@ env_logger = "0.11.8"
 figment = { version = "0.10.19", features = ["toml"] }
 handlebars = "6.3.2"
 handlebars_misc_helpers = { version = "0.17.0", features = ["string"] }
-log = "0.4.27"
+log = "0.4.28"
 mime_guess = "2.0.5"
 mpris = "2.0.1"
-notify = "8.1.0"
+notify = "8.2.0"
 parking_lot = "0.12"
 serde = { version = "1.0.219", features = ["derive"] }
 smallvec = "1.15"
-smol_str = "0.3.2"
-thiserror = "2.0.12"
-tokio = { version = "1.44.2", features = ["full"] }
+smol_str = "0.3.4"
+thiserror = "2.0.17"
+tokio = { version = "1.48.0", features = ["full"] }
 toml = "0.9"
-url = "2.5.4"
+url = "2.5.7"
 blake3 = "1.8.2"
-async-trait = "0.1.88"
-reqwest = { version = "0.12.15", features = ["json", "multipart"] }
+async-trait = "0.1.89"
+reqwest = { version = "0.12.24", features = ["json", "multipart"] }
 imgbb = "1.4.0"
 serde_json = "1.0"
 discord-rich-presence = "0.2.5"
@@ -47,7 +47,7 @@ urlencoding = "2.1.3"
 futures = "0.3"
 base64 = "0.22.1"
 lofty = "0.22.3"
-semver = "1.0.26"
+semver = "1.0.27"
 walkdir = "2.5.0"
 interprocess = "2.2.3"
 regex = "1"
