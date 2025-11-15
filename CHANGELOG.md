@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.13](https://github.com/lazykern/mprisence/compare/v1.2.12...v1.2.13)
+
+* Cover Art
+  * Support catbox and litterbox uploader
+  * Switch to catbox as default image hosting service instead of imgbb
+  * Improve musicbrainz track search strategy
+
 ## [1.2.12](https://github.com/lazykern/mprisence/compare/v1.2.11...v1.2.12)
 
 * Fix
