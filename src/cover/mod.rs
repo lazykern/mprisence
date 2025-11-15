@@ -1,4 +1,5 @@
 use log::{debug, info, trace, warn};
+use reqwest::StatusCode;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,7 +15,7 @@ pub mod sources;
 
 use cache::CoverCache;
 use error::CoverArtError;
-use providers::{create_shared_client, CoverArtProvider};
+use providers::{create_shared_client, CoverArtProvider, CoverResult};
 use sources::{search_local_cover_art, ArtSource};
 
 const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 24 hours
@@ -51,6 +52,12 @@ impl CoverManager {
                     } else {
                         warn!("Skipping ImgBB provider - no API key configured");
                     }
+                }
+                "catbox" => {
+                    debug!("Adding Catbox provider");
+                    providers.push(Box::new(providers::catbox::CatboxProvider::with_config(
+                        cover_config.provider.catbox.clone(),
+                    )));
                 }
                 unknown => warn!("Skipping unknown provider: {}", unknown),
             }
@@ -142,10 +149,15 @@ impl CoverManager {
                         warn!("Failed to fetch local URL: {}", e);
                     }
                 }
-            } else {
+            } else if Self::validate_cover_url(url).await {
                 debug!("Using direct URL from source: {}", url);
-                self.cache.store(metadata_source, "direct", url)?;
+                self.cache.store(metadata_source, "direct", url, None)?;
                 return Ok(Some(url.clone()));
+            } else {
+                warn!(
+                    "Direct cover art URL {} failed validation; trying configured providers",
+                    url
+                );
             }
         }
 
@@ -174,16 +186,29 @@ impl CoverManager {
                             debug!("Processing local cover art with {}", provider.name());
                             match provider.process(art_source.clone(), metadata_source).await {
                                 Ok(Some(result)) => {
+                                    let CoverResult {
+                                        url,
+                                        provider: provider_name,
+                                        expiration,
+                                    } = result;
+                                    if !Self::validate_cover_url(&url).await {
+                                        warn!(
+                                            "Provider {} returned invalid cover art URL, skipping",
+                                            provider_name
+                                        );
+                                        continue;
+                                    }
                                     info!(
                                         "Successfully processed local cover art with {}",
-                                        provider.name()
+                                        provider_name
                                     );
                                     self.cache.store(
                                         metadata_source,
-                                        &result.provider,
-                                        &result.url,
+                                        &provider_name,
+                                        &url,
+                                        expiration,
                                     )?;
-                                    return Ok(Some(result.url));
+                                    return Ok(Some(url));
                                 }
                                 Ok(None) => debug!(
                                     "Provider {} could not process local cover art",
@@ -214,10 +239,22 @@ impl CoverManager {
                 .await
             {
                 Ok(Some(result)) => {
-                    info!("Successfully retrieved cover art from {}", provider.name());
+                    let CoverResult {
+                        url,
+                        provider: provider_name,
+                        expiration,
+                    } = result;
+                    if !Self::validate_cover_url(&url).await {
+                        warn!(
+                            "Provider {} returned invalid cover art URL, skipping",
+                            provider_name
+                        );
+                        continue;
+                    }
+                    info!("Successfully retrieved cover art from {}", provider_name);
                     self.cache
-                        .store(metadata_source, &result.provider, &result.url)?;
-                    return Ok(Some(result.url));
+                        .store(metadata_source, &provider_name, &url, expiration)?;
+                    return Ok(Some(url));
                 }
                 Ok(None) => debug!("Provider {} found no cover art", provider.name()),
                 Err(e) => warn!("Provider {} failed: {}", provider.name(), e),
@@ -226,6 +263,57 @@ impl CoverManager {
 
         debug!("No cover art found from any source");
         Ok(None)
+    }
+
+    async fn validate_cover_url(url: &str) -> bool {
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            trace!("Skipping validation for non-HTTP cover art URL: {}", url);
+            return true;
+        }
+
+        let client = create_shared_client();
+
+        match client.head(url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                trace!("HEAD validation succeeded for cover art URL: {}", url);
+                return true;
+            }
+            Ok(resp) if resp.status() == StatusCode::METHOD_NOT_ALLOWED => {
+                trace!("HEAD not allowed for {}, falling back to GET probe", url);
+            }
+            Ok(resp) => {
+                debug!(
+                    "HEAD validation failed for {} (status {}), attempting GET probe",
+                    url,
+                    resp.status()
+                );
+            }
+            Err(e) => {
+                debug!(
+                    "HEAD validation request failed for {}: {}. Attempting GET probe",
+                    url, e
+                );
+            }
+        }
+
+        match client.get(url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                trace!("GET validation succeeded for cover art URL: {}", url);
+                true
+            }
+            Ok(resp) => {
+                warn!(
+                    "Cover art URL validation failed (status {}) for {}",
+                    resp.status(),
+                    url
+                );
+                false
+            }
+            Err(e) => {
+                warn!("Cover art URL validation failed for {}: {}", url, e);
+                false
+            }
+        }
     }
 }
 

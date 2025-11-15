@@ -144,15 +144,35 @@ impl CoverCache {
         metadata_source: &MetadataSource,
         provider: &str,
         url: &str,
+        provider_ttl: Option<Duration>,
     ) -> Result<(), CoverArtError> {
         let key = self.generate_key(metadata_source);
         trace!("Storing cache entry with key: {}", key);
         let path = self.cache_dir.join(key);
 
+        let ttl = provider_ttl
+            .map(|ttl| {
+                if ttl < self.ttl {
+                    debug!(
+                        "Using provider TTL override: {}s (default cache TTL: {}s)",
+                        ttl.as_secs(),
+                        self.ttl.as_secs()
+                    );
+                } else {
+                    trace!(
+                        "Provider TTL {}s exceeds cache TTL, capping at {}s",
+                        ttl.as_secs(),
+                        self.ttl.as_secs()
+                    );
+                }
+                ttl.min(self.ttl)
+            })
+            .unwrap_or(self.ttl);
+
         let entry = CacheEntry {
             url: url.to_string(),
             provider: provider.to_string(),
-            expires_at: SystemTime::now() + self.ttl,
+            expires_at: SystemTime::now() + ttl,
         };
 
         let data = serde_json::to_vec(&entry).map_err(|e| {

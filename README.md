@@ -192,16 +192,30 @@ After following the installation steps, you can modify `~/.config/mprisence/conf
 
 ### Local Album Covers
 
-mprisence uses Imgbb as image hosting provider to host your local album covers, you need to get an ImgBB API key (get one at: https://api.imgbb.com/ after you logged in) and update the config as below
+mprisence can re-host local cover art through Catbox (no key required) or ImgBB (requires an API key). Update the provider order to include whichever host you prefer (`["musicbrainz", "catbox", "imgbb"]`, `["catbox"]`, etc.).
+
+**Catbox (no key required)**
 
 ```toml
-# [cover.provider]
-# provider = ["imgbb", "musicbrainz"] # this will prioritize imgbb (originally ["musicbrainz", "imgbb"])
-# or just set it to ["imgbb"] so it will only use local cover art only
+[cover.provider]
+provider = ["catbox"]
+
+[cover.provider.catbox]
+# user_hash = "your_user_hash" # optional: lets you delete uploads later
+use_litter = false            # true -> upload to Litterbox instead of permanent Catbox storage
+litter_hours = 24             # valid values: 1, 12, 24, 72
+```
+
+**ImgBB (API key required)**
+
+```toml
+[cover.provider]
+provider = ["imgbb"]
 
 [cover.provider.imgbb]
 api_key = "YOUR_API_KEY_HERE"
 ```
+
 
 Notes:
 

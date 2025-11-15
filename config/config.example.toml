@@ -135,8 +135,9 @@ local_search_depth = 2
 [cover.provider]
 # Cover art providers (in order of preference)
 # "musicbrainz" - Fetch from MusicBrainz database
+# "catbox"     - Upload using Catbox (optionally via temp Litterbox)
 # "imgbb"      - Upload and host on ImgBB
-provider = ["musicbrainz", "imgbb"]
+provider = ["musicbrainz", "catbox"]
 
 [cover.provider.imgbb]
 # Your ImgBB API key (required to use the imgbb provider).
@@ -151,6 +152,16 @@ expiration = 86400 # 24 hours
 # Minimum score (0-100) required for a MusicBrainz result to be considered valid.
 # Higher values mean stricter matching, lower values allow more potential matches and are more likely to be false positives.
 min_score = 95
+
+[cover.provider.catbox]
+# Upload files via catbox.moe. No API key is required, but you can set your user hash
+# if you want to delete uploads later.
+# user_hash = "your_catbox_user_hash"
+
+# When true, uploads go to the temporary Litterbox service rather than Catbox itself.
+# Valid values for litter_hours are 1, 12, 24, or 72 hours. Anything else is clamped to 24.
+use_litter = false
+litter_hours = 24
 
 # ------------------
 # Player Settings

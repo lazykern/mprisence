@@ -6,6 +6,7 @@ use crate::cover::error::CoverArtError;
 use crate::cover::sources::ArtSource;
 use crate::metadata::MetadataSource;
 
+pub mod catbox;
 pub mod imgbb;
 pub mod musicbrainz;
 

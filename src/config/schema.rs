@@ -30,6 +30,8 @@ const DEFAULT_COVER_FILE_NAMES: [&str; 5] = ["cover", "folder", "front", "album"
 const DEFAULT_COVER_PROVIDERS: [&str; 2] = ["musicbrainz", "imgbb"];
 const DEFAULT_COVER_LOCAL_SEARCH_DEPTH: usize = 2;
 const DEFAULT_MUSICBRAINZ_MIN_SCORE: u8 = 95;
+const DEFAULT_CATBOX_USE_LITTER: bool = false;
+const DEFAULT_CATBOX_LITTER_HOURS: u8 = 24;
 
 mod normalized_string {
     use crate::utils::normalize_player_identity;
@@ -424,6 +426,9 @@ pub struct CoverProviderConfig {
 
     #[serde(default)]
     pub musicbrainz: MusicbrainzConfig,
+
+    #[serde(default)]
+    pub catbox: CatboxConfig,
 }
 
 fn default_cover_providers() -> Vec<String> {
@@ -439,6 +444,7 @@ impl Default for CoverProviderConfig {
             provider: default_cover_providers(),
             imgbb: ImgBBConfig::default(),
             musicbrainz: MusicbrainzConfig::default(),
+            catbox: CatboxConfig::default(),
         }
     }
 }
@@ -460,6 +466,34 @@ impl Default for ImgBBConfig {
         Self {
             api_key: None,
             expiration: default_cover_imgbb_expiration(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CatboxConfig {
+    #[serde(default)]
+    pub user_hash: Option<String>,
+    #[serde(default = "default_catbox_use_litter")]
+    pub use_litter: bool,
+    #[serde(default = "default_catbox_litter_hours")]
+    pub litter_hours: u8,
+}
+
+fn default_catbox_use_litter() -> bool {
+    DEFAULT_CATBOX_USE_LITTER
+}
+
+fn default_catbox_litter_hours() -> u8 {
+    DEFAULT_CATBOX_LITTER_HOURS
+}
+
+impl Default for CatboxConfig {
+    fn default() -> Self {
+        Self {
+            user_hash: None,
+            use_litter: default_catbox_use_litter(),
+            litter_hours: default_catbox_litter_hours(),
         }
     }
 }
