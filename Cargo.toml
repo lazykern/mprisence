@@ -51,6 +51,7 @@ semver = "1.0.27"
 walkdir = "2.5.0"
 interprocess = "2.2.3"
 regex = "1"
+catbox = "0.8.2"
 
 [dev-dependencies]
 
