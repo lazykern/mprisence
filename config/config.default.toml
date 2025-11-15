@@ -20,13 +20,13 @@ file_names = ["cover", "folder", "front", "album", "art"]
 local_search_depth = 2
 
 [cover.provider]
-provider = ["musicbrainz", "imgbb"]
+provider = ["catbox", "musicbrainz"]
 
 [cover.provider.imgbb]
 expiration = 86400
 
 [cover.provider.musicbrainz]
-min_score = 95
+min_score = 97
 
 [cover.provider.catbox]
 use_litter = false

@@ -393,6 +393,14 @@ impl MetadataSource {
             .map(String::from)
     }
 
+    pub fn track_id(&self) -> Option<String> {
+        self.mpris_metadata
+            .as_ref()
+            .and_then(|m| m.get("mpris:trackid"))
+            .and_then(|v| v.as_str())
+            .map(String::from)
+    }
+
     pub fn content_created(&self) -> Option<String> {
         self.mpris_metadata
             .as_ref()

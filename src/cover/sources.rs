@@ -50,6 +50,27 @@ impl ArtSource {
         Self::Bytes(data)
     }
 
+    pub async fn materialize_bytes(&self) -> Result<Option<Vec<u8>>, CoverArtError> {
+        match self {
+            Self::Bytes(data) => Ok(Some(data.clone())),
+            Self::Base64(data) => match STANDARD.decode(data.as_bytes()) {
+                Ok(bytes) => Ok(Some(bytes)),
+                Err(e) => {
+                    warn!("Failed to decode base64 art payload: {}", e);
+                    Ok(None)
+                }
+            },
+            Self::File(path) => match tokio::fs::read(path).await {
+                Ok(bytes) => Ok(Some(bytes)),
+                Err(e) => {
+                    warn!("Failed to read art file {:?}: {}", path, e);
+                    Ok(None)
+                }
+            },
+            Self::Url(_) => Ok(None),
+        }
+    }
+
     #[allow(dead_code)]
     pub fn to_base64(&self) -> Option<String> {
         match self {
