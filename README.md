@@ -194,7 +194,7 @@ After following the installation steps, you can modify `~/.config/mprisence/conf
 
 mprisence will first attempt to find cover art from MusicBrainz. If it's not found, it can re-host local cover art through Catbox (no key required) or ImgBB (requires an API key).
 
-Update the provider order to include whichever host you prefer (e.g., ["musicbrainz", "catbox", "imgbb"], ["catbox"], etc.).
+Update the provider order to include whichever host you prefer (e.g., `["musicbrainz", "catbox", "imgbb"]`, `["catbox"]`, etc.).
 
 **Catbox (no key required)**
 
