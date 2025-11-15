@@ -294,12 +294,17 @@ local_search_depth = 2
 
 [cover.provider]
 # Cover art providers in order of preference
-# (imgbb will be used as a fallback if musicbrainz fails or local art isn't found)
-provider = ["musicbrainz", "imgbb"] # Also checks local files first based on above
+# (catbox will be used as a fallback if musicbrainz fails or local art isn't found)
+provider = ["musicbrainz", "catbox"] # Also checks local files first based on above
 
 [cover.provider.musicbrainz]
 # Minimum score (0-100) for MusicBrainz matches. Higher = stricter.
-min_score = 95
+min_score = 100
+
+[cover.provider.catbox]
+# user_hash = "your_user_hash" # optional: lets you delete uploads later
+use_litter = false            # true -> upload to Litterbox instead of permanent Catbox storage
+litter_hours = 24             # valid values: 1, 12, 24, 72
 
 [cover.provider.imgbb]
 # Your ImgBB API key (get one at: https://api.imgbb.com/)
