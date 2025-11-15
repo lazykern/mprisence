@@ -46,6 +46,19 @@ pub struct CoverCache {
 }
 
 impl CoverCache {
+    fn ensure_parent_dir(path: &Path) -> Result<(), CoverArtError> {
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                debug!("Creating missing cache parent directory: {:?}", parent);
+                fs::create_dir_all(parent).map_err(|e| {
+                    error!("Failed to create cache parent directory {:?}: {}", parent, e);
+                    e
+                })?;
+            }
+        }
+        Ok(())
+    }
+
     fn entry_path_from_key<S: AsRef<str>>(&self, key: S) -> PathBuf {
         self.cache_dir.join(key.as_ref())
     }
@@ -109,6 +122,8 @@ impl CoverCache {
             key,
             path
         );
+
+        Self::ensure_parent_dir(&path)?;
 
         if let Err(e) = fs::write(&path, data) {
             error!("Failed to write cached bytes for key {}: {}", key, e);
@@ -471,6 +486,8 @@ impl CoverCache {
             error!("Failed to serialize cache entry: {}", e);
             CoverArtError::json_error(e)
         })?;
+
+        Self::ensure_parent_dir(path)?;
 
         fs::write(path, &data).map_err(|e| {
             error!("Failed to write cache entry to disk: {}", e);
