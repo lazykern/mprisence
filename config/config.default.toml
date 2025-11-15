@@ -20,7 +20,7 @@ file_names = ["cover", "folder", "front", "album", "art"]
 local_search_depth = 2
 
 [cover.provider]
-provider = ["catbox", "musicbrainz"]
+provider = ["musicbrainz", "catbox"]
 
 [cover.provider.imgbb]
 expiration = 86400
