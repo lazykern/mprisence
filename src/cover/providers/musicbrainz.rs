@@ -42,6 +42,7 @@ struct Recording {
 #[derive(Debug, Deserialize)]
 struct Release {
     id: String,
+    title: String,
     #[serde(rename = "release-group")]
     release_group: Option<ReleaseGroup>,
     #[serde(default)]
@@ -51,6 +52,7 @@ struct Release {
 #[derive(Debug, Deserialize)]
 struct ReleaseGroup {
     id: String,
+    title: String,
     #[serde(default)]
     score: u8,
 }
@@ -169,7 +171,9 @@ impl MusicbrainzProvider {
         album: S,
         album_artists: &[S],
     ) -> Result<Option<String>, CoverArtError> {
-        let escaped_album = escape_lucene(album.as_ref());
+        let album_name = album.as_ref();
+        let normalized_album = album_name.trim();
+        let escaped_album = escape_lucene(album_name);
         let mut query = format!("release-group:{}", escaped_album);
 
         if let Some(artist) = album_artists.first() {
@@ -207,19 +211,33 @@ impl MusicbrainzProvider {
                     "Found {} release groups (filtering by score >= {})",
                     data.count, self.config.min_score
                 );
-                cover_sources.extend(
-                    data.entities
-                        .iter()
-                        .filter(|group| group.score >= self.config.min_score)
-                        .map(|group| {
-                            trace!(
-                                "Adding release group to sources: {} (score: {})",
-                                group.id,
-                                group.score
-                            );
-                            ("release-group".to_string(), group.id.clone())
-                        }),
-                );
+                cover_sources.extend(data.entities.iter().filter_map(|group| {
+                    if group.score < self.config.min_score {
+                        trace!(
+                            "Skipping release group {} due to low score {}",
+                            group.id,
+                            group.score
+                        );
+                        return None;
+                    }
+
+                    if !group.title.trim().eq_ignore_ascii_case(normalized_album) {
+                        trace!(
+                            "Skipping release group {} because '{}' != '{}'",
+                            group.id,
+                            group.title,
+                            album_name
+                        );
+                        return None;
+                    }
+
+                    trace!(
+                        "Adding release group to sources: {} (score: {})",
+                        group.id,
+                        group.score
+                    );
+                    Some(("release-group".to_string(), group.id.clone()))
+                }));
             }
         }
 
@@ -229,19 +247,33 @@ impl MusicbrainzProvider {
                     "Found {} releases (filtering by score >= {})",
                     data.count, self.config.min_score
                 );
-                cover_sources.extend(
-                    data.entities
-                        .iter()
-                        .filter(|release| release.score >= self.config.min_score)
-                        .map(|release| {
-                            trace!(
-                                "Adding release to sources: {} (score: {})",
-                                release.id,
-                                release.score
-                            );
-                            ("release".to_string(), release.id.clone())
-                        }),
-                );
+                cover_sources.extend(data.entities.iter().filter_map(|release| {
+                    if release.score < self.config.min_score {
+                        trace!(
+                            "Skipping release {} due to low score {}",
+                            release.id,
+                            release.score
+                        );
+                        return None;
+                    }
+
+                    if !release.title.trim().eq_ignore_ascii_case(normalized_album) {
+                        trace!(
+                            "Skipping release {} because '{}' != '{}'",
+                            release.id,
+                            release.title,
+                            album_name
+                        );
+                        return None;
+                    }
+
+                    trace!(
+                        "Adding release to sources: {} (score: {})",
+                        release.id,
+                        release.score
+                    );
+                    Some(("release".to_string(), release.id.clone()))
+                }));
             }
         }
 
@@ -264,90 +296,120 @@ impl MusicbrainzProvider {
         album: Option<S>,
         duration_ms: Option<u128>,
     ) -> Result<Option<String>, CoverArtError> {
-        let escaped_track = escape_lucene(track.as_ref());
-        let mut query = format!("recording:{}", escaped_track);
+        let normalized_album = album
+            .as_ref()
+            .map(|a| a.as_ref().trim().to_string())
+            .filter(|s| !s.is_empty());
 
-        if let Some(artist) = artists.first() {
-            let escaped_artist = escape_lucene(artist.as_ref());
-            query.push_str(&format!(" AND artist:{}", escaped_artist));
+        let mut album_attempts: Vec<Option<&str>> = Vec::new();
+        if let Some(ref album_name) = normalized_album {
+            album_attempts.push(Some(album_name.as_str()));
+            album_attempts.push(None);
+        } else {
+            album_attempts.push(None);
         }
 
-        if let Some(album_ref) = album.as_ref() {
-            let album_str = album_ref.as_ref();
-            if !album_str.is_empty() {
-                let escaped_album = escape_lucene(album_str);
-                query.push_str(&format!(" AND album:{}", escaped_album));
+        for (attempt_idx, album_filter) in album_attempts.into_iter().enumerate() {
+            let mut query = format!("recording:{}", escape_lucene(track.as_ref()));
+
+            if let Some(artist) = artists.first() {
+                let escaped_artist = escape_lucene(artist.as_ref());
+                query.push_str(&format!(" AND artist:{}", escaped_artist));
             }
-        }
 
-        if let Some(duration) = duration_ms {
-            let duration_range = format!(
-                " AND dur:[{} TO {}]",
-                duration.saturating_sub(5000),
-                duration.saturating_add(5000)
-            );
-            query.push_str(&duration_range);
-            trace!("Added duration range to query: {}", duration_range);
-        }
-
-        let encoded_query = urlencoding::encode(&query);
-        trace!("Encoded MusicBrainz query: {}", encoded_query);
-
-        let url = format!(
-            "{}/recording?query={}&limit=5&fmt=json",
-            MUSICBRAINZ_API, encoded_query
-        );
-        debug!("Searching MusicBrainz Recordings: {}", url);
-
-        if let Ok(response) = self.client.get(&url).send().await {
-            if let Ok(data) = response.json::<MusicBrainzResponse<Recording>>().await {
-                debug!(
-                    "Found {} recordings (filtering by score >= {})",
-                    data.count, self.config.min_score
+            if let Some(album_name) = album_filter {
+                let escaped_album = escape_lucene(album_name);
+                trace!(
+                    "Track search attempt {} using album filter '{}': {}",
+                    attempt_idx + 1,
+                    album_name,
+                    escaped_album
                 );
-                let mut cover_sources = Vec::new();
+                query.push_str(&format!(" AND album:{}", escaped_album));
+            } else if normalized_album.is_some() {
+                debug!(
+                    "Track search attempt {} retrying without album filter",
+                    attempt_idx + 1
+                );
+            }
 
-                for recording in data
-                    .entities
-                    .iter()
-                    .filter(|r| r.score >= self.config.min_score)
-                {
-                    trace!(
-                        "Processing recording: {} (score: {})",
-                        recording.id,
-                        recording.score
+            if let Some(duration) = duration_ms {
+                let duration_range = format!(
+                    " AND dur:[{} TO {}]",
+                    duration.saturating_sub(5000),
+                    duration.saturating_add(5000)
+                );
+                query.push_str(&duration_range);
+                trace!("Added duration range to query: {}", duration_range);
+            }
+
+            let encoded_query = urlencoding::encode(&query);
+            trace!("Encoded MusicBrainz query: {}", encoded_query);
+
+            let url = format!(
+                "{}/recording?query={}&limit=5&fmt=json",
+                MUSICBRAINZ_API, encoded_query
+            );
+            debug!("Searching MusicBrainz Recordings: {}", url);
+
+            let mut cover_sources = Vec::new();
+            if let Ok(response) = self.client.get(&url).send().await {
+                if let Ok(data) = response.json::<MusicBrainzResponse<Recording>>().await {
+                    debug!(
+                        "Found {} recordings (filtering by score >= {})",
+                        data.count, self.config.min_score
                     );
-                    if let Some(releases) = &recording.releases {
-                        for release in releases.iter().take(2) {
-                            trace!(
-                                "Adding release to sources: {} (score: {})",
-                                release.id,
-                                release.score
-                            );
-                            cover_sources.push(("release".to_string(), release.id.clone()));
-                            if let Some(group) = &release.release_group {
+
+                    for recording in data
+                        .entities
+                        .iter()
+                        .filter(|r| r.score >= self.config.min_score)
+                    {
+                        trace!(
+                            "Processing recording: {} (score: {})",
+                            recording.id,
+                            recording.score
+                        );
+                        if let Some(releases) = &recording.releases {
+                            for release in releases.iter().take(2) {
                                 trace!(
-                                    "Adding release group to sources: {} (score: {})",
-                                    group.id,
-                                    group.score
+                                    "Adding release to sources: {} (score: {})",
+                                    release.id,
+                                    release.score
                                 );
-                                cover_sources.push(("release-group".to_string(), group.id.clone()));
+                                cover_sources
+                                    .push(("release".to_string(), release.id.clone()));
+                                if let Some(group) = &release.release_group {
+                                    trace!(
+                                        "Adding release group to sources: {} (score: {})",
+                                        group.id,
+                                        group.score
+                                    );
+                                    cover_sources
+                                        .push(("release-group".to_string(), group.id.clone()));
+                                }
                             }
                         }
                     }
                 }
-
-                if cover_sources.is_empty() {
-                    debug!(
-                        "No sources found meeting minimum score threshold of {}",
-                        self.config.min_score
-                    );
-                } else {
-                    debug!("Found {} potential cover art sources", cover_sources.len());
-                }
-
-                return self.try_cover_art_sources(cover_sources).await;
             }
+
+            if cover_sources.is_empty() {
+                debug!(
+                    "No sources found meeting minimum score threshold of {}",
+                    self.config.min_score
+                );
+                if album_filter.is_some() {
+                    debug!(
+                        "Track search attempt {} returned no usable releases with album filter",
+                        attempt_idx + 1
+                    );
+                }
+                continue;
+            }
+
+            debug!("Found {} potential cover art sources", cover_sources.len());
+            return self.try_cover_art_sources(cover_sources).await;
         }
 
         debug!("No recordings found matching the search criteria");

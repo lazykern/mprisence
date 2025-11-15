@@ -26,7 +26,7 @@ provider = ["musicbrainz", "catbox"]
 expiration = 86400
 
 [cover.provider.musicbrainz]
-min_score = 97
+min_score = 100
 
 [cover.provider.catbox]
 use_litter = false
