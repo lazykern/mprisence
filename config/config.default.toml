@@ -134,6 +134,10 @@ app_id = "1265388809860677632"
 icon = "https://raw.githubusercontent.com/quodlibet/quodlibet/refs/heads/main/quodlibet/images/hicolor/256x256/apps/io.github.quodlibet.QuodLibet.png"
 # icon = "https://i.ibb.co/vvxWfTvd/io-github-quodlibet-Quod-Libet.png" # Icon by Blackstar1069
 
+[player.qmmp]
+app_id = "1442356186052563016"
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Qmmp_logo.svg/960px-Qmmp_logo.svg.png"
+
 [player.spotify]
 ignore = true
 
