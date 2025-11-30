@@ -173,13 +173,24 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn get_player_config(&self, identity: &str) -> PlayerConfig {
-        self.get_player_config_normalized(normalize_player_identity(identity).as_str())
+    pub fn get_player_config(&self, identity: &str, player_bus_name: &str) -> PlayerConfig {
+        let normalized_identity = normalize_player_identity(identity);
+        let normalized_player_bus_name = normalize_player_identity(player_bus_name);
+
+        self.get_player_config_normalized(&normalized_identity)
+            .or_else(|| {
+                if normalized_identity != normalized_player_bus_name {
+                    self.get_player_config_normalized(&normalized_player_bus_name)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| self.default_player_config())
     }
 
-    pub fn get_player_config_normalized(&self, normalized_identity: &str) -> PlayerConfig {
+    fn get_player_config_normalized(&self, normalized_identity: &str) -> Option<PlayerConfig> {
         if let Some(config) = self.player.get(normalized_identity) {
-            return config.clone();
+            return Some(config.clone());
         }
 
         let mut best_match: Option<(usize, usize, PlayerConfig)> = None;
@@ -204,13 +215,11 @@ impl Config {
             }
         }
 
-        if let Some((_, _, cfg)) = best_match {
-            return cfg;
-        }
+        best_match.map(|(_, _, cfg)| cfg)
+    }
 
-        // If not found, try to get the default config
+    fn default_player_config(&self) -> PlayerConfig {
         self.player.get("default").cloned().unwrap_or_else(|| {
-            // If no default config exists, create a new one
             warn!("No default player config found, using built-in defaults");
             PlayerConfig::default()
         })
@@ -263,7 +272,7 @@ mod wildcard_tests {
         cfg.player
             .insert("vlc_media_player".to_string(), pc(false, false, "B"));
 
-        let res = cfg.get_player_config("VLC Media Player");
+        let res = cfg.get_player_config("VLC Media Player", "vlc");
         assert_eq!(res.app_id, "B");
         assert_eq!(res.show_icon, false);
     }
@@ -275,7 +284,7 @@ mod wildcard_tests {
         cfg.player
             .insert("vlc_media_*".to_string(), pc(false, false, "B"));
 
-        let res = cfg.get_player_config("vlc media classic");
+        let res = cfg.get_player_config("vlc media classic", "vlc");
         assert_eq!(res.app_id, "B");
         assert_eq!(res.show_icon, false);
     }
@@ -288,12 +297,24 @@ mod wildcard_tests {
         cfg.player
             .insert("default".to_string(), pc(false, false, "D"));
 
-        let sp = cfg.get_player_config("Spotify");
+        let sp = cfg.get_player_config("Spotify", "spotify");
         assert_eq!(sp.app_id, "S");
         assert!(sp.ignore);
 
-        let other = cfg.get_player_config("Some Player");
+        let other = cfg.get_player_config("Some Player", "other_player");
         assert_eq!(other.app_id, "D");
+    }
+
+    #[test]
+    fn matches_player_bus_name_when_identity_differs() {
+        let mut cfg = Config::default();
+        cfg.player.insert("vlc".to_string(), pc(true, false, "A"));
+        cfg.player
+            .insert("default".to_string(), pc(false, false, "D"));
+
+        let res = cfg.get_player_config("Fancy VLC", "vlc");
+        assert_eq!(res.app_id, "A");
+        assert_eq!(res.show_icon, true);
     }
 }
 

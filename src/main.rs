@@ -87,7 +87,9 @@ impl Mprisence {
         debug!("Template and cover managers updated successfully");
 
         for (id, presence) in self.media_players.iter_mut() {
-            let player_config = self.config.get_player_config(&id.identity);
+            let player_config = self
+                .config
+                .get_player_config(&id.identity, &id.player_bus_name);
             if player_config.ignore {
                 debug!("Player now ignored: {}", id.identity);
                 let _ = presence.destroy_discord_client();
@@ -100,8 +102,12 @@ impl Mprisence {
             }
         }
 
-        self.media_players
-            .retain(|id, _| !self.config.get_player_config(&id.identity).ignore);
+        self.media_players.retain(|id, _| {
+            !self
+                .config
+                .get_player_config(&id.identity, &id.player_bus_name)
+                .ignore
+        });
 
         debug!("All media players updated with new configuration");
         Ok(())
@@ -135,7 +141,9 @@ impl Mprisence {
             let player = player?;
             let id = PlayerIdentifier::from(&player);
 
-            let player_config = self.config.get_player_config(&id.identity);
+            let player_config = self
+                .config
+                .get_player_config(&id.identity, &id.player_bus_name);
             if player_config.ignore {
                 trace!("Skipping ignored player: {}", id.identity);
                 continue;
@@ -173,7 +181,9 @@ impl Mprisence {
         }
 
         self.media_players.retain(|id, presence| {
-            let player_config = self.config.get_player_config(&id.identity);
+            let player_config = self
+                .config
+                .get_player_config(&id.identity, &id.player_bus_name);
             let keep = current_ids.contains(id) && !player_config.ignore;
             if !keep {
                 let reason = if !current_ids.contains(id) {

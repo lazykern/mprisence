@@ -66,8 +66,9 @@ impl Command {
                     for mut player in players {
                         player.set_dbus_timeout_ms(5000);
                         let identity = player.identity().to_string();
-                        let normalized = normalize_player_identity(&identity);
-                        let player_config = config.get_player_config(&normalized);
+                        let player_bus_name = player.bus_name_player_name_part().to_string();
+                        let id = normalize_player_identity(&identity);
+                        let player_config = config.get_player_config(&identity, &player_bus_name);
                         let status = player.get_playback_status().ok();
 
                         let (title, artists, album, length) = match player.get_metadata() {
@@ -90,7 +91,8 @@ impl Command {
                         };
 
                         entries.push(PlayerDisplay {
-                            normalized_id: normalized,
+                            id,
+                            player_bus_name,
                             identity,
                             status,
                             title,
@@ -138,7 +140,7 @@ impl Command {
                             println!(
                                 "{} {}  [{}]",
                                 status_icon(entry.status.as_ref(), entry.config.ignore),
-                                entry.normalized_id,
+                                entry.identity,
                                 detail_status_text(entry.status.as_ref(), entry.config.ignore)
                             );
                             if let Some(title) = &entry.title {
@@ -156,7 +158,9 @@ impl Command {
                                 println!("  Length   : {}", format_track_length(length));
                             }
                             println!("  Presence : {}", format_presence(&entry.config));
-                            println!("  Source   : mpris id = {}", entry.identity);
+                            println!("  ID       : {}", entry.id);
+                            println!("  Bus Name : {}", entry.player_bus_name);
+
 
                             if index + 1 < entries.len() {
                                 println!();
@@ -280,7 +284,8 @@ const DIVIDER_WIDTH: usize = 56;
 const CONFIG_KEY_WIDTH: usize = 18;
 
 struct PlayerDisplay {
-    normalized_id: String,
+    id: String,
+    player_bus_name: String,    
     identity: String,
     status: Option<PlaybackStatus>,
     title: Option<String>,

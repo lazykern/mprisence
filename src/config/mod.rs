@@ -96,11 +96,11 @@ impl ConfigManager {
             .clone()
     }
 
-    pub fn get_player_config(&self, identity: &str) -> schema::PlayerConfig {
+    pub fn get_player_config(&self, identity: &str, player_bus_name: &str) -> schema::PlayerConfig {
         self.config
             .read()
             .expect("Failed to read config: RwLock poisoned")
-            .get_player_config(identity)
+            .get_player_config(identity, player_bus_name)
     }
 
     pub fn time_config(&self) -> schema::TimeConfig {
@@ -437,7 +437,7 @@ mod tests {
         writer.join().expect("writer thread panicked");
 
         assert!(
-            manager.get_player_config("default").show_icon,
+            manager.get_player_config("default", "default").show_icon,
             "reload should pick up the updated config content"
         );
 

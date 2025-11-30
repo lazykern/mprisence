@@ -51,7 +51,10 @@ impl CoverCache {
             if !parent.exists() {
                 debug!("Creating missing cache parent directory: {:?}", parent);
                 fs::create_dir_all(parent).map_err(|e| {
-                    error!("Failed to create cache parent directory {:?}: {}", parent, e);
+                    error!(
+                        "Failed to create cache parent directory {:?}: {}",
+                        parent, e
+                    );
                     e
                 })?;
             }

@@ -51,7 +51,8 @@ impl Presence {
         cover_manager: Arc<CoverManager>,
         config: Arc<ConfigManager>,
     ) -> Self {
-        let player_config = config.get_player_config(player.identity());
+        let player_config =
+            config.get_player_config(player.identity(), player.bus_name_player_name_part());
         info!("Initializing presence for player: {}", player.identity());
         trace!("Using Discord application ID: {}", player_config.app_id);
         trace!("Player configuration: {:#?}", player_config);
@@ -71,7 +72,10 @@ impl Presence {
 
     pub fn initialize_discord_client(&mut self) -> Result<(), DiscordError> {
         if self.discord_client.is_none() {
-            let player_config = self.config.get_player_config(self.player.identity());
+            let player_config = self.config.get_player_config(
+                self.player.identity(),
+                self.player.bus_name_player_name_part(),
+            );
             let client = DiscordIpcClient::new(&player_config.app_id).unwrap();
             self.discord_client = Some(Arc::new(Mutex::new(client)));
             self.needs_initial_connection.store(true, Ordering::Relaxed);
@@ -347,7 +351,9 @@ impl Presence {
         let track_url: Option<String> = metadata_source.url();
         let track_url_ref = track_url.as_deref();
 
-        let player_config = self.config.get_player_config(player.identity());
+        let player_config = self
+            .config
+            .get_player_config(player.identity(), player.bus_name_player_name_part());
 
         if !player_config.allow_streaming && track_url_ref.map_or(false, utils::is_streaming_url) {
             info!(

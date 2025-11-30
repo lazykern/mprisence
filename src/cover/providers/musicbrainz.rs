@@ -377,8 +377,7 @@ impl MusicbrainzProvider {
                                     release.id,
                                     release.score
                                 );
-                                cover_sources
-                                    .push(("release".to_string(), release.id.clone()));
+                                cover_sources.push(("release".to_string(), release.id.clone()));
                                 if let Some(group) = &release.release_group {
                                     trace!(
                                         "Adding release group to sources: {} (score: {})",
