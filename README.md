@@ -242,6 +242,10 @@ clear_on_pause = true
 # How often to update Discord presence (in milliseconds)
 interval = 2000
 
+# Restrict discovery to specific players (identities, wildcards, or regex).
+# Leave empty to allow all players.
+allowed_players = []
+
 # Note: Triple braces `{{{variable}}}` are used to prevent HTML escaping,
 # which is generally desired for Discord presence fields.
 # See: https://handlebarsjs.com/guide/#html-escaping

@@ -11,6 +11,12 @@ clear_on_pause = true
 # How often to update Discord presence (in milliseconds)
 interval = 2000
 
+# Restrict discovery to specific players (by identity, wildcard, or regex).
+# Leave empty to allow all players (default behavior).
+# Examples:
+# allowed_players = ["vlc_media_player", "*mpd*", "re:.*youtube_music.*"]
+allowed_players = []
+
 # ------------------
 # Display Template
 # ------------------

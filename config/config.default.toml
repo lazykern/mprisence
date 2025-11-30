@@ -1,5 +1,6 @@
 clear_on_pause = true
 interval = 2000
+allowed_players = []
 
 [template]
 detail = "{{{title}}}"

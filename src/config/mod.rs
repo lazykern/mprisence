@@ -84,6 +84,21 @@ impl ConfigManager {
             .interval
     }
 
+    pub fn allowed_players(&self) -> Vec<String> {
+        self.config
+            .read()
+            .expect("Failed to read config: RwLock poisoned")
+            .allowed_players
+            .clone()
+    }
+
+    pub fn is_player_allowed(&self, identity: &str, player_bus_name: &str) -> bool {
+        self.config
+            .read()
+            .expect("Failed to read config: RwLock poisoned")
+            .is_player_allowed(identity, player_bus_name)
+    }
+
     pub fn clear_on_pause(&self) -> bool {
         self.config
             .read()

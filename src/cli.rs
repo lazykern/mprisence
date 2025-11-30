@@ -68,6 +68,7 @@ impl Command {
                         let identity = player.identity().to_string();
                         let player_bus_name = player.bus_name_player_name_part().to_string();
                         let id = normalize_player_identity(&identity);
+                        let allowed = config.is_player_allowed(&identity, &player_bus_name);
                         let player_config = config.get_player_config(&identity, &player_bus_name);
                         let status = player.get_playback_status().ok();
 
@@ -100,35 +101,47 @@ impl Command {
                             album,
                             length,
                             config: player_config,
+                            allowed,
                         });
                     }
 
                     let total = entries.len();
                     let playing_count = entries
                         .iter()
-                        .filter(|entry| matches!(entry.status, Some(PlaybackStatus::Playing)))
+                        .filter(|entry| {
+                            entry.allowed && matches!(entry.status, Some(PlaybackStatus::Playing))
+                        })
                         .count();
                     let paused_count = entries
                         .iter()
-                        .filter(|entry| matches!(entry.status, Some(PlaybackStatus::Paused)))
+                        .filter(|entry| {
+                            entry.allowed && matches!(entry.status, Some(PlaybackStatus::Paused))
+                        })
                         .count();
-                    let ignored_count = entries.iter().filter(|entry| entry.config.ignore).count();
+                    let excluded_count = entries
+                        .iter()
+                        .filter(|entry| entry.config.ignore || !entry.allowed)
+                        .count();
 
                     let divider = create_divider();
 
                     println!(
-                        "\nMPRIS players: {} ({} playing, {} paused, {} ignored)",
-                        total, playing_count, paused_count, ignored_count
+                        "\nMPRIS players: {} ({} playing, {} paused, {} excluded)",
+                        total, playing_count, paused_count, excluded_count
                     );
                     println!("{}", divider);
                     for entry in &entries {
                         let summary_title = format_summary_title(entry);
                         println!(
                             "{} {} {} [{}]",
-                            status_icon(entry.status.as_ref(), entry.config.ignore),
+                            status_icon(entry.status.as_ref(), entry.config.ignore, entry.allowed),
                             format_cell(&entry.identity, NAME_COLUMN_WIDTH),
                             format_cell(&summary_title, TITLE_COLUMN_WIDTH),
-                            summary_status_text(entry.status.as_ref(), entry.config.ignore)
+                            summary_status_text(
+                                entry.status.as_ref(),
+                                entry.config.ignore,
+                                entry.allowed
+                            )
                         );
                     }
 
@@ -139,9 +152,17 @@ impl Command {
                         for (index, entry) in entries.iter().enumerate() {
                             println!(
                                 "{} {}  [{}]",
-                                status_icon(entry.status.as_ref(), entry.config.ignore),
+                                status_icon(
+                                    entry.status.as_ref(),
+                                    entry.config.ignore,
+                                    entry.allowed
+                                ),
                                 entry.identity,
-                                detail_status_text(entry.status.as_ref(), entry.config.ignore)
+                                detail_status_text(
+                                    entry.status.as_ref(),
+                                    entry.config.ignore,
+                                    entry.allowed
+                                )
                             );
                             if let Some(title) = &entry.title {
                                 println!("  Title    : {}", title);
@@ -157,10 +178,12 @@ impl Command {
                             if let Some(length) = entry.length {
                                 println!("  Length   : {}", format_track_length(length));
                             }
-                            println!("  Presence : {}", format_presence(&entry.config));
+                            println!(
+                                "  Presence : {}",
+                                format_presence(&entry.config, entry.allowed)
+                            );
                             println!("  ID       : {}", entry.id);
                             println!("  Bus Name : {}", entry.player_bus_name);
-
 
                             if index + 1 < entries.len() {
                                 println!();
@@ -180,6 +203,7 @@ impl Command {
                 print_key_value("interval", format!("{} ms", config.interval()));
                 print_key_value("clear_on_pause", format_bool(config.clear_on_pause()));
                 print_key_value("config_path", config_path.display());
+                print_key_value("allowed_players", format_vector(&config.allowed_players()));
 
                 let activity_config = config.activity_type_config();
                 println!("\nActivity");
@@ -285,7 +309,7 @@ const CONFIG_KEY_WIDTH: usize = 18;
 
 struct PlayerDisplay {
     id: String,
-    player_bus_name: String,    
+    player_bus_name: String,
     identity: String,
     status: Option<PlaybackStatus>,
     title: Option<String>,
@@ -293,14 +317,15 @@ struct PlayerDisplay {
     album: Option<String>,
     length: Option<Duration>,
     config: PlayerConfig,
+    allowed: bool,
 }
 
 fn create_divider() -> String {
     "─".repeat(DIVIDER_WIDTH)
 }
 
-fn status_icon(status: Option<&PlaybackStatus>, ignored: bool) -> &'static str {
-    if ignored {
+fn status_icon(status: Option<&PlaybackStatus>, ignored: bool, allowed: bool) -> &'static str {
+    if ignored || !allowed {
         "✖"
     } else if let Some(status) = status {
         format_playback_status_icon(*status)
@@ -318,17 +343,20 @@ fn playback_status_word(status: Option<&PlaybackStatus>) -> Option<&'static str>
     }
 }
 
-fn summary_status_text(status: Option<&PlaybackStatus>, ignored: bool) -> String {
-    detail_status_text(status, ignored)
+fn summary_status_text(status: Option<&PlaybackStatus>, ignored: bool, allowed: bool) -> String {
+    detail_status_text(status, ignored, allowed)
 }
 
-fn detail_status_text(status: Option<&PlaybackStatus>, ignored: bool) -> String {
+fn detail_status_text(status: Option<&PlaybackStatus>, ignored: bool, allowed: bool) -> String {
     let mut parts = Vec::new();
     if let Some(word) = playback_status_word(status) {
         parts.push(word.to_string());
     }
     if ignored {
         parts.push("ignored".to_string());
+    }
+    if !allowed {
+        parts.push("disallowed".to_string());
     }
 
     if parts.is_empty() {
@@ -381,8 +409,10 @@ fn format_track_length(duration: Duration) -> String {
     format!("{:02}:{:02}", total_seconds / 60, total_seconds % 60)
 }
 
-fn format_presence(config: &PlayerConfig) -> String {
-    if config.ignore {
+fn format_presence(config: &PlayerConfig, allowed: bool) -> String {
+    if !allowed {
+        "disallowed by allowed_players".to_string()
+    } else if config.ignore {
         format!("ignored (app_id = {})", config.app_id)
     } else {
         format!("enabled (allow_streaming = {})", config.allow_streaming)

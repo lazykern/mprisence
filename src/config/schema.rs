@@ -137,6 +137,9 @@ pub struct Config {
     #[serde(default = "default_interval")]
     pub interval: u64,
 
+    #[serde(default = "default_allowed_players")]
+    pub allowed_players: Vec<String>,
+
     pub template: TemplateConfig,
 
     pub time: TimeConfig,
@@ -161,11 +164,16 @@ fn default_interval() -> u64 {
     DEFAULT_INTERVAL
 }
 
+fn default_allowed_players() -> Vec<String> {
+    Vec::new()
+}
+
 impl Default for Config {
     fn default() -> Self {
         Config {
             clear_on_pause: default_clear_on_pause(),
             interval: default_interval(),
+            allowed_players: default_allowed_players(),
             template: TemplateConfig::default(),
             time: TimeConfig::default(),
             cover: CoverConfig::default(),
@@ -177,6 +185,21 @@ impl Default for Config {
 }
 
 impl Config {
+    pub fn is_player_allowed(&self, identity: &str, player_bus_name: &str) -> bool {
+        if self.allowed_players.is_empty() {
+            return true;
+        }
+
+        let normalized_identity = normalize_player_identity(identity);
+        let normalized_player_bus_name = normalize_player_identity(player_bus_name);
+
+        self.allowed_players.iter().any(|pattern| {
+            let normalized_pattern = normalize_player_identity(pattern);
+            matches_player_pattern(&normalized_pattern, &normalized_identity)
+                || matches_player_pattern(&normalized_pattern, &normalized_player_bus_name)
+        })
+    }
+
     pub fn get_player_config(&self, identity: &str, player_bus_name: &str) -> PlayerConfig {
         let normalized_identity = normalize_player_identity(identity);
         let normalized_player_bus_name = normalize_player_identity(player_bus_name);
@@ -231,9 +254,7 @@ impl Config {
                             best_match = Some((is_user, specificity, total_len, cfg.clone()));
                         }
                     }
-                    None => {
-                        best_match = Some((is_user, specificity, total_len, cfg.clone()))
-                    }
+                    None => best_match = Some((is_user, specificity, total_len, cfg.clone())),
                 }
             }
         }
@@ -266,6 +287,24 @@ impl Config {
     }
 }
 
+fn matches_player_pattern(pattern: &str, normalized_identity: &str) -> bool {
+    if pattern == normalized_identity {
+        return true;
+    }
+
+    if let Some(re) = regex_from_pattern(pattern) {
+        if re.is_match(normalized_identity) {
+            return true;
+        }
+    }
+
+    if is_wildcard_pattern(pattern) {
+        return wildcard_match(pattern, normalized_identity);
+    }
+
+    false
+}
+
 fn is_wildcard_pattern(s: &str) -> bool {
     !is_regex_pattern(s) && (s.contains('*') || s.contains('?'))
 }
@@ -282,7 +321,10 @@ fn regex_from_pattern(pattern: &str) -> Option<Regex> {
     let raw = if pattern.starts_with("re:") {
         pattern[3..].to_string()
     } else {
-        pattern.trim_start_matches('/').trim_end_matches('/').to_string()
+        pattern
+            .trim_start_matches('/')
+            .trim_end_matches('/')
+            .to_string()
     };
 
     Regex::new(&raw).ok()
@@ -384,7 +426,10 @@ mod wildcard_tests {
         cfg.player
             .insert("default".to_string(), pc(false, false, "D"));
 
-        let res = cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "org.mpris.MediaPlayer2.mpd");
+        let res = cfg.get_player_config(
+            "Music Player Daemon (mpdris2-rs)",
+            "org.mpris.MediaPlayer2.mpd",
+        );
         assert_eq!(res.app_id, "R");
         assert_eq!(res.show_icon, true);
     }
@@ -399,8 +444,10 @@ mod wildcard_tests {
         cfg.player
             .insert("default".to_string(), pc(false, false, "D"));
 
-        let res =
-            cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "org.mpris.MediaPlayer2.mpd");
+        let res = cfg.get_player_config(
+            "Music Player Daemon (mpdris2-rs)",
+            "org.mpris.MediaPlayer2.mpd",
+        );
         assert_eq!(res.app_id, "R");
         assert_eq!(res.show_icon, true);
     }
@@ -427,10 +474,37 @@ mod wildcard_tests {
         cfg.user_player_patterns
             .insert(normalize_player_identity("*mpd*"));
 
-        let res =
-            cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "org.mpris.MediaPlayer2.mpd");
+        let res = cfg.get_player_config(
+            "Music Player Daemon (mpdris2-rs)",
+            "org.mpris.MediaPlayer2.mpd",
+        );
         assert_eq!(res.app_id, "U");
         assert_eq!(res.show_icon, true);
+    }
+
+    #[test]
+    fn allows_all_players_when_unset() {
+        let cfg = Config::default();
+
+        assert!(cfg.is_player_allowed("Any Player", "any_player"));
+    }
+
+    #[test]
+    fn filters_players_by_allowed_patterns() {
+        let mut cfg = Config::default();
+        cfg.allowed_players = vec![
+            "vlc_media_player".to_string(),
+            "*mpd*".to_string(),
+            "re:.*youtube_music.*".to_string(),
+        ];
+
+        assert!(cfg.is_player_allowed("VLC media player", "vlc"));
+        assert!(cfg.is_player_allowed(
+            "Music Player Daemon (mpdris2-rs)",
+            "org.mpris.MediaPlayer2.mpd"
+        ));
+        assert!(cfg.is_player_allowed("YouTube Music", "youtube-music"));
+        assert!(!cfg.is_player_allowed("spotify", "spotify"));
     }
 }
 

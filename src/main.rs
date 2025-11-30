@@ -90,8 +90,19 @@ impl Mprisence {
             let player_config = self
                 .config
                 .get_player_config(&id.identity, &id.player_bus_name);
-            if player_config.ignore {
-                debug!("Player now ignored: {}", id.identity);
+            let is_allowed = self
+                .config
+                .is_player_allowed(&id.identity, &id.player_bus_name);
+            if player_config.ignore || !is_allowed {
+                debug!(
+                    "Player now {}: {}",
+                    if player_config.ignore {
+                        "ignored"
+                    } else {
+                        "disallowed"
+                    },
+                    id.identity
+                );
                 let _ = presence.destroy_discord_client();
             } else {
                 presence.update_managers(
@@ -107,6 +118,9 @@ impl Mprisence {
                 .config
                 .get_player_config(&id.identity, &id.player_bus_name)
                 .ignore
+                && self
+                    .config
+                    .is_player_allowed(&id.identity, &id.player_bus_name)
         });
 
         debug!("All media players updated with new configuration");
@@ -140,6 +154,14 @@ impl Mprisence {
         for player in iter_players {
             let player = player?;
             let id = PlayerIdentifier::from(&player);
+
+            if !self
+                .config
+                .is_player_allowed(&id.identity, &id.player_bus_name)
+            {
+                trace!("Skipping disallowed player: {}", id.identity);
+                continue;
+            }
 
             let player_config = self
                 .config
@@ -184,12 +206,17 @@ impl Mprisence {
             let player_config = self
                 .config
                 .get_player_config(&id.identity, &id.player_bus_name);
-            let keep = current_ids.contains(id) && !player_config.ignore;
+            let allowed = self
+                .config
+                .is_player_allowed(&id.identity, &id.player_bus_name);
+            let keep = current_ids.contains(id) && !player_config.ignore && allowed;
             if !keep {
                 let reason = if !current_ids.contains(id) {
                     "player no longer exists"
-                } else {
+                } else if player_config.ignore {
                     "player is now ignored"
+                } else {
+                    "player is not in the allowed list"
                 };
                 debug!(
                     "Media player removed from tracking: {} ({})",
