@@ -71,11 +71,6 @@ app_id = "1126153268486213672"
 icon = "https://www.musicpd.org/logo.png"
 allow_streaming = true
 
-[player.music_player_daemon]
-app_id = "1126153268486213672"
-icon = "https://www.musicpd.org/logo.png"
-allow_streaming = true
-
 [player.musikcube]
 app_id = "1127548029294084147"
 icon = "https://dashboard.snapcraft.io/site_media/appmedia/2020/04/ic_launcher_square.png"

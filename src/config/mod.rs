@@ -2,11 +2,14 @@ use figment::providers::{Format, Toml};
 use figment::Figment;
 use log::trace;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
+use toml;
+
+use crate::utils::normalize_player_identity;
 
 const CONFIG_READY_TIMEOUT: Duration = Duration::from_millis(500);
 const CONFIG_READY_POLL_INTERVAL: Duration = Duration::from_millis(25);
@@ -387,7 +390,27 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
         figment = figment.merge(user_config);
     }
 
-    figment.extract().map_err(ConfigError::Figment)
+    let mut config: Config = figment.extract().map_err(ConfigError::Figment)?;
+    config.user_player_patterns = collect_user_player_patterns(path)?;
+    Ok(config)
+}
+
+fn collect_user_player_patterns(path: &Path) -> Result<HashSet<String>, ConfigError> {
+    if !path.exists() {
+        return Ok(HashSet::new());
+    }
+
+    let contents = std::fs::read_to_string(path)?;
+    let parsed: toml::Value = toml::from_str(&contents)?;
+    let mut patterns = HashSet::new();
+
+    if let Some(player_table) = parsed.get("player").and_then(|v| v.as_table()) {
+        for key in player_table.keys() {
+            patterns.insert(normalize_player_identity(key));
+        }
+    }
+
+    Ok(patterns)
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 use log::warn;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::utils::normalize_player_identity;
 
@@ -148,6 +148,9 @@ pub struct Config {
     #[serde(default)]
     #[serde(with = "normalized_string")]
     pub player: HashMap<String, PlayerConfig>,
+
+    #[serde(skip)]
+    pub user_player_patterns: HashSet<String>,
 }
 
 fn default_clear_on_pause() -> bool {
@@ -168,6 +171,7 @@ impl Default for Config {
             cover: CoverConfig::default(),
             activity_type: ActivityTypesConfig::default(),
             player: HashMap::default(),
+            user_player_patterns: HashSet::new(),
         }
     }
 }
@@ -193,7 +197,22 @@ impl Config {
             return Some(config.clone());
         }
 
-        let mut best_match: Option<(usize, usize, PlayerConfig)> = None;
+        let mut best_regex: Option<(bool, usize, PlayerConfig)> = None;
+        for (pattern_key, cfg) in &self.player {
+            if let Some(re) = regex_from_pattern(pattern_key) {
+                if re.is_match(normalized_identity) {
+                    let total_len = pattern_key.len();
+                    let is_user = self.is_user_pattern(pattern_key);
+                    match &best_regex {
+                        Some((best_user, best_len, _))
+                            if (!is_user && *best_user)
+                                || (is_user == *best_user && total_len <= *best_len) => {}
+                        _ => best_regex = Some((is_user, total_len, cfg.clone())),
+                    }
+                }
+            }
+        }
+        let mut best_match: Option<(bool, usize, usize, PlayerConfig)> = None;
         for (pattern_key, cfg) in &self.player {
             if !is_wildcard_pattern(pattern_key) {
                 continue;
@@ -202,20 +221,36 @@ impl Config {
             if wildcard_match(pattern_key, normalized_identity) {
                 let specificity = pattern_specificity(pattern_key);
                 let total_len = pattern_key.len();
+                let is_user = self.is_user_pattern(pattern_key);
                 match &best_match {
-                    Some((best_spec, best_len, _)) => {
+                    Some((best_user, best_spec, best_len, _)) => {
                         if specificity > *best_spec
                             || (specificity == *best_spec && total_len > *best_len)
+                            || (!*best_user && is_user)
                         {
-                            best_match = Some((specificity, total_len, cfg.clone()));
+                            best_match = Some((is_user, specificity, total_len, cfg.clone()));
                         }
                     }
-                    None => best_match = Some((specificity, total_len, cfg.clone())),
+                    None => {
+                        best_match = Some((is_user, specificity, total_len, cfg.clone()))
+                    }
                 }
             }
         }
 
-        best_match.map(|(_, _, cfg)| cfg)
+        if let Some((true, _, cfg)) = best_regex {
+            return Some(cfg);
+        }
+
+        if let Some((true, _, _, cfg)) = best_match {
+            return Some(cfg);
+        }
+
+        if let Some((_, _, cfg)) = best_regex {
+            return Some(cfg);
+        }
+
+        best_match.map(|(_, _, _, cfg)| cfg)
     }
 
     fn default_player_config(&self) -> PlayerConfig {
@@ -224,10 +259,33 @@ impl Config {
             PlayerConfig::default()
         })
     }
+
+    fn is_user_pattern(&self, pattern_key: &str) -> bool {
+        self.user_player_patterns
+            .contains(&normalize_player_identity(pattern_key))
+    }
 }
 
 fn is_wildcard_pattern(s: &str) -> bool {
-    s.contains('*') || s.contains('?')
+    !is_regex_pattern(s) && (s.contains('*') || s.contains('?'))
+}
+
+fn is_regex_pattern(s: &str) -> bool {
+    (s.starts_with("re:") && s.len() > 3) || (s.starts_with('/') && s.ends_with('/') && s.len() > 2)
+}
+
+fn regex_from_pattern(pattern: &str) -> Option<Regex> {
+    if !is_regex_pattern(pattern) {
+        return None;
+    }
+
+    let raw = if pattern.starts_with("re:") {
+        pattern[3..].to_string()
+    } else {
+        pattern.trim_start_matches('/').trim_end_matches('/').to_string()
+    };
+
+    Regex::new(&raw).ok()
 }
 
 fn pattern_specificity(s: &str) -> usize {
@@ -256,6 +314,7 @@ fn wildcard_match(pattern: &str, text: &str) -> bool {
 #[cfg(test)]
 mod wildcard_tests {
     use super::*;
+    use crate::utils::normalize_player_identity;
 
     fn pc(show_icon: bool, ignore: bool, app_id: &str) -> PlayerConfig {
         let mut cfg = PlayerConfig::default();
@@ -314,6 +373,63 @@ mod wildcard_tests {
 
         let res = cfg.get_player_config("Fancy VLC", "vlc");
         assert_eq!(res.app_id, "A");
+        assert_eq!(res.show_icon, true);
+    }
+
+    #[test]
+    fn matches_regex_pattern_for_identity() {
+        let mut cfg = Config::default();
+        cfg.player
+            .insert("re:.*mpdris2.*".to_string(), pc(true, false, "R"));
+        cfg.player
+            .insert("default".to_string(), pc(false, false, "D"));
+
+        let res = cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "org.mpris.MediaPlayer2.mpd");
+        assert_eq!(res.app_id, "R");
+        assert_eq!(res.show_icon, true);
+    }
+
+    #[test]
+    fn regex_priority_over_wildcard() {
+        let mut cfg = Config::default();
+        cfg.player
+            .insert("*mpd*".to_string(), pc(false, false, "G"));
+        cfg.player
+            .insert("re:.*mpdris2.*".to_string(), pc(true, false, "R"));
+        cfg.player
+            .insert("default".to_string(), pc(false, false, "D"));
+
+        let res =
+            cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "org.mpris.MediaPlayer2.mpd");
+        assert_eq!(res.app_id, "R");
+        assert_eq!(res.show_icon, true);
+    }
+
+    #[test]
+    fn regex_matches_bus_name_when_identity_differs() {
+        let mut cfg = Config::default();
+        cfg.player
+            .insert("re:.*mpdris2.*".to_string(), pc(true, false, "R"));
+        cfg.player
+            .insert("default".to_string(), pc(false, false, "D"));
+
+        let res = cfg.get_player_config("Some Custom Player", "org.mpris.MediaPlayer2.mpdris2-rs");
+        assert_eq!(res.app_id, "R");
+        assert_eq!(res.show_icon, true);
+    }
+
+    #[test]
+    fn user_patterns_override_defaults() {
+        let mut cfg = Config::default();
+        cfg.player
+            .insert("re:.*mpdris2.*".to_string(), pc(false, false, "D"));
+        cfg.player.insert("*mpd*".to_string(), pc(true, false, "U"));
+        cfg.user_player_patterns
+            .insert(normalize_player_identity("*mpd*"));
+
+        let res =
+            cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "org.mpris.MediaPlayer2.mpd");
+        assert_eq!(res.app_id, "U");
         assert_eq!(res.show_icon, true);
     }
 }

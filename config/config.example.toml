@@ -189,6 +189,13 @@ show_icon = true
 allow_streaming = true
 # override_activity_type = "watching"
 
+# Regex: prefix with re: or wrap in /.../ to match player name or bus name.
+# Example for multiple MPD bridges such as mpdris2-rs:
+# [player."re:.*mpdris2.*"]
+# app_id = "1126153268486213672"
+# icon = "https://www.musicpd.org/logo.png"
+# allow_streaming = true
+
 # You can add more player-specific configurations below, like:
 # [player.spotify]
 # ignore = true # Example: ignore Spotify
