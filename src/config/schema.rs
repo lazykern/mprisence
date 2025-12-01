@@ -1,4 +1,3 @@
-use log::warn;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -33,13 +32,13 @@ const DEFAULT_MUSICBRAINZ_MIN_SCORE: u8 = 95;
 const DEFAULT_CATBOX_USE_LITTER: bool = false;
 const DEFAULT_CATBOX_LITTER_HOURS: u8 = 24;
 
-mod normalized_string {
+pub(crate) mod normalized_string {
     use crate::utils::normalize_player_identity;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::collections::HashMap;
 
     pub fn serialize<S>(
-        map: &HashMap<String, super::PlayerConfig>,
+        map: &HashMap<String, super::PlayerConfigLayer>,
         serializer: S,
     ) -> Result<S::Ok, S::Error>
     where
@@ -50,18 +49,18 @@ mod normalized_string {
 
     pub fn deserialize<'de, D>(
         deserializer: D,
-    ) -> Result<HashMap<String, super::PlayerConfig>, D::Error>
+    ) -> Result<HashMap<String, super::PlayerConfigLayer>, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let temp_map = HashMap::<String, super::PlayerConfig>::deserialize(deserializer)?;
+        let temp_map = HashMap::<String, super::PlayerConfigLayer>::deserialize(deserializer)?;
 
-        let mut final_map: HashMap<String, super::PlayerConfig> = HashMap::new();
+        let mut final_map: HashMap<String, super::PlayerConfigLayer> = HashMap::new();
 
         for (key, value) in temp_map {
             let normalized_key = normalize_player_identity(&key);
 
-            if let Some(existing) = final_map.get(&normalized_key).cloned() {
+            if let Some(existing) = final_map.get_mut(&normalized_key) {
                 // If we have a duplicate key after normalization, merge the configs
                 log::debug!(
                     "Merging duplicate player config for '{}' (from '{}')",
@@ -69,26 +68,7 @@ mod normalized_string {
                     key
                 );
 
-                let merged = super::PlayerConfig {
-                    ignore: value.ignore,
-                    app_id: if value.app_id != super::DEFAULT_PLAYER_APP_ID {
-                        value.app_id
-                    } else {
-                        existing.app_id
-                    },
-                    icon: if value.icon != super::DEFAULT_PLAYER_ICON {
-                        value.icon
-                    } else {
-                        existing.icon
-                    },
-                    show_icon: value.show_icon,
-                    allow_streaming: value.allow_streaming,
-                    override_activity_type: value
-                        .override_activity_type
-                        .or(existing.override_activity_type),
-                };
-
-                final_map.insert(normalized_key, merged);
+                existing.merge_from(value);
             } else {
                 log::debug!(
                     "Normalizing player config key from '{}' to '{}'",
@@ -150,7 +130,13 @@ pub struct Config {
 
     #[serde(default)]
     #[serde(with = "normalized_string")]
-    pub player: HashMap<String, PlayerConfig>,
+    pub player: HashMap<String, PlayerConfigLayer>,
+
+    #[serde(skip)]
+    pub bundled_player: HashMap<String, PlayerConfigLayer>,
+
+    #[serde(skip)]
+    pub user_player: HashMap<String, PlayerConfigLayer>,
 
     #[serde(skip)]
     pub user_player_patterns: HashSet<String>,
@@ -179,6 +165,8 @@ impl Default for Config {
             cover: CoverConfig::default(),
             activity_type: ActivityTypesConfig::default(),
             player: HashMap::default(),
+            bundled_player: HashMap::default(),
+            user_player: HashMap::default(),
             user_player_patterns: HashSet::new(),
         }
     }
@@ -204,86 +192,182 @@ impl Config {
         let normalized_identity = normalize_player_identity(identity);
         let normalized_player_bus_name = normalize_player_identity(player_bus_name);
 
-        self.get_player_config_normalized(&normalized_identity)
-            .or_else(|| {
-                if normalized_identity != normalized_player_bus_name {
-                    self.get_player_config_normalized(&normalized_player_bus_name)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_else(|| self.default_player_config())
+        let matches = self.collect_ordered_matches(&normalized_identity);
+        let matches = if matches.is_empty() && normalized_identity != normalized_player_bus_name {
+            self.collect_ordered_matches(&normalized_player_bus_name)
+        } else {
+            matches
+        };
+
+        self.resolve_player_config(matches)
     }
 
-    fn get_player_config_normalized(&self, normalized_identity: &str) -> Option<PlayerConfig> {
-        if let Some(config) = self.player.get(normalized_identity) {
-            return Some(config.clone());
-        }
-
-        let mut best_regex: Option<(bool, usize, PlayerConfig)> = None;
-        for (pattern_key, cfg) in &self.player {
-            if let Some(re) = regex_from_pattern(pattern_key) {
-                if re.is_match(normalized_identity) {
-                    let total_len = pattern_key.len();
-                    let is_user = self.is_user_pattern(pattern_key);
-                    match &best_regex {
-                        Some((best_user, best_len, _))
-                            if (!is_user && *best_user)
-                                || (is_user == *best_user && total_len <= *best_len) => {}
-                        _ => best_regex = Some((is_user, total_len, cfg.clone())),
-                    }
-                }
+    pub fn effective_player_configs(&self) -> HashMap<String, PlayerConfig> {
+        let mut keys: HashSet<String> = HashSet::new();
+        for key in self
+            .bundled_player
+            .keys()
+            .chain(self.user_player.keys())
+        {
+            if key != "default" {
+                keys.insert(key.clone());
             }
         }
-        let mut best_match: Option<(bool, usize, usize, PlayerConfig)> = None;
-        for (pattern_key, cfg) in &self.player {
-            if !is_wildcard_pattern(pattern_key) {
+
+        let mut result = HashMap::new();
+        for key in keys {
+            let mut resolved = PlayerConfig::default();
+
+            if let Some(layer) = self.bundled_player.get("default") {
+                resolved = layer.apply_over(resolved);
+            }
+            if let Some(layer) = self.user_player.get("default") {
+                resolved = layer.apply_over(resolved);
+            }
+            if let Some(layer) = self.bundled_player.get(&key) {
+                resolved = layer.apply_over(resolved);
+            }
+            if let Some(layer) = self.user_player.get(&key) {
+                resolved = layer.apply_over(resolved);
+            }
+
+            result.insert(key, resolved);
+        }
+
+        result
+    }
+
+    fn resolve_player_config(&self, matches: Vec<PlayerConfigLayer>) -> PlayerConfig {
+        let mut resolved = PlayerConfig::default();
+
+        if let Some(layer) = self.bundled_player.get("default") {
+            resolved = layer.apply_over(resolved);
+        }
+
+        if let Some(layer) = self.user_player.get("default") {
+            resolved = layer.apply_over(resolved);
+        }
+
+        for layer in matches {
+            resolved = layer.apply_over(resolved);
+        }
+
+        resolved
+    }
+
+    fn collect_ordered_matches(&self, normalized_identity: &str) -> Vec<PlayerConfigLayer> {
+        let user_matches = self.collect_best_matches_for_source(&self.user_player, normalized_identity);
+        let bundled_matches =
+            self.collect_best_matches_for_source(&self.bundled_player, normalized_identity);
+
+        // Order from lowest priority to highest so later items override earlier ones during overlay.
+        let mut ordered: Vec<PlayerConfigLayer> = Vec::new();
+
+        if let Some(layer) = bundled_matches.wildcard {
+            ordered.push(layer);
+        }
+        if let Some(layer) = bundled_matches.regex {
+            ordered.push(layer);
+        }
+        if let Some(layer) = bundled_matches.exact {
+            ordered.push(layer);
+        }
+        if let Some(layer) = user_matches.wildcard {
+            ordered.push(layer);
+        }
+        if let Some(layer) = user_matches.regex {
+            ordered.push(layer);
+        }
+        if let Some(layer) = user_matches.exact {
+            ordered.push(layer);
+        }
+
+        ordered
+    }
+
+    fn collect_best_matches_for_source(
+        &self,
+        source: &HashMap<String, PlayerConfigLayer>,
+        normalized_identity: &str,
+    ) -> MatchGroupLayers {
+        let mut result = MatchGroup::default();
+
+        for (pattern_key, cfg) in source {
+            if pattern_key == "default" {
                 continue;
             }
 
-            if wildcard_match(pattern_key, normalized_identity) {
+            if pattern_key == normalized_identity {
+                result.exact = Some(ScoredLayer::new(cfg.clone(), pattern_key.len(), 0));
+                continue;
+            }
+
+            if let Some(re) = regex_from_pattern(pattern_key) {
+                if re.is_match(normalized_identity) {
+                    let total_len = pattern_key.len();
+                    match &result.regex {
+                        Some(existing) if existing.pattern_len >= total_len => {}
+                        _ => result.regex = Some(ScoredLayer::new(cfg.clone(), total_len, 0)),
+                    }
+                }
+                continue;
+            }
+
+            if is_wildcard_pattern(pattern_key) && wildcard_match(pattern_key, normalized_identity) {
                 let specificity = pattern_specificity(pattern_key);
                 let total_len = pattern_key.len();
-                let is_user = self.is_user_pattern(pattern_key);
-                match &best_match {
-                    Some((best_user, best_spec, best_len, _)) => {
-                        if specificity > *best_spec
-                            || (specificity == *best_spec && total_len > *best_len)
-                            || (!*best_user && is_user)
-                        {
-                            best_match = Some((is_user, specificity, total_len, cfg.clone()));
-                        }
-                    }
-                    None => best_match = Some((is_user, specificity, total_len, cfg.clone())),
+                match &result.wildcard {
+                    Some(existing)
+                        if existing.specificity > specificity
+                            || (existing.specificity == specificity
+                                && existing.pattern_len >= total_len) => {}
+                    _ => result.wildcard = Some(ScoredLayer::new(cfg.clone(), total_len, specificity)),
                 }
             }
         }
 
-        if let Some((true, _, cfg)) = best_regex {
-            return Some(cfg);
-        }
-
-        if let Some((true, _, _, cfg)) = best_match {
-            return Some(cfg);
-        }
-
-        if let Some((_, _, cfg)) = best_regex {
-            return Some(cfg);
-        }
-
-        best_match.map(|(_, _, _, cfg)| cfg)
+        result.into_layers()
     }
+}
 
-    fn default_player_config(&self) -> PlayerConfig {
-        self.player.get("default").cloned().unwrap_or_else(|| {
-            warn!("No default player config found, using built-in defaults");
-            PlayerConfig::default()
-        })
+#[derive(Default)]
+struct MatchGroup {
+    exact: Option<ScoredLayer>,
+    regex: Option<ScoredLayer>,
+    wildcard: Option<ScoredLayer>,
+}
+
+impl MatchGroup {
+    fn into_layers(self) -> MatchGroupLayers {
+        MatchGroupLayers {
+            exact: self.exact.map(|s| s.layer),
+            regex: self.regex.map(|s| s.layer),
+            wildcard: self.wildcard.map(|s| s.layer),
+        }
     }
+}
 
-    fn is_user_pattern(&self, pattern_key: &str) -> bool {
-        self.user_player_patterns
-            .contains(&normalize_player_identity(pattern_key))
+#[derive(Default)]
+struct MatchGroupLayers {
+    exact: Option<PlayerConfigLayer>,
+    regex: Option<PlayerConfigLayer>,
+    wildcard: Option<PlayerConfigLayer>,
+}
+
+#[derive(Clone)]
+struct ScoredLayer {
+    layer: PlayerConfigLayer,
+    pattern_len: usize,
+    specificity: usize,
+}
+
+impl ScoredLayer {
+    fn new(layer: PlayerConfigLayer, pattern_len: usize, specificity: usize) -> Self {
+        Self {
+            layer,
+            pattern_len,
+            specificity,
+        }
     }
 }
 
@@ -356,22 +440,25 @@ fn wildcard_match(pattern: &str, text: &str) -> bool {
 #[cfg(test)]
 mod wildcard_tests {
     use super::*;
-    use crate::utils::normalize_player_identity;
 
-    fn pc(show_icon: bool, ignore: bool, app_id: &str) -> PlayerConfig {
-        let mut cfg = PlayerConfig::default();
-        cfg.show_icon = show_icon;
-        cfg.ignore = ignore;
-        cfg.app_id = app_id.to_string();
-        cfg
+    fn layer(show_icon: Option<bool>, ignore: Option<bool>, app_id: Option<&str>) -> PlayerConfigLayer {
+        PlayerConfigLayer {
+            show_icon,
+            ignore,
+            app_id: app_id.map(|s| s.to_string()),
+            ..Default::default()
+        }
     }
 
     #[test]
     fn matches_exact_before_wildcard() {
         let mut cfg = Config::default();
-        cfg.player.insert("vlc*".to_string(), pc(true, false, "A"));
-        cfg.player
-            .insert("vlc_media_player".to_string(), pc(false, false, "B"));
+        cfg.user_player
+            .insert("vlc*".to_string(), layer(Some(true), Some(false), Some("A")));
+        cfg.user_player.insert(
+            "vlc_media_player".to_string(),
+            layer(Some(false), Some(false), Some("B")),
+        );
 
         let res = cfg.get_player_config("VLC Media Player", "vlc");
         assert_eq!(res.app_id, "B");
@@ -381,9 +468,12 @@ mod wildcard_tests {
     #[test]
     fn chooses_more_specific_wildcard() {
         let mut cfg = Config::default();
-        cfg.player.insert("vlc_*".to_string(), pc(true, false, "A"));
-        cfg.player
-            .insert("vlc_media_*".to_string(), pc(false, false, "B"));
+        cfg.user_player
+            .insert("vlc_*".to_string(), layer(Some(true), Some(false), Some("A")));
+        cfg.user_player.insert(
+            "vlc_media_*".to_string(),
+            layer(Some(false), Some(false), Some("B")),
+        );
 
         let res = cfg.get_player_config("vlc media classic", "vlc");
         assert_eq!(res.app_id, "B");
@@ -393,10 +483,10 @@ mod wildcard_tests {
     #[test]
     fn wildcard_only_then_default() {
         let mut cfg = Config::default();
-        cfg.player
-            .insert("*spotify*".to_string(), pc(true, true, "S"));
-        cfg.player
-            .insert("default".to_string(), pc(false, false, "D"));
+        cfg.user_player
+            .insert("*spotify*".to_string(), layer(Some(true), Some(true), Some("S")));
+        cfg.bundled_player
+            .insert("default".to_string(), layer(Some(false), Some(false), Some("D")));
 
         let sp = cfg.get_player_config("Spotify", "spotify");
         assert_eq!(sp.app_id, "S");
@@ -409,9 +499,10 @@ mod wildcard_tests {
     #[test]
     fn matches_player_bus_name_when_identity_differs() {
         let mut cfg = Config::default();
-        cfg.player.insert("vlc".to_string(), pc(true, false, "A"));
-        cfg.player
-            .insert("default".to_string(), pc(false, false, "D"));
+        cfg.user_player
+            .insert("vlc".to_string(), layer(Some(true), Some(false), Some("A")));
+        cfg.bundled_player
+            .insert("default".to_string(), layer(Some(false), Some(false), Some("D")));
 
         let res = cfg.get_player_config("Fancy VLC", "vlc");
         assert_eq!(res.app_id, "A");
@@ -421,10 +512,12 @@ mod wildcard_tests {
     #[test]
     fn matches_regex_pattern_for_identity() {
         let mut cfg = Config::default();
-        cfg.player
-            .insert("re:.*mpdris2.*".to_string(), pc(true, false, "R"));
-        cfg.player
-            .insert("default".to_string(), pc(false, false, "D"));
+        cfg.user_player.insert(
+            "re:.*mpdris2.*".to_string(),
+            layer(Some(true), Some(false), Some("R")),
+        );
+        cfg.bundled_player
+            .insert("default".to_string(), layer(Some(false), Some(false), Some("D")));
 
         let res = cfg.get_player_config(
             "Music Player Daemon (mpdris2-rs)",
@@ -437,12 +530,14 @@ mod wildcard_tests {
     #[test]
     fn regex_priority_over_wildcard() {
         let mut cfg = Config::default();
-        cfg.player
-            .insert("*mpd*".to_string(), pc(false, false, "G"));
-        cfg.player
-            .insert("re:.*mpdris2.*".to_string(), pc(true, false, "R"));
-        cfg.player
-            .insert("default".to_string(), pc(false, false, "D"));
+        cfg.bundled_player
+            .insert("*mpd*".to_string(), layer(Some(false), Some(false), Some("G")));
+        cfg.user_player.insert(
+            "re:.*mpdris2.*".to_string(),
+            layer(Some(true), Some(false), Some("R")),
+        );
+        cfg.bundled_player
+            .insert("default".to_string(), layer(Some(false), Some(false), Some("D")));
 
         let res = cfg.get_player_config(
             "Music Player Daemon (mpdris2-rs)",
@@ -455,10 +550,12 @@ mod wildcard_tests {
     #[test]
     fn regex_matches_bus_name_when_identity_differs() {
         let mut cfg = Config::default();
-        cfg.player
-            .insert("re:.*mpdris2.*".to_string(), pc(true, false, "R"));
-        cfg.player
-            .insert("default".to_string(), pc(false, false, "D"));
+        cfg.user_player.insert(
+            "re:.*mpdris2.*".to_string(),
+            layer(Some(true), Some(false), Some("R")),
+        );
+        cfg.bundled_player
+            .insert("default".to_string(), layer(Some(false), Some(false), Some("D")));
 
         let res = cfg.get_player_config("Some Custom Player", "org.mpris.MediaPlayer2.mpdris2-rs");
         assert_eq!(res.app_id, "R");
@@ -468,11 +565,12 @@ mod wildcard_tests {
     #[test]
     fn user_patterns_override_defaults() {
         let mut cfg = Config::default();
-        cfg.player
-            .insert("re:.*mpdris2.*".to_string(), pc(false, false, "D"));
-        cfg.player.insert("*mpd*".to_string(), pc(true, false, "U"));
-        cfg.user_player_patterns
-            .insert(normalize_player_identity("*mpd*"));
+        cfg.bundled_player.insert(
+            "re:.*mpdris2.*".to_string(),
+            layer(Some(false), Some(false), Some("D")),
+        );
+        cfg.user_player
+            .insert("*mpd*".to_string(), layer(Some(true), Some(false), Some("U")));
 
         let res = cfg.get_player_config(
             "Music Player Daemon (mpdris2-rs)",
@@ -480,6 +578,48 @@ mod wildcard_tests {
         );
         assert_eq!(res.app_id, "U");
         assert_eq!(res.show_icon, true);
+    }
+
+    #[test]
+    fn user_layers_fill_missing_fields_from_bundled_match() {
+        let mut cfg = Config::default();
+        cfg.bundled_player.insert(
+            "vlc".to_string(),
+            layer(Some(false), Some(false), Some("BUNDLED")),
+        );
+        cfg.user_player.insert(
+            "vlc".to_string(),
+            PlayerConfigLayer {
+                show_icon: Some(true),
+                ..Default::default()
+            },
+        );
+
+        let res = cfg.get_player_config("vlc", "vlc");
+        assert_eq!(res.app_id, "BUNDLED"); // comes from bundled match
+        assert_eq!(res.show_icon, true); // overridden by user layer
+        assert_eq!(res.ignore, false); // inherited from bundled + defaults
+    }
+
+    #[test]
+    fn user_regex_overrides_bundled_exact_and_inherits_fields() {
+        let mut cfg = Config::default();
+        cfg.bundled_player.insert(
+            "vlc_media_player".to_string(),
+            layer(Some(false), Some(true), Some("BUNDLED")),
+        );
+        cfg.user_player.insert(
+            "re:vlc.*".to_string(),
+            PlayerConfigLayer {
+                show_icon: Some(true),
+                ..Default::default()
+            },
+        );
+
+        let res = cfg.get_player_config("VLC media player", "vlc_media_player");
+        assert_eq!(res.app_id, "BUNDLED"); // inherited
+        assert_eq!(res.show_icon, true); // overridden by user regex
+        assert_eq!(res.ignore, true); // inherited from bundled exact
     }
 
     #[test]
@@ -727,6 +867,73 @@ impl From<ActivityType> for discord_rich_presence::activity::ActivityType {
             ActivityType::Watching => Self::Watching,
             ActivityType::Playing => Self::Playing,
             ActivityType::Competing => Self::Competing,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PlayerConfigLayer {
+    #[serde(default)]
+    pub ignore: Option<bool>,
+
+    #[serde(default)]
+    pub app_id: Option<String>,
+
+    #[serde(default)]
+    pub icon: Option<String>,
+
+    #[serde(default)]
+    pub show_icon: Option<bool>,
+
+    #[serde(default)]
+    pub allow_streaming: Option<bool>,
+
+    #[serde(default)]
+    pub override_activity_type: Option<ActivityType>,
+}
+
+impl PlayerConfigLayer {
+    pub fn apply_over(&self, mut base: PlayerConfig) -> PlayerConfig {
+        if let Some(value) = self.ignore {
+            base.ignore = value;
+        }
+        if let Some(value) = &self.app_id {
+            base.app_id = value.clone();
+        }
+        if let Some(value) = &self.icon {
+            base.icon = value.clone();
+        }
+        if let Some(value) = self.show_icon {
+            base.show_icon = value;
+        }
+        if let Some(value) = self.allow_streaming {
+            base.allow_streaming = value;
+        }
+        if let Some(value) = self.override_activity_type {
+            base.override_activity_type = Some(value);
+        }
+
+        base
+    }
+
+    pub fn merge_from(&mut self, other: PlayerConfigLayer) {
+        if other.ignore.is_some() {
+            self.ignore = other.ignore;
+        }
+        if other.app_id.is_some() {
+            self.app_id = other.app_id;
+        }
+        if other.icon.is_some() {
+            self.icon = other.icon;
+        }
+        if other.show_icon.is_some() {
+            self.show_icon = other.show_icon;
+        }
+        if other.allow_streaming.is_some() {
+            self.allow_streaming = other.allow_streaming;
+        }
+        if other.override_activity_type.is_some() {
+            self.override_activity_type = other.override_activity_type;
         }
     }
 }

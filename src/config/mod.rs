@@ -149,8 +149,7 @@ impl ConfigManager {
         self.config
             .read()
             .expect("Failed to read config: RwLock poisoned")
-            .player
-            .clone()
+            .effective_player_configs()
     }
 
     pub fn config_path(&self) -> PathBuf {
@@ -395,9 +394,11 @@ fn ensure_config_exists(path: &Path) -> Result<(), ConfigError> {
 fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     log::info!("Loading configuration from {}", path.display());
 
-    let mut figment = Figment::new().merge(Toml::string(include_str!(
+    let default_provider = Figment::new().merge(Toml::string(include_str!(
         "../../config/config.default.toml"
     )));
+    let bundled: Config = default_provider.clone().extract().map_err(ConfigError::Figment)?;
+    let mut figment = default_provider;
 
     if path.exists() {
         log::debug!("Merging user config from {}", path.display());
@@ -406,8 +407,27 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     }
 
     let mut config: Config = figment.extract().map_err(ConfigError::Figment)?;
+    config.bundled_player = bundled.player;
+    config.user_player = load_user_player_configs(path)?;
     config.user_player_patterns = collect_user_player_patterns(path)?;
     Ok(config)
+}
+
+fn load_user_player_configs(path: &Path) -> Result<HashMap<String, schema::PlayerConfigLayer>, ConfigError> {
+    if !path.exists() {
+        return Ok(HashMap::new());
+    }
+
+    #[derive(serde::Deserialize)]
+    struct PlayerOnly {
+        #[serde(default)]
+        #[serde(with = "schema::normalized_string")]
+        player: HashMap<String, schema::PlayerConfigLayer>,
+    }
+
+    let contents = std::fs::read_to_string(path)?;
+    let parsed: PlayerOnly = toml::from_str(&contents)?;
+    Ok(parsed.player)
 }
 
 fn collect_user_player_patterns(path: &Path) -> Result<HashSet<String>, ConfigError> {

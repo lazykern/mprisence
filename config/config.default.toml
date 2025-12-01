@@ -34,6 +34,7 @@ use_litter = false
 litter_hours = 24
 
 [player]
+# Priority: user entries override bundled ones. Fields left unset in a higher-priority entry fall back to lower matches, then [player.default], then built-in defaults.
 default = { ignore = false, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false }
 
 [player.audacious]
