@@ -192,12 +192,13 @@ impl Config {
         let normalized_identity = normalize_player_identity(identity);
         let normalized_player_bus_name = normalize_player_identity(player_bus_name);
 
-        let matches = self.collect_ordered_matches(&normalized_identity);
-        let matches = if matches.is_empty() && normalized_identity != normalized_player_bus_name {
-            self.collect_ordered_matches(&normalized_player_bus_name)
-        } else {
-            matches
-        };
+        let mut matches = Vec::new();
+
+        if normalized_identity != normalized_player_bus_name {
+            matches.extend(self.collect_ordered_matches(&normalized_player_bus_name));
+        }
+
+        matches.extend(self.collect_ordered_matches(&normalized_identity));
 
         self.resolve_player_config(matches)
     }
@@ -620,6 +621,29 @@ mod wildcard_tests {
         assert_eq!(res.app_id, "BUNDLED"); // inherited
         assert_eq!(res.show_icon, true); // overridden by user regex
         assert_eq!(res.ignore, true); // inherited from bundled exact
+    }
+
+    #[test]
+    fn bus_name_layers_apply_even_when_identity_matches() {
+        let mut cfg = Config::default();
+        cfg.bundled_player.insert(
+            "mpd".to_string(),
+            layer(Some(false), Some(false), Some("BUNDLED")),
+        );
+        cfg.user_player.insert(
+            "*mpd*".to_string(),
+            PlayerConfigLayer {
+                show_icon: Some(true),
+                ..Default::default()
+            },
+        );
+
+        let res = cfg.get_player_config(
+            "Music Player Daemon (mpdris2-rs)",
+            "mpd",
+        );
+        assert_eq!(res.app_id, "BUNDLED"); // inherited from bus-name match
+        assert!(res.show_icon); // overridden by identity wildcard
     }
 
     #[test]
