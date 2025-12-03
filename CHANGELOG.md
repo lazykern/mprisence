@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.3.1](https://github.com/lazykern/mprisence/compare/v1.3.0...v1.3.1)
+
+* Fix
+  * Preserve full reverse-DNS player bus names (e.g. `io.github.htkhiem.euphonica`) while stripping MPRIS prefixes
+
 ## [1.3.0](https://github.com/lazykern/mprisence/compare/v1.2.14...v1.3.0)
 
 * Player Matching
