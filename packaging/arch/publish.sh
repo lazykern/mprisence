@@ -125,10 +125,14 @@ if [ "$PUBLISH_RELEASE" = true ]; then
     (
         cd "$RELEASE_REPO"
         git add PKGBUILD .SRCINFO mprisence.install mprisence.service
-        git commit -m "Update to version $VERSION"
-        git push
+        if git diff --cached --quiet; then
+            warn "Release package already up to date; skipping commit and push"
+        else
+            git commit -m "Update to version $VERSION"
+            git push
+            print "Successfully published release package version $VERSION"
+        fi
     )
-    print "Successfully published release package version $VERSION"
 fi
 
 # Handle git package
@@ -151,10 +155,14 @@ if [ "$PUBLISH_GIT" = true ]; then
     (
         cd "$GIT_REPO"
         git add PKGBUILD .SRCINFO mprisence-git.install mprisence.service
-        git commit -m "Update to version $VERSION"
-        git push
+        if git diff --cached --quiet; then
+            warn "Git package already up to date; skipping commit and push"
+        else
+            git commit -m "Update to version $VERSION"
+            git push
+            print "Successfully published git package version $VERSION"
+        fi
     )
-    print "Successfully published git package version $VERSION"
 fi
 
 if [ "$PUBLISH_RELEASE" = true ] || [ "$PUBLISH_GIT" = true ]; then
