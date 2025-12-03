@@ -76,7 +76,7 @@ impl Presence {
                 self.player.identity(),
                 self.player.bus_name_player_name_part(),
             );
-            let client = DiscordIpcClient::new(&player_config.app_id).unwrap();
+            let client = DiscordIpcClient::new(&player_config.app_id);
             self.discord_client = Some(Arc::new(Mutex::new(client)));
             self.needs_initial_connection.store(true, Ordering::Relaxed);
         }
