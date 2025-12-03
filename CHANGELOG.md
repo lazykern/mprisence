@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/lazykern/mprisence/compare/v1.2.14...v1.3.0)
+
+* Player Matching
+  * Player identities and bus names now support regex patterns (prefix with `re:` or wrap in `/.../`) for both player config and allowed lists
+  * Matching also checks the player bus name, allowing configs to apply even when the displayed identity differs
+  * New `allowed_players` configuration lets you limit discovery to specific players using exact, wildcard, or regex patterns
+
 ## [1.2.14](https://github.com/lazykern/mprisence/compare/v1.2.13...v1.2.14)
 
 * Config
