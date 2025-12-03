@@ -412,7 +412,13 @@ fn regex_from_pattern(pattern: &str) -> Option<Regex> {
             .to_string()
     };
 
-    Regex::new(&raw).ok()
+    match Regex::new(&raw) {
+        Ok(regex) => Some(regex),
+        Err(err) => {
+            log::warn!("Invalid regex pattern '{}': {}", pattern, err);
+            None
+        }
+    }
 }
 
 fn pattern_specificity(s: &str) -> usize {
@@ -520,10 +526,7 @@ mod wildcard_tests {
         cfg.bundled_player
             .insert("default".to_string(), layer(Some(false), Some(false), Some("D")));
 
-        let res = cfg.get_player_config(
-            "Music Player Daemon (mpdris2-rs)",
-            "org.mpris.MediaPlayer2.mpd",
-        );
+        let res = cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "mpd");
         assert_eq!(res.app_id, "R");
         assert_eq!(res.show_icon, true);
     }
@@ -540,10 +543,7 @@ mod wildcard_tests {
         cfg.bundled_player
             .insert("default".to_string(), layer(Some(false), Some(false), Some("D")));
 
-        let res = cfg.get_player_config(
-            "Music Player Daemon (mpdris2-rs)",
-            "org.mpris.MediaPlayer2.mpd",
-        );
+        let res = cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "mpd");
         assert_eq!(res.app_id, "R");
         assert_eq!(res.show_icon, true);
     }
@@ -558,7 +558,7 @@ mod wildcard_tests {
         cfg.bundled_player
             .insert("default".to_string(), layer(Some(false), Some(false), Some("D")));
 
-        let res = cfg.get_player_config("Some Custom Player", "org.mpris.MediaPlayer2.mpdris2-rs");
+        let res = cfg.get_player_config("Some Custom Player", "mpdris2-rs");
         assert_eq!(res.app_id, "R");
         assert_eq!(res.show_icon, true);
     }
@@ -573,10 +573,7 @@ mod wildcard_tests {
         cfg.user_player
             .insert("*mpd*".to_string(), layer(Some(true), Some(false), Some("U")));
 
-        let res = cfg.get_player_config(
-            "Music Player Daemon (mpdris2-rs)",
-            "org.mpris.MediaPlayer2.mpd",
-        );
+        let res = cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "mpd");
         assert_eq!(res.app_id, "U");
         assert_eq!(res.show_icon, true);
     }
@@ -665,7 +662,7 @@ mod wildcard_tests {
         assert!(cfg.is_player_allowed("VLC media player", "vlc"));
         assert!(cfg.is_player_allowed(
             "Music Player Daemon (mpdris2-rs)",
-            "org.mpris.MediaPlayer2.mpd"
+            "mpd"
         ));
         assert!(cfg.is_player_allowed("YouTube Music", "youtube-music"));
         assert!(!cfg.is_player_allowed("spotify", "spotify"));

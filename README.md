@@ -243,7 +243,8 @@ clear_on_pause = true
 interval = 2000
 
 # Restrict discovery to specific players (identities, wildcards, or regex).
-# Leave empty to allow all players.
+# Matches against player identity or the bus-name "player" part (e.g., "vlc"),
+# not the full D-Bus name. Leave empty to allow all players.
 allowed_players = []
 
 # Note: Triple braces `{{{variable}}}` are used to prevent HTML escaping,
