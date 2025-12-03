@@ -17,6 +17,8 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
 - **Streaming**: YouTube Music, Spotify (disabled by default)
 - **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
 
+Note: MPD frontends (e.g., Euphonica) will also show MPD rich presence in Discord; you can disable the MPD entry in your config (see [Configuration Reference](#configuration-reference) 
+
 Feel free to create a new issue if you want your player name+icon to be recognized by mprisence!
 
 ## Features
