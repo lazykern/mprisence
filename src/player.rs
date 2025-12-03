@@ -4,6 +4,8 @@ use log::{debug, info};
 use mpris::{PlaybackStatus, Player};
 use smol_str::SmolStr;
 
+const MPRIS_BUS_PREFIX: &str = "org.mpris.MediaPlayer2.";
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PlayerIdentifier {
     pub player_bus_name: SmolStr,
@@ -23,8 +25,10 @@ impl Display for PlayerIdentifier {
 
 impl From<&Player> for PlayerIdentifier {
     fn from(player: &Player) -> Self {
+        let player_bus_name = canonical_player_bus_name(player.bus_name());
+
         Self {
-            player_bus_name: SmolStr::new(player.bus_name_player_name_part()),
+            player_bus_name: SmolStr::new(player_bus_name),
             identity: SmolStr::new(player.identity()),
             unique_name: SmolStr::new(player.unique_name()),
         }
@@ -84,6 +88,21 @@ impl From<&Player> for PlaybackState {
     }
 }
 
+pub fn canonical_player_bus_name(raw_bus_name: &str) -> String {
+    let without_prefix = raw_bus_name.trim_start_matches(MPRIS_BUS_PREFIX);
+    let mut segments: Vec<&str> = without_prefix.split('.').collect();
+
+    if segments.len() > 1 {
+        if let Some(last) = segments.last() {
+            if last.starts_with("instance") || last.chars().all(|c| c.is_ascii_digit()) {
+                segments.pop();
+            }
+        }
+    }
+
+    segments.join(".")
+}
+
 impl PlaybackState {
     pub fn has_significant_changes(&self, previous: &Self) -> bool {
         if self.track_identifier != previous.track_identifier {
@@ -138,5 +157,31 @@ impl PlaybackState {
         }
 
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::canonical_player_bus_name;
+
+    #[test]
+    fn keeps_reverse_dns_player_names() {
+        let bus_name = "org.mpris.MediaPlayer2.io.github.htkhiem.euphonica";
+        assert_eq!(
+            canonical_player_bus_name(bus_name),
+            "io.github.htkhiem.euphonica"
+        );
+    }
+
+    #[test]
+    fn strips_instance_suffix() {
+        let bus_name = "org.mpris.MediaPlayer2.vlc.instance1234";
+        assert_eq!(canonical_player_bus_name(bus_name), "vlc");
+    }
+
+    #[test]
+    fn trims_prefix_for_simple_names() {
+        let bus_name = "org.mpris.MediaPlayer2.spotify";
+        assert_eq!(canonical_player_bus_name(bus_name), "spotify");
     }
 }

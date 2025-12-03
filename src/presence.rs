@@ -26,7 +26,7 @@ use crate::{
     cover::CoverManager,
     error::DiscordError,
     metadata,
-    player::PlaybackState,
+    player::{canonical_player_bus_name, PlaybackState},
     template::TemplateManager,
     utils,
 };
@@ -51,8 +51,8 @@ impl Presence {
         cover_manager: Arc<CoverManager>,
         config: Arc<ConfigManager>,
     ) -> Self {
-        let player_config =
-            config.get_player_config(player.identity(), player.bus_name_player_name_part());
+        let player_bus_name = canonical_player_bus_name(player.bus_name());
+        let player_config = config.get_player_config(player.identity(), &player_bus_name);
         info!("Initializing presence for player: {}", player.identity());
         trace!("Using Discord application ID: {}", player_config.app_id);
         trace!("Player configuration: {:#?}", player_config);
@@ -74,7 +74,7 @@ impl Presence {
         if self.discord_client.is_none() {
             let player_config = self.config.get_player_config(
                 self.player.identity(),
-                self.player.bus_name_player_name_part(),
+                &canonical_player_bus_name(self.player.bus_name()),
             );
             let client = DiscordIpcClient::new(&player_config.app_id);
             self.discord_client = Some(Arc::new(Mutex::new(client)));
@@ -353,7 +353,7 @@ impl Presence {
 
         let player_config = self
             .config
-            .get_player_config(player.identity(), player.bus_name_player_name_part());
+            .get_player_config(player.identity(), &canonical_player_bus_name(player.bus_name()));
 
         if !player_config.allow_streaming && track_url_ref.map_or(false, utils::is_streaming_url) {
             info!(

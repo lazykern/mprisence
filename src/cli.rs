@@ -4,6 +4,7 @@ use crate::{
         schema::{ActivityType, PlayerConfig},
     },
     error::Error,
+    player::canonical_player_bus_name,
     utils::{format_playback_status_icon, normalize_player_identity},
 };
 use clap::{Parser, Subcommand};
@@ -66,7 +67,7 @@ impl Command {
                     for mut player in players {
                         player.set_dbus_timeout_ms(5000);
                         let identity = player.identity().to_string();
-                        let player_bus_name = player.bus_name_player_name_part().to_string();
+                        let player_bus_name = canonical_player_bus_name(player.bus_name());
                         let id = normalize_player_identity(&identity);
                         let allowed = config.is_player_allowed(&identity, &player_bus_name);
                         let player_config = config.get_player_config(&identity, &player_bus_name);

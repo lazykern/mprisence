@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use crate::{
     config::ConfigManager, error::TemplateError, metadata::MediaMetadata,
-    utils::format_playback_status_icon,
+    player::canonical_player_bus_name, utils::format_playback_status_icon,
 };
 
 /// A struct containing all variables available for template rendering,
@@ -39,7 +39,7 @@ impl RenderContext {
 
         Self {
             player: player.identity().to_string(),
-            player_bus_name: player.bus_name_player_name_part().to_string(),
+            player_bus_name: canonical_player_bus_name(player.bus_name()),
             status,
             status_icon,
             volume: player.get_volume().ok(),
