@@ -124,12 +124,19 @@ allow_streaming = true
 [player."io.github.htkhiem.Euphonica"]
 app_id = "1435313000612630709"
 icon = "https://raw.githubusercontent.com/htkhiem/euphonica/refs/heads/main/data/icons/euphonica-hicolor.png"
-# icon = "https://i.ibb.co/5gjGJySX/music-icon.png" # Icon by Blackstar1069
+# icon = "https://i.ibb.co/LDwGSdG1/music-icon-4.png" # Icon by Blackstar1069
+# new icon
 
 [player.quod_libet]
 app_id = "1265388809860677632"
 icon = "https://raw.githubusercontent.com/quodlibet/quodlibet/refs/heads/main/quodlibet/images/hicolor/256x256/apps/io.github.quodlibet.QuodLibet.png"
 # icon = "https://i.ibb.co/vvxWfTvd/io-github-quodlibet-Quod-Libet.png" # Icon by Blackstar1069
+
+[player.MusicBee]
+app_id = "904523292491255838"
+# app id from this project: https://github.com/sll552/DiscordBee
+icon = "https://i.ibb.co/BKrwxCG2/musicbee-3.png"
+# icon also modified from this source: https://getmusicbee.com/addons/misc/548/simple-icon/
 
 [player.qmmp]
 app_id = "1442356186052563016"
