@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/lazykern/mprisence/compare/v1.3.1...v1.3.2)
+
+* Config
+  * Add MusicBee player entry to default config
+* Assets
+  * Update Euphonica player icon
+
 ## [1.3.1](https://github.com/lazykern/mprisence/compare/v1.3.0...v1.3.1)
 
 * Fix
