@@ -186,6 +186,7 @@ impl Mprisence {
                 }
             } else {
                 debug!("New media player detected: {}", id.identity);
+                let player_bus_name = player.bus_name().to_string();
                 let mut presence = Presence::new(
                     player,
                     self.template_manager.clone(),
@@ -198,6 +199,24 @@ impl Mprisence {
                         id.identity, e
                     );
                 }
+
+                match player_finder.find_by_name(&player_bus_name) {
+                    Ok(update_player) => {
+                        if let Err(e) = presence.update(update_player).await {
+                            warn!(
+                                "Failed to update presence for new player {}: {}",
+                                id.identity, e
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to fetch new player {} for immediate update: {}",
+                            id.identity, e
+                        );
+                    }
+                }
+
                 self.media_players.insert(id, presence);
             }
         }
