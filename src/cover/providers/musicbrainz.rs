@@ -426,6 +426,10 @@ impl CoverArtProvider for MusicbrainzProvider {
         true // MusicBrainz can work with any source type as it uses metadata
     }
 
+    fn supports_metadata_only(&self) -> bool {
+        true
+    }
+
     async fn process(
         &self,
         _source: ArtSource,

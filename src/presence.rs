@@ -404,30 +404,25 @@ impl Presence {
             .template_manager
             .render_activity_texts(player, media_metadata)?;
 
-        let cover_art_url = if let Some(art_source) = metadata_source.art_source() {
-            match self
-                .cover_manager
-                .get_cover_art(art_source, &metadata_source)
-                .await
-            {
-                Ok(Some(url)) => {
-                    debug!("Found cover art URL for Discord presence");
-                    trace!("Cover art URL: {}", url);
-                    Some(url)
-                }
-                Ok(None) => {
-                    debug!("No cover art available for Discord presence");
-                    None
-                }
-                Err(e) => {
-                    warn!("Failed to retrieve cover art: {}", e);
-                    trace!("Cover art must be accessible via HTTP/HTTPS for Discord");
-                    None
-                }
+        let cover_art_url = match self
+            .cover_manager
+            .get_cover_art(metadata_source.art_source(), &metadata_source)
+            .await
+        {
+            Ok(Some(url)) => {
+                debug!("Found cover art URL for Discord presence");
+                trace!("Cover art URL: {}", url);
+                Some(url)
             }
-        } else {
-            debug!("No art source found in metadata");
-            None
+            Ok(None) => {
+                debug!("No cover art available for Discord presence");
+                None
+            }
+            Err(e) => {
+                warn!("Failed to retrieve cover art: {}", e);
+                trace!("Cover art must be accessible via HTTP/HTTPS for Discord");
+                None
+            }
         };
 
         let activity_type = self.determine_activity_type(

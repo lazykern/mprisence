@@ -58,6 +58,10 @@ pub trait CoverArtProvider: Send + Sync {
 
     fn supports_source_type(&self, source: &ArtSource) -> bool;
 
+    fn supports_metadata_only(&self) -> bool {
+        false
+    }
+
     async fn process(
         &self,
         source: ArtSource,
