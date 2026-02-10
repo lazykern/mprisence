@@ -8,7 +8,6 @@
   * Add `cmus-remote` metadata enrichment to improve local file URL/tag resolution for metadata and cover lookup
 * RPC
   * Clear Discord activity before closing IPC connection to reduce stale presence lingering (helps with [#67](https://github.com/lazykern/mprisence/issues/67))
-* Discovery
   * Trigger an immediate first-cycle presence update when a newly discovered player is initialized
 
 ## [1.3.2](https://github.com/lazykern/mprisence/compare/v1.3.1...v1.3.2)
