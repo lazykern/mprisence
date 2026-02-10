@@ -4,6 +4,8 @@ use log::{debug, info};
 use mpris::{PlaybackStatus, Player};
 use smol_str::SmolStr;
 
+pub mod cmus;
+
 const MPRIS_BUS_PREFIX: &str = "org.mpris.MediaPlayer2.";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

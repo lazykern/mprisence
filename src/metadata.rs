@@ -186,6 +186,7 @@ pub struct MediaMetadata {
 pub struct MetadataSource {
     mpris_metadata: Option<Metadata>,
     tagged_file: Option<TaggedFile>,
+    override_url: Option<String>,
 }
 
 impl MetadataSource {
@@ -193,14 +194,25 @@ impl MetadataSource {
         Self {
             mpris_metadata,
             tagged_file: lofty_tagged_file,
+            override_url: None,
         }
     }
 
     pub fn from_mpris(metadata: Metadata) -> Self {
+        Self::from_mpris_with_override(metadata, None)
+    }
+
+    pub fn from_mpris_with_override(metadata: Metadata, override_url: Option<String>) -> Self {
+        let override_tagged_file = override_url
+            .as_ref()
+            .and_then(|url| Self::lofty_tag_from_url(url).ok());
         let tagged_file = metadata
             .url()
             .and_then(|url| Self::lofty_tag_from_url(url).ok());
-        Self::new(Some(metadata), tagged_file)
+        let tagged_file = override_tagged_file.or(tagged_file);
+        let mut source = Self::new(Some(metadata), tagged_file);
+        source.override_url = override_url;
+        source
     }
 
     fn lofty_tag_from_url<S: AsRef<str>>(url: S) -> Result<TaggedFile, String> {
@@ -387,10 +399,16 @@ impl MetadataSource {
     }
 
     pub fn url(&self) -> Option<String> {
-        self.mpris_metadata
+        self.override_url
             .as_ref()
-            .and_then(|m| m.url())
-            .map(String::from)
+            .filter(|url| !url.is_empty())
+            .cloned()
+            .or_else(|| {
+                self.mpris_metadata
+                    .as_ref()
+                    .and_then(|m| m.url())
+                    .map(String::from)
+            })
     }
 
     pub fn track_id(&self) -> Option<String> {

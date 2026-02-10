@@ -205,11 +205,7 @@ impl Config {
 
     pub fn effective_player_configs(&self) -> HashMap<String, PlayerConfig> {
         let mut keys: HashSet<String> = HashSet::new();
-        for key in self
-            .bundled_player
-            .keys()
-            .chain(self.user_player.keys())
-        {
+        for key in self.bundled_player.keys().chain(self.user_player.keys()) {
             if key != "default" {
                 keys.insert(key.clone());
             }
@@ -257,7 +253,8 @@ impl Config {
     }
 
     fn collect_ordered_matches(&self, normalized_identity: &str) -> Vec<PlayerConfigLayer> {
-        let user_matches = self.collect_best_matches_for_source(&self.user_player, normalized_identity);
+        let user_matches =
+            self.collect_best_matches_for_source(&self.user_player, normalized_identity);
         let bundled_matches =
             self.collect_best_matches_for_source(&self.bundled_player, normalized_identity);
 
@@ -314,7 +311,8 @@ impl Config {
                 continue;
             }
 
-            if is_wildcard_pattern(pattern_key) && wildcard_match(pattern_key, normalized_identity) {
+            if is_wildcard_pattern(pattern_key) && wildcard_match(pattern_key, normalized_identity)
+            {
                 let specificity = pattern_specificity(pattern_key);
                 let total_len = pattern_key.len();
                 match &result.wildcard {
@@ -322,7 +320,10 @@ impl Config {
                         if existing.specificity > specificity
                             || (existing.specificity == specificity
                                 && existing.pattern_len >= total_len) => {}
-                    _ => result.wildcard = Some(ScoredLayer::new(cfg.clone(), total_len, specificity)),
+                    _ => {
+                        result.wildcard =
+                            Some(ScoredLayer::new(cfg.clone(), total_len, specificity))
+                    }
                 }
             }
         }
@@ -448,7 +449,11 @@ fn wildcard_match(pattern: &str, text: &str) -> bool {
 mod wildcard_tests {
     use super::*;
 
-    fn layer(show_icon: Option<bool>, ignore: Option<bool>, app_id: Option<&str>) -> PlayerConfigLayer {
+    fn layer(
+        show_icon: Option<bool>,
+        ignore: Option<bool>,
+        app_id: Option<&str>,
+    ) -> PlayerConfigLayer {
         PlayerConfigLayer {
             show_icon,
             ignore,
@@ -460,8 +465,10 @@ mod wildcard_tests {
     #[test]
     fn matches_exact_before_wildcard() {
         let mut cfg = Config::default();
-        cfg.user_player
-            .insert("vlc*".to_string(), layer(Some(true), Some(false), Some("A")));
+        cfg.user_player.insert(
+            "vlc*".to_string(),
+            layer(Some(true), Some(false), Some("A")),
+        );
         cfg.user_player.insert(
             "vlc_media_player".to_string(),
             layer(Some(false), Some(false), Some("B")),
@@ -475,8 +482,10 @@ mod wildcard_tests {
     #[test]
     fn chooses_more_specific_wildcard() {
         let mut cfg = Config::default();
-        cfg.user_player
-            .insert("vlc_*".to_string(), layer(Some(true), Some(false), Some("A")));
+        cfg.user_player.insert(
+            "vlc_*".to_string(),
+            layer(Some(true), Some(false), Some("A")),
+        );
         cfg.user_player.insert(
             "vlc_media_*".to_string(),
             layer(Some(false), Some(false), Some("B")),
@@ -490,10 +499,14 @@ mod wildcard_tests {
     #[test]
     fn wildcard_only_then_default() {
         let mut cfg = Config::default();
-        cfg.user_player
-            .insert("*spotify*".to_string(), layer(Some(true), Some(true), Some("S")));
-        cfg.bundled_player
-            .insert("default".to_string(), layer(Some(false), Some(false), Some("D")));
+        cfg.user_player.insert(
+            "*spotify*".to_string(),
+            layer(Some(true), Some(true), Some("S")),
+        );
+        cfg.bundled_player.insert(
+            "default".to_string(),
+            layer(Some(false), Some(false), Some("D")),
+        );
 
         let sp = cfg.get_player_config("Spotify", "spotify");
         assert_eq!(sp.app_id, "S");
@@ -508,8 +521,10 @@ mod wildcard_tests {
         let mut cfg = Config::default();
         cfg.user_player
             .insert("vlc".to_string(), layer(Some(true), Some(false), Some("A")));
-        cfg.bundled_player
-            .insert("default".to_string(), layer(Some(false), Some(false), Some("D")));
+        cfg.bundled_player.insert(
+            "default".to_string(),
+            layer(Some(false), Some(false), Some("D")),
+        );
 
         let res = cfg.get_player_config("Fancy VLC", "vlc");
         assert_eq!(res.app_id, "A");
@@ -523,8 +538,10 @@ mod wildcard_tests {
             "re:.*mpdris2.*".to_string(),
             layer(Some(true), Some(false), Some("R")),
         );
-        cfg.bundled_player
-            .insert("default".to_string(), layer(Some(false), Some(false), Some("D")));
+        cfg.bundled_player.insert(
+            "default".to_string(),
+            layer(Some(false), Some(false), Some("D")),
+        );
 
         let res = cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "mpd");
         assert_eq!(res.app_id, "R");
@@ -534,14 +551,18 @@ mod wildcard_tests {
     #[test]
     fn regex_priority_over_wildcard() {
         let mut cfg = Config::default();
-        cfg.bundled_player
-            .insert("*mpd*".to_string(), layer(Some(false), Some(false), Some("G")));
+        cfg.bundled_player.insert(
+            "*mpd*".to_string(),
+            layer(Some(false), Some(false), Some("G")),
+        );
         cfg.user_player.insert(
             "re:.*mpdris2.*".to_string(),
             layer(Some(true), Some(false), Some("R")),
         );
-        cfg.bundled_player
-            .insert("default".to_string(), layer(Some(false), Some(false), Some("D")));
+        cfg.bundled_player.insert(
+            "default".to_string(),
+            layer(Some(false), Some(false), Some("D")),
+        );
 
         let res = cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "mpd");
         assert_eq!(res.app_id, "R");
@@ -555,8 +576,10 @@ mod wildcard_tests {
             "re:.*mpdris2.*".to_string(),
             layer(Some(true), Some(false), Some("R")),
         );
-        cfg.bundled_player
-            .insert("default".to_string(), layer(Some(false), Some(false), Some("D")));
+        cfg.bundled_player.insert(
+            "default".to_string(),
+            layer(Some(false), Some(false), Some("D")),
+        );
 
         let res = cfg.get_player_config("Some Custom Player", "mpdris2-rs");
         assert_eq!(res.app_id, "R");
@@ -570,8 +593,10 @@ mod wildcard_tests {
             "re:.*mpdris2.*".to_string(),
             layer(Some(false), Some(false), Some("D")),
         );
-        cfg.user_player
-            .insert("*mpd*".to_string(), layer(Some(true), Some(false), Some("U")));
+        cfg.user_player.insert(
+            "*mpd*".to_string(),
+            layer(Some(true), Some(false), Some("U")),
+        );
 
         let res = cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "mpd");
         assert_eq!(res.app_id, "U");
@@ -635,10 +660,7 @@ mod wildcard_tests {
             },
         );
 
-        let res = cfg.get_player_config(
-            "Music Player Daemon (mpdris2-rs)",
-            "mpd",
-        );
+        let res = cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "mpd");
         assert_eq!(res.app_id, "BUNDLED"); // inherited from bus-name match
         assert!(res.show_icon); // overridden by identity wildcard
     }
@@ -660,10 +682,7 @@ mod wildcard_tests {
         ];
 
         assert!(cfg.is_player_allowed("VLC media player", "vlc"));
-        assert!(cfg.is_player_allowed(
-            "Music Player Daemon (mpdris2-rs)",
-            "mpd"
-        ));
+        assert!(cfg.is_player_allowed("Music Player Daemon (mpdris2-rs)", "mpd"));
         assert!(cfg.is_player_allowed("YouTube Music", "youtube-music"));
         assert!(!cfg.is_player_allowed("spotify", "spotify"));
     }

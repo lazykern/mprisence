@@ -1,4 +1,5 @@
 use std::{
+    path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -14,6 +15,7 @@ use log::{debug, error, info, trace, warn};
 use mime_guess::mime;
 use mpris::{PlaybackStatus, Player};
 use parking_lot::Mutex;
+use url::Url;
 
 use lofty::file::AudioFile as _;
 use lofty::prelude::TaggedFileExt as _;
@@ -26,7 +28,7 @@ use crate::{
     cover::CoverManager,
     error::DiscordError,
     metadata,
-    player::{canonical_player_bus_name, PlaybackState},
+    player::{canonical_player_bus_name, cmus, PlaybackState},
     template::TemplateManager,
     utils,
 };
@@ -36,6 +38,9 @@ pub struct Presence {
     template_manager: Arc<TemplateManager>,
     cover_manager: Arc<CoverManager>,
     last_player_state: Option<PlaybackState>,
+    last_cmus_track_id: Option<Box<str>>,
+    last_cmus_path: Option<PathBuf>,
+    cmus_error_logged: bool,
     discord_client: Option<Arc<Mutex<DiscordIpcClient>>>,
     needs_initial_connection: AtomicBool,
     needs_reconnection: AtomicBool,
@@ -61,6 +66,9 @@ impl Presence {
             template_manager,
             cover_manager,
             last_player_state: None,
+            last_cmus_track_id: None,
+            last_cmus_path: None,
+            cmus_error_logged: false,
             discord_client: None,
             needs_initial_connection: AtomicBool::new(true),
             needs_reconnection: AtomicBool::new(false),
@@ -272,7 +280,7 @@ impl Presence {
         activity_type_config.default
     }
 
-    async fn update_activity(&self, player: Player) -> Result<(), DiscordError> {
+    async fn update_activity(&mut self, player: Player) -> Result<(), DiscordError> {
         let Some(discord_client) = &self.discord_client else {
             return Ok(());
         };
@@ -319,7 +327,62 @@ impl Presence {
         };
         trace!("Metadata: {:?}", metadata);
 
-        let metadata_source = metadata::MetadataSource::from_mpris(metadata.clone());
+        let player_bus_name = canonical_player_bus_name(player.bus_name());
+        let player_config = self
+            .config
+            .get_player_config(player.identity(), &player_bus_name);
+        let is_cmus = player_bus_name == "cmus" || player.identity().eq_ignore_ascii_case("cmus");
+        let cmus_override_url = if is_cmus {
+            let track_token = metadata
+                .track_id()
+                .map(|id| id.to_string())
+                .or_else(|| metadata.url().map(|url| url.to_string()))
+                .or_else(|| metadata.title().map(|title| title.to_string()));
+            let track_changed = track_token.as_deref() != self.last_cmus_track_id.as_deref();
+
+            if track_changed {
+                self.last_cmus_track_id = track_token.map(|token| token.into_boxed_str());
+                self.last_cmus_path = None;
+                self.cmus_error_logged = false;
+            }
+
+            if self.last_cmus_path.is_none() {
+                match cmus::get_current_track_path().await {
+                    Ok(Some(path)) => {
+                        self.last_cmus_path = Some(path);
+                    }
+                    Ok(None) => {}
+                    Err(err) => {
+                        if !self.cmus_error_logged {
+                            warn!("cmus-remote failed: {}", err);
+                            self.cmus_error_logged = true;
+                        }
+                    }
+                }
+            }
+
+            if let Some(path) = &self.last_cmus_path {
+                match Url::from_file_path(path) {
+                    Ok(url) => Some(url.to_string()),
+                    Err(_) => {
+                        if !self.cmus_error_logged {
+                            warn!("cmus-remote returned non-file path: {:?}", path);
+                            self.cmus_error_logged = true;
+                        }
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let metadata_source = match cmus_override_url {
+            Some(url) => metadata::MetadataSource::from_mpris_with_override(metadata.clone(), Some(url)),
+            None => metadata::MetadataSource::from_mpris(metadata.clone()),
+        };
 
         debug!("--- Raw Metadata Start ---");
         if let Some(mpris_meta) = metadata_source.mpris_metadata() {
@@ -350,10 +413,6 @@ impl Presence {
         let media_metadata = metadata_source.to_media_metadata();
         let track_url: Option<String> = metadata_source.url();
         let track_url_ref = track_url.as_deref();
-
-        let player_config = self
-            .config
-            .get_player_config(player.identity(), &canonical_player_bus_name(player.bus_name()));
 
         if !player_config.allow_streaming && track_url_ref.map_or(false, utils::is_streaming_url) {
             info!(
@@ -533,5 +592,8 @@ impl Presence {
         trace!("Presence managers updated successfully");
 
         self.last_player_state = None;
+        self.last_cmus_track_id = None;
+        self.last_cmus_path = None;
+        self.cmus_error_logged = false;
     }
 }
