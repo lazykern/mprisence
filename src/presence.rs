@@ -97,10 +97,20 @@ impl Presence {
                 "Closing Discord connection for player: {}",
                 self.player.identity()
             );
-            client.lock().close().map_err(|err| {
-                error!("Failed to close Discord connection: {}", err);
-                DiscordError::CloseError(err.to_string())
-            })?;
+            {
+                let mut discord_client = client.lock();
+                if let Err(err) = discord_client.clear_activity() {
+                    debug!(
+                        "Failed to clear Discord activity before closing connection: {}",
+                        err
+                    );
+                }
+
+                discord_client.close().map_err(|err| {
+                    error!("Failed to close Discord connection: {}", err);
+                    DiscordError::CloseError(err.to_string())
+                })?;
+            }
             trace!("Discord connection closed successfully");
             self.discord_client = None;
         }
