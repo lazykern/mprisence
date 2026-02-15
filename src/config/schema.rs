@@ -18,6 +18,7 @@ pub const DEFAULT_PLAYER_ICON: &str =
 pub const DEFAULT_PLAYER_IGNORE: bool = false;
 pub const DEFAULT_PLAYER_SHOW_ICON: bool = false;
 pub const DEFAULT_PLAYER_ALLOW_STREAMING: bool = false;
+pub const DEFAULT_PLAYER_STATUS_DISP_TYPE: StatusDisplayType = StatusDisplayType::Name;
 
 const DEFAULT_TEMPLATE_DETAIL: &str = "{{{title}}}";
 const DEFAULT_TEMPLATE_STATE: &str = "{{{artists}}}";
@@ -911,6 +912,26 @@ impl From<ActivityType> for discord_rich_presence::activity::ActivityType {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Copy)]
+#[serde(rename_all = "lowercase")]
+#[derive(Default)]
+pub enum StatusDisplayType {
+    #[default]
+    Name,
+    State,
+    Details,
+}
+
+impl From<StatusDisplayType> for discord_rich_presence::activity::StatusDisplayType {
+    fn from(status_disp_type: StatusDisplayType) -> Self {
+        match status_disp_type {
+            StatusDisplayType::Name => Self::Name,
+            StatusDisplayType::State => Self::State,
+            StatusDisplayType::Details => Self::Details,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PlayerConfigLayer {
     #[serde(default)]
@@ -927,6 +948,9 @@ pub struct PlayerConfigLayer {
 
     #[serde(default)]
     pub allow_streaming: Option<bool>,
+
+    #[serde(default)]
+    pub status_disp_type: Option<StatusDisplayType>,
 
     #[serde(default)]
     pub override_activity_type: Option<ActivityType>,
@@ -948,6 +972,9 @@ impl PlayerConfigLayer {
         }
         if let Some(value) = self.allow_streaming {
             base.allow_streaming = value;
+        }
+        if let Some(value) = self.status_disp_type {
+            base.status_disp_type = value;
         }
         if let Some(value) = self.override_activity_type {
             base.override_activity_type = Some(value);
@@ -972,6 +999,9 @@ impl PlayerConfigLayer {
         if other.allow_streaming.is_some() {
             self.allow_streaming = other.allow_streaming;
         }
+        if other.status_disp_type.is_some() {
+            self.status_disp_type = other.status_disp_type;
+        }
         if other.override_activity_type.is_some() {
             self.override_activity_type = other.override_activity_type;
         }
@@ -994,6 +1024,9 @@ pub struct PlayerConfig {
 
     #[serde(default = "default_player_allow_streaming")]
     pub allow_streaming: bool,
+
+    #[serde(default = "default_player_status_disp_type")]
+    pub status_disp_type: StatusDisplayType,
 
     #[serde(default)]
     pub override_activity_type: Option<ActivityType>,
@@ -1019,6 +1052,10 @@ fn default_player_allow_streaming() -> bool {
     DEFAULT_PLAYER_ALLOW_STREAMING
 }
 
+fn default_player_status_disp_type() -> StatusDisplayType {
+    DEFAULT_PLAYER_STATUS_DISP_TYPE
+}
+
 impl Default for PlayerConfig {
     fn default() -> PlayerConfig {
         PlayerConfig {
@@ -1027,6 +1064,7 @@ impl Default for PlayerConfig {
             icon: default_player_icon(),
             show_icon: default_player_show_icon(),
             allow_streaming: default_player_allow_streaming(),
+            status_disp_type: default_player_status_disp_type(),
             override_activity_type: None,
         }
     }

@@ -500,7 +500,11 @@ impl Presence {
             track_url_ref,
         );
 
-        let mut activity = Activity::default().activity_type(activity_type.into());
+        let mut activity = Activity::default()
+            .activity_type(activity_type.into())
+            .status_display_type(
+                self.config.get_player_config(self.player.identity(), 
+                self.player.bus_name()).status_disp_type.into());
 
         if !activity_texts.details.is_empty() {
             trace!("Setting activity details: {}", activity_texts.details);

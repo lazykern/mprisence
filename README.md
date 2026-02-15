@@ -337,6 +337,10 @@ app_id = "1121632048155742288" # Default Discord Application ID
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png" # Default icon URL
 show_icon = false # Show player icon as small image by default?
 allow_streaming = false # Allow HTTP/HTTPS streaming content? False clears Discord activity for those players.
+status_disp_type = "state" # Set the status display type. Changes what Discord shows in place of the app name.
+                           # name: "Listening to App Name"
+                           # state: "Listening to Artist Name"
+                           # details: "Listening to Song Name"
 
 # Override settings for a specific player (VLC in this example)
 [player.vlc_media_player]
@@ -346,6 +350,7 @@ icon = "https://example.com/vlc-icon.png" # Use a VLC-specific icon
 show_icon = true # Show the VLC icon
 allow_streaming = true # Allow streaming content for VLC
 # You could also add 'override_activity_type = "watching"' here if desired
+status_disp_type = "name"
 
 # Example: Ignore Spotify
 # [player.spotify]
