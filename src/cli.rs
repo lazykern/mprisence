@@ -1,7 +1,7 @@
 use crate::{
     config::{
         get_config,
-        schema::{ActivityType, PlayerConfig},
+        schema::{ActivityType, StatusDisplayType, PlayerConfig},
     },
     error::Error,
     player::canonical_player_bus_name,
@@ -264,6 +264,7 @@ impl Command {
                             format_bool(cfg.allow_streaming),
                             4,
                         );
+                        print_nested_key_value("status_disp_type", format_status_disp_type(cfg.status_disp_type), 4);
                         print_nested_key_value("show_icon", format_bool(cfg.show_icon), 4);
                         print_nested_key_value("ignore", format_bool(cfg.ignore), 4);
                         print_nested_key_value("icon", &cfg.icon, 4);
@@ -464,6 +465,10 @@ fn format_activity_type(activity: Option<ActivityType>) -> String {
     activity
         .map(|value| format!("{:?}", value).to_lowercase())
         .unwrap_or_else(|| "—".to_string())
+}
+
+fn format_status_disp_type(disp_type: StatusDisplayType) -> String {
+    format!("{:?}", disp_type).to_lowercase()
 }
 
 fn compare_player_keys(a: &str, b: &str) -> Ordering {
