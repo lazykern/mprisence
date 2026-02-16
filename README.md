@@ -5,7 +5,7 @@
 
 Highly customizable Discord Rich Presence client for MPRIS media players. Supports VLC, MPV, RhythmBox, and many other Linux music and media players.
 
-![mprisence Example](https://raw.githubusercontent.com/lazykern/mprisence/main/assets/example.gif)
+<img src="/assets/example.gif" width="548" height="548"/>
 
 _(Note: Actual appearance depends on your configuration and the specific media player)_
 
