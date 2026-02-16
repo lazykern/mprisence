@@ -23,15 +23,14 @@ Feel free to create a new issue if you want your player name+icon to be recogniz
 
 ## Features
 
-|                                 |                                                                                                                             |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Universal Media Player Support  | Works with any MPRIS-compatible Linux media player.                                                                         |
-| Advanced Templating             | Utilize the power of Handlebars templates for complete control over your presence text, including conditionals and helpers. |
-| Online/Local Cover Arts         | Automatically finds and displays the right album or video art. It can grab it from the web or use your own local files.     |
-| Live Configuration (Hot Reload) | Change your `config.toml` and see the updates reflected instantly without restarting the service.                           |
-| Content-Aware Activity          | Automatically sets your Discord status to "Listening", "Watching", etc., based on the media type (configurable).            |
-| Player-Specific Settings        | Customize Discord App IDs, icons, and behavior for individual players.                                                      |
-| Detailed Metadata               | Access a rich set of metadata (including technical audio details) within your templates.                                    |
+- **Works with any MPRIS player** (VLC, MPV, Rhythmbox, etc.)
+- **Template-driven presence (Handlebars)**: full control over details/state text, with helpers + conditionals
+- **Custom status display**: choose what Discord shows as your status (`name`, `state`, or `details`) — globally or per player
+- **Cover art**: uses metadata, local files, and online providers (with caching)
+- **Hot reload**: most config edits apply instantly (no restart)
+- **Smart activity type**: “Listening” / “Watching” / etc. based on content (configurable)
+- **Per-player overrides**: app IDs, icons, streaming rules, and behavior
+- **Rich metadata**: access detailed fields (including technical audio info) inside templates
 
 ## Prerequisites
 
@@ -42,6 +41,9 @@ Feel free to create a new issue if you want your player name+icon to be recogniz
   - `git` (to clone the repository)
 
 ## Installation and Setup
+
+<details>
+<summary><b>Expand installation and setup steps</b></summary>
 
 ### Package Manager
 
@@ -186,6 +188,8 @@ journalctl --user -u mprisence -f
 systemctl --user disable --now mprisence
 ```
 
+</details>
+
 ## Configuration
 
 `mprisence` is highly configurable via `~/.config/mprisence/config.toml` (or `$XDG_CONFIG_HOME/mprisence/config.toml`).
@@ -224,13 +228,15 @@ Notes:
 
 - Clear cache: `rm -rf ~/.cache/mprisence/cover_art`.
 
-### Status Display Type
+### Custom Status Display
 
 Use `status_display_type` to control which text Discord shows in your status.
 
-- `name`: shows the player/app name in your status.
-- `state`: shows the rendered `template.state` value (default template shows artist(s)).
-- `details`: shows the rendered `template.detail` value (default template shows title).
+| `status_display_type`                                                                 | Preview                                                     |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `name`: shows the player/app name in your status                                      | ![Status display type name](./assets/status_name.png)       |
+| `state`: shows the rendered `template.state` value (default template shows artist(s)) | ![Status display type state](./assets/status_state.png)     |
+| `details`: shows the rendered `template.detail` value (default template shows title)  | ![Status display type details](./assets/status_details.png) |
 
 Set a global default in `[player.default]`, then override per player only when needed.
 
@@ -243,14 +249,6 @@ status_display_type = "name" # name | state | details
 [player.vlc_media_player]
 status_display_type = "details"
 ```
-
-### Status Display Type Examples
-
-| `status_display_type` | Preview                                                     |
-| --------------------- | ----------------------------------------------------------- |
-| `name`                | ![Status display type name](./assets/status_name.png)       |
-| `state`               | ![Status display type state](./assets/status_state.png)     |
-| `details`             | ![Status display type details](./assets/status_details.png) |
 
 ### Configuration Reference
 
