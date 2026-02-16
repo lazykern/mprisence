@@ -182,12 +182,13 @@ litter_hours = 24
 #   icon: Player icon URL (shown as small image)
 #   show_icon: Show player icon in Discord (as small image)
 #   allow_streaming: Enable Discord rich presence for web-based media (browsers, streaming services). When false, HTTP/HTTPS sources are skipped and any existing activity is cleared.
+#   status_display_type: Controls which text Discord shows in your status.
+#       For example:
+#       "name"    -> Player/app name
+#       "state"   -> Rendered template.state value (default: "{{{artists}}}")
+#       "details" -> Rendered template.detail value (default: "{{{title}}}")
 #   override_activity_type: Will always show this activity type regardless of media content type
-#   Set the status display type. Changes what Discord shows in place of the app name.
-    # name: "Listening to App Name"
-    # state: "Listening to Artist Name"
-    # details: "Listening to Song Name" Set the status display type. Changes what Discord shows in place of the app name.
-default = { ignore = false, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false, status_disp_type = "name"}
+default = { ignore = false, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false, status_display_type = "name" }
 
 # ------------------
 # Example Player-Specific Settings
@@ -199,7 +200,7 @@ app_id = "1124968989538402334"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/VLC_Icon.svg/1200px-VLC_Icon.svg.png"
 show_icon = true
 allow_streaming = true
-status_disp_type = "details"
+status_display_type = "details"
 # override_activity_type = "watching"
 
 # Regex: prefix with re: or wrap in /.../ to match player name or bus name.

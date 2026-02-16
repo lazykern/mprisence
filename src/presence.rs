@@ -390,7 +390,9 @@ impl Presence {
         };
 
         let metadata_source = match cmus_override_url {
-            Some(url) => metadata::MetadataSource::from_mpris_with_override(metadata.clone(), Some(url)),
+            Some(url) => {
+                metadata::MetadataSource::from_mpris_with_override(metadata.clone(), Some(url))
+            }
             None => metadata::MetadataSource::from_mpris(metadata.clone()),
         };
 
@@ -503,8 +505,11 @@ impl Presence {
         let mut activity = Activity::default()
             .activity_type(activity_type.into())
             .status_display_type(
-                self.config.get_player_config(self.player.identity(), 
-                self.player.bus_name()).status_disp_type.into());
+                self.config
+                    .get_player_config(self.player.identity(), self.player.bus_name())
+                    .status_display_type
+                    .into(),
+            );
 
         if !activity_texts.details.is_empty() {
             trace!("Setting activity details: {}", activity_texts.details);

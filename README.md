@@ -17,21 +17,21 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
 - **Streaming**: YouTube Music, Spotify (disabled by default)
 - **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
 
-Note: MPD frontends (e.g., Euphonica) will also show MPD rich presence in Discord; you can disable the MPD entry in your config (see [Configuration Reference](#configuration-reference) 
+Note: MPD frontends (e.g., Euphonica) will also show MPD rich presence in Discord; you can disable the MPD entry in your config (see [Configuration Reference](#configuration-reference)
 
 Feel free to create a new issue if you want your player name+icon to be recognized by mprisence!
 
 ## Features
 
-|                                 |                                                                                                                              |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Universal Media Player Support  | Works with any MPRIS-compatible Linux media player.                                                                          |
-| Advanced Templating             | Utilize the power of Handlebars templates for complete control over your presence text, including conditionals and helpers.  |
-| Online/Local Cover Arts         | Automatically finds and displays the right album or video art. It can grab it from the web or use your own local files. |
-| Live Configuration (Hot Reload) | Change your `config.toml` and see the updates reflected instantly without restarting the service.                            |
-| Content-Aware Activity          | Automatically sets your Discord status to "Listening", "Watching", etc., based on the media type (configurable).             |
-| Player-Specific Settings        | Customize Discord App IDs, icons, and behavior for individual players.                                                       |
-| Detailed Metadata               | Access a rich set of metadata (including technical audio details) within your templates.                                     |
+|                                 |                                                                                                                             |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Universal Media Player Support  | Works with any MPRIS-compatible Linux media player.                                                                         |
+| Advanced Templating             | Utilize the power of Handlebars templates for complete control over your presence text, including conditionals and helpers. |
+| Online/Local Cover Arts         | Automatically finds and displays the right album or video art. It can grab it from the web or use your own local files.     |
+| Live Configuration (Hot Reload) | Change your `config.toml` and see the updates reflected instantly without restarting the service.                           |
+| Content-Aware Activity          | Automatically sets your Discord status to "Listening", "Watching", etc., based on the media type (configurable).            |
+| Player-Specific Settings        | Customize Discord App IDs, icons, and behavior for individual players.                                                      |
+| Detailed Metadata               | Access a rich set of metadata (including technical audio details) within your templates.                                    |
 
 ## Prerequisites
 
@@ -129,17 +129,17 @@ This also installs the binary to `~/.cargo/bin/`.
 
 1. **Create the configuration directory:**
 
-    ```bash
-    mkdir -p ~/.config/mprisence
-    ```
+   ```bash
+   mkdir -p ~/.config/mprisence
+   ```
 
 2. **Download the example configuration:**
 
-    ```bash
-    curl -o ~/.config/mprisence/config.toml https://raw.githubusercontent.com/lazykern/mprisence/main/config/config.example.toml
-    ```
+   ```bash
+   curl -o ~/.config/mprisence/config.toml https://raw.githubusercontent.com/lazykern/mprisence/main/config/config.example.toml
+   ```
 
-    Now you can edit this file to customize mprisence. See the [Configuration Reference](#configuration-reference) section for more details.
+   Now you can edit this file to customize mprisence. See the [Configuration Reference](#configuration-reference) section for more details.
 
 #### Step 3: Set up and Run the Service
 
@@ -147,26 +147,26 @@ To have `mprisence` start automatically on login, set up the systemd user servic
 
 1. **Create the systemd user directory if it doesn't exist:**
 
-    ```bash
-    mkdir -p ~/.config/systemd/user
-    ```
+   ```bash
+   mkdir -p ~/.config/systemd/user
+   ```
 
 2. **Download the service file:**
-    The provided service file is configured to find the `mprisence` binary in `~/.cargo/bin/`.
+   The provided service file is configured to find the `mprisence` binary in `~/.cargo/bin/`.
 
-    ```bash
-    curl -o ~/.config/systemd/user/mprisence.service https://raw.githubusercontent.com/lazykern/mprisence/main/mprisence.service
-    ```
+   ```bash
+   curl -o ~/.config/systemd/user/mprisence.service https://raw.githubusercontent.com/lazykern/mprisence/main/mprisence.service
+   ```
 
-    > **Note:** If you placed the binary in a different location (e.g., `/usr/local/bin`), you must edit `~/.config/systemd/user/mprisence.service` and change the `ExecStart` path.
+   > **Note:** If you placed the binary in a different location (e.g., `/usr/local/bin`), you must edit `~/.config/systemd/user/mprisence.service` and change the `ExecStart` path.
 
 3. **Enable and start the service:**
 
-    ```bash
-    systemctl --user enable --now mprisence
-    ```
+   ```bash
+   systemctl --user enable --now mprisence
+   ```
 
-    This command enables `mprisence` to start at login and starts it immediately.
+   This command enables `mprisence` to start at login and starts it immediately.
 
 ### Managing the Service
 
@@ -220,11 +220,41 @@ provider = ["imgbb"]
 api_key = "YOUR_API_KEY_HERE"
 ```
 
-
 Notes:
 
 - Clear cache: `rm -rf ~/.cache/mprisence/cover_art`.
 
+### Status Display Type
+
+Use `status_display_type` to control which text Discord shows in your status.
+
+- `name`: shows the player/app name in your status.
+- `state`: shows the rendered `template.state` value (default template shows artist(s)).
+- `details`: shows the rendered `template.detail` value (default template shows title).
+
+Set a global default in `[player.default]`, then override per player only when needed.
+
+```toml
+# Global default for all players
+[player.default]
+status_display_type = "name" # name | state | details
+
+# Optional per-player override (this one only affects VLC)
+[player.vlc_media_player]
+status_display_type = "details"
+```
+
+<<<<<<< HEAD
+=======
+### Status Display Type Examples
+
+| `status_display_type` | Preview                                                     |
+| --------------------- | ----------------------------------------------------------- |
+| `name`                | ![Status display type name](./assets/status_name.png)       |
+| `state`               | ![Status display type state](./assets/status_state.png)     |
+| `details`             | ![Status display type details](./assets/status_details.png) |
+
+>>>>>>> NonsensicalNickname/main
 ### Configuration Reference
 
 - [`config.example.toml`](./config/config.example.toml): Detailed options and explanations.
@@ -337,10 +367,11 @@ app_id = "1121632048155742288" # Default Discord Application ID
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png" # Default icon URL
 show_icon = false # Show player icon as small image by default?
 allow_streaming = false # Allow HTTP/HTTPS streaming content? False clears Discord activity for those players.
-status_disp_type = "state" # Set the status display type. Changes what Discord shows in place of the app name.
-                           # name: "Listening to App Name"
-                           # state: "Listening to Artist Name"
-                           # details: "Listening to Song Name"
+status_display_type = "name" # Controls which text Discord shows in your status.
+                              # For example:
+                              # "name"    -> Player/app name
+                              # "state"   -> Rendered template.state value (default: "{{{artists}}}")
+                              # "details" -> Rendered template.detail value (default: "{{{title}}}")
 
 # Override settings for a specific player (VLC in this example)
 [player.vlc_media_player]
@@ -350,7 +381,7 @@ icon = "https://example.com/vlc-icon.png" # Use a VLC-specific icon
 show_icon = true # Show the VLC icon
 allow_streaming = true # Allow streaming content for VLC
 # You could also add 'override_activity_type = "watching"' here if desired
-status_disp_type = "name"
+status_display_type = "details"
 
 # Example: Ignore Spotify
 # [player.spotify]
@@ -398,32 +429,29 @@ RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
 ### Common Issues
 
 1. **Discord Presence Not Showing / Updating**
-
-    - **Is your player running and MPRIS-compatible?** Run `mprisence players list` to see detectable players.
-    - **Is the service running?** `systemctl --user status mprisence`
-    - **Discord Settings:** Check `Discord Settings -> Registered Games / Activity Privacy`. Ensure `Display current activity as a status message.` is ON. Sometimes toggling this off and on helps. Add `mprisence` if it's not listed.
-    - **Correct App ID?** Verify the `app_id` in your config matches a valid Discord application ID.
-    - **Using Vesktop Flatpak?** Set up the Discord IPC symlink as described in the Vesktop Flatpak guide: [Native applications](https://github.com/flathub/dev.vencord.Vesktop?tab=readme-ov-file#native-applications).
-    - **Logs:** Check `journalctl --user -u mprisence -f` or run `RUST_LOG=debug mprisence` for errors.
+   - **Is your player running and MPRIS-compatible?** Run `mprisence players list` to see detectable players.
+   - **Is the service running?** `systemctl --user status mprisence`
+   - **Discord Settings:** Check `Discord Settings -> Registered Games / Activity Privacy`. Ensure `Display current activity as a status message.` is ON. Sometimes toggling this off and on helps. Add `mprisence` if it's not listed.
+   - **Correct App ID?** Verify the `app_id` in your config matches a valid Discord application ID.
+   - **Using Vesktop Flatpak?** Set up the Discord IPC symlink as described in the Vesktop Flatpak guide: [Native applications](https://github.com/flathub/dev.vencord.Vesktop?tab=readme-ov-file#native-applications).
+   - **Logs:** Check `journalctl --user -u mprisence -f` or run `RUST_LOG=debug mprisence` for errors.
 
 2. **Cover Art Not Displaying**
-
-    - **Check the logs:** Run with `RUST_LOG=debug mprisence` to see the cover art process.
-    - **Provider Order:** Cover art is checked in this order: Cache -> Direct URL (from metadata) -> Local Files -> Configured Providers (e.g., MusicBrainz, ImgBB).
-    - **MusicBrainz:** Does the track metadata (title, artist, album) accurately match the MusicBrainz database? Check the `min_score` in your config.
-    - **ImgBB:**
-      - Is a local file available (embedded or matching `file_names` in the folder/parent folders)? ImgBB is primarily used to _upload_ local art.
-      - Is your `api_key` in `[cover.provider.imgbb]` correct and valid?
-      - Is the image file format supported and readable?
-    - **Cache:** Try clearing the cache (`rm -rf ~/.cache/mprisence/cover_art`) if you suspect stale entries.
+   - **Check the logs:** Run with `RUST_LOG=debug mprisence` to see the cover art process.
+   - **Provider Order:** Cover art is checked in this order: Cache -> Direct URL (from metadata) -> Local Files -> Configured Providers (e.g., MusicBrainz, ImgBB).
+   - **MusicBrainz:** Does the track metadata (title, artist, album) accurately match the MusicBrainz database? Check the `min_score` in your config.
+   - **ImgBB:**
+     - Is a local file available (embedded or matching `file_names` in the folder/parent folders)? ImgBB is primarily used to _upload_ local art.
+     - Is your `api_key` in `[cover.provider.imgbb]` correct and valid?
+     - Is the image file format supported and readable?
+   - **Cache:** Try clearing the cache (`rm -rf ~/.cache/mprisence/cover_art`) if you suspect stale entries.
 
 3. **Service Issues**
-
-    - Use the commands mentioned in the [Autostarting / Service Management](#autostarting--service-management) section to check status (`status`), view logs (`journalctl`), and manage the service (`start`, `stop`, `restart`).
+   - Use the commands mentioned in the [Autostarting / Service Management](#autostarting--service-management) section to check status (`status`), view logs (`journalctl`), and manage the service (`start`, `stop`, `restart`).
 
 4. **Configuration Issues**
-_**Syntax Errors:** Validate your `config.toml` using an online TOML validator or `toml-lint`.
-_ **Defaults:** If unsure, temporarily remove your `~/.config/mprisence/config.toml` to test with the built-in defaults.
+   _**Syntax Errors:** Validate your `config.toml` using an online TOML validator or `toml-lint`.
+   _ **Defaults:** If unsure, temporarily remove your `~/.config/mprisence/config.toml` to test with the built-in defaults.
 
 ## Contributing
 

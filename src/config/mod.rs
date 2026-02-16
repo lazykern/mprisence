@@ -397,7 +397,10 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     let default_provider = Figment::new().merge(Toml::string(include_str!(
         "../../config/config.default.toml"
     )));
-    let bundled: Config = default_provider.clone().extract().map_err(ConfigError::Figment)?;
+    let bundled: Config = default_provider
+        .clone()
+        .extract()
+        .map_err(ConfigError::Figment)?;
     let mut figment = default_provider;
 
     if path.exists() {
@@ -413,7 +416,9 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     Ok(config)
 }
 
-fn load_user_player_configs(path: &Path) -> Result<HashMap<String, schema::PlayerConfigLayer>, ConfigError> {
+fn load_user_player_configs(
+    path: &Path,
+) -> Result<HashMap<String, schema::PlayerConfigLayer>, ConfigError> {
     if !path.exists() {
         return Ok(HashMap::new());
     }

@@ -358,11 +358,8 @@ impl CoverManager {
                             continue;
                         }
                         info!("Successfully retrieved cover art from {}", provider_name);
-                        let cache_payload = Self::prepare_cache_payload(
-                            &ArtSource::Url(url.clone()),
-                            &url,
-                        )
-                        .await?;
+                        let cache_payload =
+                            Self::prepare_cache_payload(&ArtSource::Url(url.clone()), &url).await?;
                         self.cache_store_entry(
                             &cache_key,
                             &provider_name,
