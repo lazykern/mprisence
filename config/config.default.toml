@@ -5,8 +5,8 @@ allowed_players = []
 [template]
 details = "{{{title}}}"
 state = "{{{artist_display}}}"
-large_text = "{{#if album}}{{{album}}}{{#if year}} ({{{year}}}){{/if}}{{#if album_artist_display}} by {{{album_artist_display}}}{{/if}}{{/if}}"
-small_text = "{{#if player}}Playing on {{{player}}}{{else}}MPRIS{{/if}}"
+large_text = "{{#if album}}{{{album}}}{{#if year}} ({{{year}}}){{/if}}{{/if}}"
+small_text = "{{#if player}}{{{player}}}{{else}}MPRIS{{/if}}"
 
 [time]
 show = true

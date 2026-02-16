@@ -289,11 +289,11 @@ state = "{{#each artists}}{{this}}{{#unless @last}} & {{/unless}}{{/each}}"
 # state = "{{{artist_display}}}"
 
 # Text shown when hovering over the large image - using conditional helpers
-large_text = "{{#if album}}{{{album}}}{{#if year}} ({{{year}}}){{/if}}{{#if album_artist_display}} by {{{album_artist_display}}}{{/if}}{{/if}}"
+large_text = "{{#if album}}{{{album}}}{{#if year}} ({{{year}}}){{/if}}{{/if}}"
 
 # Text shown when hovering over the small image (player icon)
 # Only visible when show_icon = true in player settings
-small_text = "{{#if player}}Playing on {{{player}}}{{else}}MPRIS{{/if}}"
+small_text = "{{#if player}}{{{player}}}{{else}}MPRIS{{/if}}"
 
 # Activity type settings
 [activity_type]

@@ -24,7 +24,7 @@ const DEFAULT_TEMPLATE_DETAIL: &str = "{{{title}}}";
 const DEFAULT_TEMPLATE_STATE: &str = "{{{artists}}}";
 const DEFAULT_TEMPLATE_LARGE_TEXT: &str =
     "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}";
-const DEFAULT_TEMPLATE_SMALL_TEXT: &str = "Playing on {{{player}}}";
+const DEFAULT_TEMPLATE_SMALL_TEXT: &str = "{{{player}}}";
 
 const DEFAULT_COVER_FILE_NAMES: [&str; 5] = ["cover", "folder", "front", "album", "art"];
 const DEFAULT_COVER_PROVIDERS: [&str; 2] = ["musicbrainz", "imgbb"];
