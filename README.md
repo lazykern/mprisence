@@ -244,8 +244,6 @@ status_display_type = "name" # name | state | details
 status_display_type = "details"
 ```
 
-<<<<<<< HEAD
-=======
 ### Status Display Type Examples
 
 | `status_display_type` | Preview                                                     |
@@ -254,7 +252,6 @@ status_display_type = "details"
 | `state`               | ![Status display type state](./assets/status_state.png)     |
 | `details`             | ![Status display type details](./assets/status_details.png) |
 
->>>>>>> NonsensicalNickname/main
 ### Configuration Reference
 
 - [`config.example.toml`](./config/config.example.toml): Detailed options and explanations.
