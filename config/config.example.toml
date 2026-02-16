@@ -23,7 +23,7 @@ allowed_players = []
 # ------------------
 [template]
 # First line in Discord presence for all activity types
-detail = "{{{title}}}"
+details = "{{{title}}}"
 
 # Second line in Discord presence for all activity types
 state = "{{{artist_display}}}"
@@ -186,7 +186,7 @@ litter_hours = 24
 #       For example:
 #       "name"    -> Player/app name
 #       "state"   -> Rendered template.state value (default: "{{{artists}}}")
-#       "details" -> Rendered template.detail value (default: "{{{title}}}")
+#       "details" -> Rendered template.details value (default: "{{{title}}}")
 #   override_activity_type: Will always show this activity type regardless of media content type
 default = { ignore = false, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false, status_display_type = "name" }
 

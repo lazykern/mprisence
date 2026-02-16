@@ -236,7 +236,7 @@ Use `status_display_type` to control which text Discord shows in your status.
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | `name`: shows the player/app name in your status                                      | ![Status display type name](./assets/status_name.png)       |
 | `state`: shows the rendered `template.state` value (default template shows artist(s)) | ![Status display type state](./assets/status_state.png)     |
-| `details`: shows the rendered `template.detail` value (default template shows title)  | ![Status display type details](./assets/status_details.png) |
+| `details`: shows the rendered `template.details` value (default template shows title) | ![Status display type details](./assets/status_details.png) |
 
 Set a global default in `[player.default]`, then override per player only when needed.
 
@@ -281,7 +281,7 @@ allowed_players = []
 # Display template
 [template]
 # First line in Discord presence
-detail = "{{{title}}}"
+details = "{{{title}}}"
 
 # Second line in Discord presence - using Handlebars array iteration
 state = "{{#each artists}}{{this}}{{#unless @last}} & {{/unless}}{{/each}}"
@@ -366,7 +366,7 @@ status_display_type = "name" # Controls which text Discord shows in your status.
                               # For example:
                               # "name"    -> Player/app name
                               # "state"   -> Rendered template.state value (default: "{{{artists}}}")
-                              # "details" -> Rendered template.detail value (default: "{{{title}}}")
+                              # "details" -> Rendered template.details value (default: "{{{title}}}")
 
 # Override settings for a specific player (VLC in this example)
 [player.vlc_media_player]

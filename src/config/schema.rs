@@ -687,12 +687,48 @@ mod wildcard_tests {
         assert!(cfg.is_player_allowed("YouTube Music", "youtube-music"));
         assert!(!cfg.is_player_allowed("spotify", "spotify"));
     }
+
+    #[test]
+    fn template_details_key_is_supported() {
+        let template: TemplateConfig = toml::from_str(
+            r#"
+details = "new details"
+"#,
+        )
+        .expect("template.details should deserialize");
+
+        assert_eq!(template.details.as_ref(), "new details");
+    }
+
+    #[test]
+    fn template_detail_key_is_still_supported() {
+        let template: TemplateConfig = toml::from_str(
+            r#"
+detail = "legacy detail"
+"#,
+        )
+        .expect("template.detail should deserialize for backward compatibility");
+
+        assert_eq!(template.details.as_ref(), "legacy detail");
+    }
+
+    #[test]
+    fn template_details_takes_precedence_when_both_keys_exist() {
+        let template: TemplateConfig = toml::from_str(
+            r#"
+detail = "legacy detail"
+details = "new details"
+"#,
+        )
+        .expect("template should deserialize when both keys are present");
+
+        assert_eq!(template.details.as_ref(), "new details");
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TemplateConfig {
-    #[serde(default = "default_template_detail")]
-    pub detail: Box<str>,
+    pub details: Box<str>,
 
     #[serde(default = "default_template_state")]
     pub state: Box<str>,
@@ -704,7 +740,7 @@ pub struct TemplateConfig {
     pub small_text: Box<str>,
 }
 
-fn default_template_detail() -> Box<str> {
+fn default_template_details() -> Box<str> {
     DEFAULT_TEMPLATE_DETAIL.into()
 }
 
@@ -723,11 +759,43 @@ fn default_template_small_text() -> Box<str> {
 impl Default for TemplateConfig {
     fn default() -> Self {
         TemplateConfig {
-            detail: default_template_detail(),
+            details: default_template_details(),
             state: default_template_state(),
             large_text: default_template_large_text(),
             small_text: default_template_small_text(),
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for TemplateConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct TemplateConfigRaw {
+            #[serde(default)]
+            details: Option<Box<str>>,
+            #[serde(default)]
+            detail: Option<Box<str>>,
+            #[serde(default = "default_template_state")]
+            state: Box<str>,
+            #[serde(default = "default_template_large_text")]
+            large_text: Box<str>,
+            #[serde(default = "default_template_small_text")]
+            small_text: Box<str>,
+        }
+
+        let raw = TemplateConfigRaw::deserialize(deserializer)?;
+        Ok(TemplateConfig {
+            details: raw
+                .details
+                .or(raw.detail)
+                .unwrap_or_else(default_template_details),
+            state: raw.state,
+            large_text: raw.large_text,
+            small_text: raw.small_text,
+        })
     }
 }
 

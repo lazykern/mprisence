@@ -241,7 +241,7 @@ impl Command {
 
                 let template_config = config.template_config();
                 println!("\nTemplates");
-                print_key_value("detail", template_config.detail.as_ref());
+                print_key_value("details", template_config.details.as_ref());
                 print_key_value("state", template_config.state.as_ref());
                 print_key_value("large_text", template_config.large_text.as_ref());
                 print_key_value("small_text", template_config.small_text.as_ref());

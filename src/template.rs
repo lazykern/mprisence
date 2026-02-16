@@ -73,9 +73,9 @@ impl TemplateManager {
         handlebars.register_helper("eq", Box::new(eq));
 
         handlebars
-            .register_template_string("detail", &template_config.detail)
+            .register_template_string("details", &template_config.details)
             .map_err(|e| {
-                error!("Failed to register 'detail' template: {}", e);
+                error!("Failed to register 'details' template: {}", e);
                 e
             })?;
         handlebars
@@ -104,7 +104,7 @@ impl TemplateManager {
     /// Create a TemplateManager with specified templates for testing
     #[allow(dead_code)]
     pub fn new_raw(
-        detail: &str,
+        details: &str,
         state: &str,
         large_text: &str,
         small_text: &str,
@@ -116,7 +116,7 @@ impl TemplateManager {
         handlebars.register_helper("eq", Box::new(eq));
 
         // Register templates
-        handlebars.register_template_string("detail", detail)?;
+        handlebars.register_template_string("details", details)?;
         handlebars.register_template_string("state", state)?;
         handlebars.register_template_string("large_text", large_text)?;
         handlebars.register_template_string("small_text", small_text)?;
@@ -147,7 +147,7 @@ impl TemplateManager {
         let render_context = RenderContext::new(&player, metadata);
 
         trace!("Rendering all activity text templates");
-        let details = self.render("detail", &render_context)?;
+        let details = self.render("details", &render_context)?;
         let state_text = self.render("state", &render_context)?;
         let large_text = self.render("large_text", &render_context)?;
         let small_text = self.render("small_text", &render_context)?;

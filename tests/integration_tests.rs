@@ -124,9 +124,9 @@ fn test_template_manager_with_config() {
     };
 
     // Test rendering templates
-    let detail = template_manager
-        .render("detail", &render_context)
-        .expect("Failed to render detail");
+    let details = template_manager
+        .render("details", &render_context)
+        .expect("Failed to render details");
     let state = template_manager
         .render("state", &render_context)
         .expect("Failed to render state");
@@ -138,7 +138,7 @@ fn test_template_manager_with_config() {
         .expect("Failed to render small text");
 
     // Verify the rendered templates match our expected output
-    assert_eq!(detail, "Test Song by Test Artist");
+    assert_eq!(details, "Test Song by Test Artist");
     assert_eq!(state, "Playing");
     assert_eq!(large_text, "from Test Album");
     assert_eq!(small_text, "Playing on test_player");

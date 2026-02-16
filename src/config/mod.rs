@@ -69,7 +69,7 @@ impl ConfigManager {
     ) -> Self {
         let mut default_config = Config::default();
 
-        default_config.template.detail = detail_template.into();
+        default_config.template.details = detail_template.into();
         default_config.template.state = state_template.into();
         default_config.template.large_text = large_text_template.into();
         default_config.template.small_text = small_text_template.into();
@@ -404,6 +404,7 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     let mut figment = default_provider;
 
     if path.exists() {
+        warn_deprecated_template_config(path);
         log::debug!("Merging user config from {}", path.display());
         let user_config = Figment::new().merge(Toml::file(path));
         figment = figment.merge(user_config);
@@ -414,6 +415,35 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     config.user_player = load_user_player_configs(path)?;
     config.user_player_patterns = collect_user_player_patterns(path)?;
     Ok(config)
+}
+
+fn warn_deprecated_template_config(path: &Path) {
+    let contents = match std::fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(_) => return,
+    };
+
+    let parsed: toml::Value = match toml::from_str(&contents) {
+        Ok(value) => value,
+        Err(_) => return,
+    };
+
+    let Some(template_table) = parsed.get("template").and_then(|v| v.as_table()) else {
+        return;
+    };
+
+    let has_detail = template_table.contains_key("detail");
+    let has_details = template_table.contains_key("details");
+
+    if has_detail && has_details {
+        log::warn!(
+            "Both [template].detail (deprecated) and [template].details are set. Using [template].details."
+        );
+    } else if has_detail {
+        log::warn!(
+            "[template].detail is deprecated and will be removed in a future release. Use [template].details instead."
+        );
+    }
 }
 
 fn load_user_player_configs(
