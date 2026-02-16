@@ -1,12 +1,23 @@
 # Changelog
 
+## [1.4.0](https://github.com/lazykern/mprisence/compare/v1.3.3...v1.4.0)
+
+* Config
+  * Add `status_display_type` for controlling status text source (`name`, `state`, `details`) globally and per-player #70
+  * Rename `template.detail` to `template.details`
+  * Keep backward compatibility for deprecated `template.detail` and preserve legacy override precedence
+  * Simplify default `template.large_text` and `template.small_text`
+  * Add Quester player entry to default config #69 #71
+* Rich Presence
+  * Apply `status_display_type` to Discord activity payload
+
 ## [1.3.3](https://github.com/lazykern/mprisence/compare/v1.3.2...v1.3.3)
 
 * Cover Art
   * Allow metadata-only providers (MusicBrainz) to run when `mpris:artUrl` and local tagged cover data are unavailable (addresses [#68](https://github.com/lazykern/mprisence/issues/68))
 * Player
   * Add `cmus-remote` metadata enrichment to improve local file URL/tag resolution for metadata and cover lookup
-* RPC
+* Rich Presence
   * Clear Discord activity before closing IPC connection to reduce stale presence lingering (helps with [#67](https://github.com/lazykern/mprisence/issues/67))
   * Trigger an immediate first-cycle presence update when a newly discovered player is initialized
 
