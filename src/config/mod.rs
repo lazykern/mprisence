@@ -402,19 +402,40 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
         .extract()
         .map_err(ConfigError::Figment)?;
     let mut figment = default_provider;
+    let mut legacy_template_detail_override = None;
 
     if path.exists() {
         warn_deprecated_template_config(path);
+        legacy_template_detail_override = read_legacy_template_detail_override(path);
         log::debug!("Merging user config from {}", path.display());
         let user_config = Figment::new().merge(Toml::file(path));
         figment = figment.merge(user_config);
     }
 
     let mut config: Config = figment.extract().map_err(ConfigError::Figment)?;
+    if let Some(legacy_details) = legacy_template_detail_override {
+        config.template.details = legacy_details;
+    }
     config.bundled_player = bundled.player;
     config.user_player = load_user_player_configs(path)?;
     config.user_player_patterns = collect_user_player_patterns(path)?;
     Ok(config)
+}
+
+fn read_legacy_template_detail_override(path: &Path) -> Option<Box<str>> {
+    let contents = std::fs::read_to_string(path).ok()?;
+    let parsed: toml::Value = toml::from_str(&contents).ok()?;
+    let template_table = parsed.get("template")?.as_table()?;
+
+    let has_details = template_table.contains_key("details");
+    if has_details {
+        return None;
+    }
+
+    template_table
+        .get("detail")
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_owned().into_boxed_str())
 }
 
 fn warn_deprecated_template_config(path: &Path) {
@@ -533,6 +554,37 @@ mod tests {
             manager.get_player_config("default", "default").show_icon,
             "reload should pick up the updated config content"
         );
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn legacy_template_detail_overrides_bundled_details() {
+        let temp_dir = temp_config_dir();
+        let config_path = temp_dir.join("config.toml");
+
+        fs::write(&config_path, "[template]\ndetail = \"legacy override\"\n")
+            .expect("failed to write config");
+
+        let config = load_config_from_file(&config_path).expect("config should load");
+        assert_eq!(config.template.details.as_ref(), "legacy override");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn template_details_wins_when_both_keys_exist_in_user_config() {
+        let temp_dir = temp_config_dir();
+        let config_path = temp_dir.join("config.toml");
+
+        fs::write(
+            &config_path,
+            "[template]\ndetail = \"legacy override\"\ndetails = \"new override\"\n",
+        )
+        .expect("failed to write config");
+
+        let config = load_config_from_file(&config_path).expect("config should load");
+        assert_eq!(config.template.details.as_ref(), "new override");
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
