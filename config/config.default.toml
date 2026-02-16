@@ -142,6 +142,11 @@ icon = "https://i.ibb.co/BKrwxCG2/musicbee-3.png"
 app_id = "1442356186052563016"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Qmmp_logo.svg/960px-Qmmp_logo.svg.png"
 
+[player.quester]
+app_id = "1471745674960830494"
+icon = "https://codeberg.org/anoraktrend/quester/raw/branch/main/resources/Quester512.png"
+allow_streaming = true
+
 [player.spotify]
 ignore = true
 
