@@ -29,7 +29,7 @@ Feel free to create a new issue if you want your player name+icon to be recogniz
 - **Cover art**: uses metadata, local files, and online providers (with caching)
 - **Hot reload**: most config edits apply instantly (no restart)
 - **Smart activity type**: “Listening” / “Watching” / etc. based on content (configurable)
-- **Per-player overrides**: app IDs, icons, streaming rules, and behavior
+- **Per-player overrides**: app IDs, icons, status, and more
 - **Rich metadata**: access detailed fields (including technical audio info) inside templates
 
 ## Prerequisites
