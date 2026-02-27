@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.1](https://github.com/lazykern/mprisence/compare/v1.4.0...v1.4.1)
+
+* Config
+  * Add [Haruna player](https://haruna.kde.org/)
+  * Set `ignore = false` explicitly for bundled supported players so `[player.default].ignore = true` does not unintentionally ignore them
+
 ## [1.4.0](https://github.com/lazykern/mprisence/compare/v1.3.3...v1.4.0)
 
 * Config
