@@ -55,6 +55,9 @@ yay -S mprisence
 
 # Or, install the latest development version
 yay -S mprisence-git
+
+# Or without building from source
+yay -S mprisence-bin
 ```
 
 #### Nix (NixOS, Linux)
