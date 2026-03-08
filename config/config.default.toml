@@ -185,7 +185,7 @@ allow_streaming = true
 [player.Media_Player_Classic_Qute_Theater]
 ignore = false
 app_id = "1480176739014672517"
-icon = "https://raw.githubusercontent.com/tag27/icon-source/refs/heads/main/res/mpc-qt.png"
+icon = "https://raw.githubusercontent.com/tag27/icon-res/refs/heads/main/res/mpc_qt.png"
 allow_streaming = true
 
 [player.spotify]
