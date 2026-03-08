@@ -186,6 +186,7 @@ allow_streaming = true
 ignore = false
 app_id = "1480176739014672517"
 icon = "https://raw.githubusercontent.com/tag27/icon-res/refs/heads/main/res/mpc_qt.png"
+# resized icon from the original: https://github.com/mpc-qt/mpc-qt/blob/master/res/images/icon/mpc-qt.svg
 allow_streaming = true
 
 [player.spotify]
