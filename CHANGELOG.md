@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2](https://github.com/lazykern/mprisence/compare/v1.4.1...v1.4.2)
+
+* Config
+  * Add Ampcast and MPC-QT player entries to the default config
+* README
+  * Add `mprisence-bin` AUR install option
+
 ## [1.4.1](https://github.com/lazykern/mprisence/compare/v1.4.0...v1.4.1)
 
 * Config
