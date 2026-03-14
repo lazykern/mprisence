@@ -1,12 +1,14 @@
 use std::{fmt::Display, time::Duration};
 
 use log::{debug, info};
-use mpris::{PlaybackStatus, Player};
+use mpris::{DBusError, PlaybackStatus, Player};
 use smol_str::SmolStr;
 
 pub mod cmus;
 
 const MPRIS_BUS_PREFIX: &str = "org.mpris.MediaPlayer2.";
+const PLAYERCTLD_NO_ACTIVE_PLAYER_ERROR: &str = "com.github.altdesktop.playerctld.NoActivePlayer";
+const PLAYERCTLD_NO_ACTIVE_PLAYER_MESSAGE: &str = "No player is being controlled by playerctld";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PlayerIdentifier {
@@ -103,6 +105,52 @@ pub fn canonical_player_bus_name(raw_bus_name: &str) -> String {
     }
 
     segments.join(".")
+}
+
+/// Returns true if the given canonical bus name is a known proxy bus (e.g. playerctld).
+/// Proxy buses forward MPRIS events from another player rather than being the source.
+pub fn is_proxy_bus_name(canonical_bus_name: &str) -> bool {
+    canonical_bus_name == "playerctld"
+}
+
+/// Given a slice of `PlayerIdentifier`s that all share the same player identity,
+/// returns the index of the preferred ("winner") entry.
+///
+/// Selection priority:
+/// 1. The currently-tracked bus name (stability — avoid unnecessary switching).
+/// 2. A non-proxy bus name (prefer the real player over a proxy like playerctld).
+/// 3. The first candidate in the slice (fallback).
+pub fn select_winner_idx(candidates: &[PlayerIdentifier], current_bus: Option<&str>) -> usize {
+    if let Some(current) = current_bus {
+        if let Some(idx) = candidates
+            .iter()
+            .position(|id| id.player_bus_name.as_str() == current)
+        {
+            return idx;
+        }
+    }
+
+    if let Some(idx) = candidates
+        .iter()
+        .position(|id| !is_proxy_bus_name(&id.player_bus_name))
+    {
+        return idx;
+    }
+
+    0
+}
+
+pub fn is_playerctld_no_active_error(error: &DBusError) -> bool {
+    match error {
+        DBusError::TransportError(transport_error) => {
+            transport_error.name() == Some(PLAYERCTLD_NO_ACTIVE_PLAYER_ERROR)
+                || transport_error
+                    .message()
+                    .map(|message| message.contains(PLAYERCTLD_NO_ACTIVE_PLAYER_MESSAGE))
+                    .unwrap_or(false)
+        }
+        _ => false,
+    }
 }
 
 impl PlaybackState {

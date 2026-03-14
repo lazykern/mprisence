@@ -7,8 +7,9 @@ use cover::CoverManager;
 use error::MprisenceError;
 use log::{debug, error, info, trace, warn};
 use mpris::PlayerFinder;
-use player::PlayerIdentifier;
+use player::{is_playerctld_no_active_error, select_winner_idx, PlayerIdentifier};
 use presence::Presence;
+use smol_str::SmolStr;
 use std::{alloc::System, collections::HashMap, sync::Arc, time::Duration};
 
 #[global_allocator]
@@ -49,7 +50,10 @@ async fn main() -> Result<(), error::Error> {
 }
 
 pub struct Mprisence {
-    media_players: HashMap<PlayerIdentifier, Presence>,
+    /// Keyed by normalised player identity (e.g. `"music_player_daemon"`).
+    /// Enforces at most one Discord presence per logical player, regardless of
+    /// how many D-Bus bus names expose the same underlying player.
+    media_players: HashMap<SmolStr, Presence>,
     template_manager: Arc<template::TemplateManager>,
     cover_manager: Arc<CoverManager>,
     config_rx: config::ConfigChangeReceiver,
@@ -86,13 +90,14 @@ impl Mprisence {
         self.cover_manager = Arc::new(CoverManager::new(&self.config)?);
         debug!("Template and cover managers updated successfully");
 
-        for (id, presence) in self.media_players.iter_mut() {
+        for (_norm_id, presence) in self.media_players.iter_mut() {
+            let pid = presence.player_id();
             let player_config = self
                 .config
-                .get_player_config(&id.identity, &id.player_bus_name);
+                .get_player_config(&pid.identity, &pid.player_bus_name);
             let is_allowed = self
                 .config
-                .is_player_allowed(&id.identity, &id.player_bus_name);
+                .is_player_allowed(&pid.identity, &pid.player_bus_name);
             if player_config.ignore || !is_allowed {
                 debug!(
                     "Player now {}: {}",
@@ -101,7 +106,7 @@ impl Mprisence {
                     } else {
                         "disallowed"
                     },
-                    id.identity
+                    pid.identity
                 );
                 let _ = presence.destroy_discord_client();
             } else {
@@ -113,14 +118,15 @@ impl Mprisence {
             }
         }
 
-        self.media_players.retain(|id, _| {
+        self.media_players.retain(|_norm_id, presence| {
+            let pid = presence.player_id();
             !self
                 .config
-                .get_player_config(&id.identity, &id.player_bus_name)
+                .get_player_config(&pid.identity, &pid.player_bus_name)
                 .ignore
                 && self
                     .config
-                    .is_player_allowed(&id.identity, &id.player_bus_name)
+                    .is_player_allowed(&pid.identity, &pid.player_bus_name)
         });
 
         debug!("All media players updated with new configuration");
@@ -141,18 +147,26 @@ impl Mprisence {
             return Ok(());
         }
 
-        let mut current_ids = std::collections::HashSet::new();
-
         trace!("Scanning for active media players");
 
         let mut player_finder = PlayerFinder::new()?;
-
         player_finder.set_player_timeout_ms(5000);
 
-        let iter_players = player_finder.iter_players()?;
+        // Phase 1: collect all allowed, non-ignored players and group them by
+        // normalised identity so that multiple bus names for the same underlying
+        // player (e.g. `mpd` and `playerctld`) are treated as one logical player.
+        let mut candidates: HashMap<SmolStr, Vec<mpris::Player>> = HashMap::new();
 
-        for player in iter_players {
-            let player = player?;
+        for player in player_finder.iter_players()? {
+            let player = match player {
+                Ok(p) => p,
+                Err(err) if is_playerctld_no_active_error(&err) => {
+                    debug!("Skipping playerctld proxy without an active player during discovery");
+                    continue;
+                }
+                Err(err) => return Err(err.into()),
+            };
+
             let id = PlayerIdentifier::from(&player);
 
             if !self
@@ -171,24 +185,61 @@ impl Mprisence {
                 continue;
             }
 
-            current_ids.insert(id.clone());
+            let norm_id = SmolStr::new(utils::normalize_player_identity(&id.identity));
+            candidates.entry(norm_id).or_default().push(player);
+        }
 
-            trace!("Processing player {}", id);
-            if let Some(presence) = self.media_players.get_mut(&id) {
+        // Phase 2: for each identity group select one winner and update/create
+        // the corresponding Presence.  This ensures at most one Discord IPC
+        // connection per logical player identity.
+        let mut current_norm_ids = std::collections::HashSet::new();
+
+        for (norm_id, mut group) in candidates {
+            current_norm_ids.insert(norm_id.clone());
+
+            let ids: Vec<PlayerIdentifier> =
+                group.iter().map(|p| PlayerIdentifier::from(p)).collect();
+
+            let current_bus = self
+                .media_players
+                .get(&norm_id)
+                .map(|presence| presence.player_id().player_bus_name.clone());
+
+            let winner_idx = select_winner_idx(&ids, current_bus.as_deref());
+
+            if ids.len() > 1 {
+                let bus_names: Vec<&str> =
+                    ids.iter().map(|id| id.player_bus_name.as_str()).collect();
+                debug!(
+                    "Multiple bus names for '{}': [{}] — selected '{}'",
+                    ids[0].identity,
+                    bus_names.join(", "),
+                    ids[winner_idx].player_bus_name
+                );
+            }
+
+            let winner_player = group.remove(winner_idx);
+            let winner_id = &ids[winner_idx];
+
+            trace!("Processing player {}", winner_id);
+
+            if let Some(presence) = self.media_players.get_mut(&norm_id) {
                 if let Err(e) = presence.initialize_discord_client() {
                     warn!(
                         "Failed to initialize Discord client for {}: {}",
-                        id.identity, e
+                        winner_id.identity, e
                     );
                 }
-                if let Err(e) = presence.update(player).await {
-                    warn!("Failed to update presence for {}: {}", id.identity, e);
+                if let Err(e) = presence.update(winner_player).await {
+                    warn!(
+                        "Failed to update presence for {}: {}",
+                        winner_id.identity, e
+                    );
                 }
             } else {
-                debug!("New media player detected: {}", id.identity);
-                let player_bus_name = player.bus_name().to_string();
+                debug!("New media player detected: {}", winner_id.identity);
                 let mut presence = Presence::new(
-                    player,
+                    winner_player,
                     self.template_manager.clone(),
                     self.cover_manager.clone(),
                     self.config.clone(),
@@ -196,41 +247,24 @@ impl Mprisence {
                 if let Err(e) = presence.initialize_discord_client() {
                     warn!(
                         "Failed to initialize Discord client for new player {}: {}",
-                        id.identity, e
+                        winner_id.identity, e
                     );
                 }
-
-                match player_finder.find_by_name(&player_bus_name) {
-                    Ok(update_player) => {
-                        if let Err(e) = presence.update(update_player).await {
-                            warn!(
-                                "Failed to update presence for new player {}: {}",
-                                id.identity, e
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        warn!(
-                            "Failed to fetch new player {} for immediate update: {}",
-                            id.identity, e
-                        );
-                    }
-                }
-
-                self.media_players.insert(id, presence);
+                self.media_players.insert(norm_id, presence);
             }
         }
 
-        self.media_players.retain(|id, presence| {
-            let player_config = self
-                .config
-                .get_player_config(&id.identity, &id.player_bus_name);
-            let allowed = self
-                .config
-                .is_player_allowed(&id.identity, &id.player_bus_name);
-            let keep = current_ids.contains(id) && !player_config.ignore && allowed;
+        // Phase 3: remove entries whose player has gone away or been reconfigured.
+        self.media_players.retain(|norm_id, presence| {
+            let (identity, player_bus_name) = {
+                let pid = presence.player_id();
+                (pid.identity.clone(), pid.player_bus_name.clone())
+            };
+            let player_config = self.config.get_player_config(&identity, &player_bus_name);
+            let allowed = self.config.is_player_allowed(&identity, &player_bus_name);
+            let keep = current_norm_ids.contains(norm_id) && !player_config.ignore && allowed;
             if !keep {
-                let reason = if !current_ids.contains(id) {
+                let reason = if !current_norm_ids.contains(norm_id) {
                     "player no longer exists"
                 } else if player_config.ignore {
                     "player is now ignored"
@@ -239,13 +273,10 @@ impl Mprisence {
                 };
                 debug!(
                     "Media player removed from tracking: {} ({})",
-                    id.identity, reason
+                    identity, reason
                 );
                 if let Err(e) = presence.destroy_discord_client() {
-                    warn!(
-                        "Failed to destroy Discord client for {}: {}",
-                        id.identity, e
-                    );
+                    warn!("Failed to destroy Discord client for {}: {}", identity, e);
                 }
             }
             keep

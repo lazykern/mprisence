@@ -4,12 +4,20 @@ use crate::{
         schema::{ActivityType, PlayerConfig, StatusDisplayType},
     },
     error::Error,
-    player::canonical_player_bus_name,
+    player::{
+        canonical_player_bus_name, is_playerctld_no_active_error, select_winner_idx,
+        PlayerIdentifier,
+    },
     utils::{format_playback_status_icon, normalize_player_identity},
 };
 use clap::{Parser, Subcommand};
 use mpris::{PlaybackStatus, PlayerFinder};
-use std::{cmp::Ordering, env, time::Duration};
+use std::{
+    cmp::Ordering,
+    collections::{HashMap, HashSet},
+    env,
+    time::Duration,
+};
 
 #[derive(Parser)]
 #[command(name = "mprisence")]
@@ -56,7 +64,17 @@ impl Command {
                     let mut finder = PlayerFinder::new()?;
                     finder.set_player_timeout_ms(5000);
 
-                    let players = finder.find_all()?;
+                    let iter_players = finder.iter_players()?;
+                    let mut players = Vec::new();
+                    for player in iter_players {
+                        match player {
+                            Ok(player) => players.push(player),
+                            Err(err) if is_playerctld_no_active_error(&err) => {
+                                log::debug!("Skipping playerctld proxy without an active player");
+                            }
+                            Err(err) => return Err(err.into()),
+                        }
+                    }
 
                     if players.is_empty() {
                         println!("No MPRIS players found");
@@ -103,45 +121,108 @@ impl Command {
                             length,
                             config: player_config,
                             allowed,
+                            is_duplicate: false,
                         });
                     }
+
+                    // Mark entries that would be skipped by the daemon's
+                    // deduplication logic (multiple bus names, same identity).
+                    {
+                        let mut by_identity: HashMap<String, Vec<usize>> = HashMap::new();
+                        for (idx, entry) in entries.iter().enumerate() {
+                            by_identity.entry(entry.id.clone()).or_default().push(idx);
+                        }
+
+                        let mut to_mark: Vec<usize> = Vec::new();
+                        for (_norm_id, indices) in &by_identity {
+                            if indices.len() <= 1 {
+                                continue;
+                            }
+                            let ids: Vec<PlayerIdentifier> = indices
+                                .iter()
+                                .map(|&i| PlayerIdentifier {
+                                    player_bus_name: entries[i].player_bus_name.as_str().into(),
+                                    identity: entries[i].identity.as_str().into(),
+                                    unique_name: "".into(),
+                                })
+                                .collect();
+                            let winner_local_idx = select_winner_idx(&ids, None);
+                            let winner_global_idx = indices[winner_local_idx];
+                            for &global_idx in indices {
+                                if global_idx != winner_global_idx {
+                                    to_mark.push(global_idx);
+                                }
+                            }
+                        }
+                        for idx in to_mark {
+                            entries[idx].is_duplicate = true;
+                        }
+                    }
+
+                    let duplicate_identity_ids: HashSet<&str> = entries
+                        .iter()
+                        .filter(|entry| entry.is_duplicate)
+                        .map(|entry| entry.id.as_str())
+                        .collect();
 
                     let total = entries.len();
                     let playing_count = entries
                         .iter()
                         .filter(|entry| {
-                            entry.allowed && matches!(entry.status, Some(PlaybackStatus::Playing))
+                            !entry.is_duplicate
+                                && entry.allowed
+                                && matches!(entry.status, Some(PlaybackStatus::Playing))
                         })
                         .count();
                     let paused_count = entries
                         .iter()
                         .filter(|entry| {
-                            entry.allowed && matches!(entry.status, Some(PlaybackStatus::Paused))
+                            !entry.is_duplicate
+                                && entry.allowed
+                                && matches!(entry.status, Some(PlaybackStatus::Paused))
                         })
                         .count();
                     let excluded_count = entries
                         .iter()
                         .filter(|entry| entry.config.ignore || !entry.allowed)
                         .count();
+                    let duplicate_count = entries.iter().filter(|entry| entry.is_duplicate).count();
 
                     let divider = create_divider();
 
-                    println!(
-                        "\nMPRIS players: {} ({} playing, {} paused, {} excluded)",
-                        total, playing_count, paused_count, excluded_count
-                    );
+                    let mut summary_parts = vec![
+                        format!("{} playing", playing_count),
+                        format!("{} paused", paused_count),
+                        format!("{} excluded", excluded_count),
+                    ];
+                    if duplicate_count > 0 {
+                        summary_parts.push(format!("{} duplicate", duplicate_count));
+                    }
+                    println!("\nMPRIS players: {} ({})", total, summary_parts.join(", "));
                     println!("{}", divider);
                     for entry in &entries {
+                        let identity_display = if duplicate_identity_ids.contains(entry.id.as_str())
+                        {
+                            format!("{} ({})", entry.identity, entry.player_bus_name)
+                        } else {
+                            entry.identity.clone()
+                        };
                         let summary_title = format_summary_title(entry);
                         println!(
                             "{} {} {} [{}]",
-                            status_icon(entry.status.as_ref(), entry.config.ignore, entry.allowed),
-                            format_cell(&entry.identity, NAME_COLUMN_WIDTH),
+                            status_icon(
+                                entry.status.as_ref(),
+                                entry.config.ignore,
+                                entry.allowed,
+                                entry.is_duplicate
+                            ),
+                            format_cell(&identity_display, NAME_COLUMN_WIDTH),
                             format_cell(&summary_title, TITLE_COLUMN_WIDTH),
                             summary_status_text(
                                 entry.status.as_ref(),
                                 entry.config.ignore,
-                                entry.allowed
+                                entry.allowed,
+                                entry.is_duplicate
                             )
                         );
                     }
@@ -156,13 +237,15 @@ impl Command {
                                 status_icon(
                                     entry.status.as_ref(),
                                     entry.config.ignore,
-                                    entry.allowed
+                                    entry.allowed,
+                                    entry.is_duplicate
                                 ),
                                 entry.identity,
                                 detail_status_text(
                                     entry.status.as_ref(),
                                     entry.config.ignore,
-                                    entry.allowed
+                                    entry.allowed,
+                                    entry.is_duplicate
                                 )
                             );
                             if let Some(title) = &entry.title {
@@ -181,7 +264,7 @@ impl Command {
                             }
                             println!(
                                 "  Presence : {}",
-                                format_presence(&entry.config, entry.allowed)
+                                format_presence(&entry.config, entry.allowed, entry.is_duplicate)
                             );
                             println!("  ID       : {}", entry.id);
                             println!("  Bus Name : {}", entry.player_bus_name);
@@ -324,15 +407,26 @@ struct PlayerDisplay {
     length: Option<Duration>,
     config: PlayerConfig,
     allowed: bool,
+    /// True when another bus name for the same identity was chosen as the
+    /// winner by the deduplication logic; this entry will be skipped by the
+    /// daemon.
+    is_duplicate: bool,
 }
 
 fn create_divider() -> String {
     "─".repeat(DIVIDER_WIDTH)
 }
 
-fn status_icon(status: Option<&PlaybackStatus>, ignored: bool, allowed: bool) -> &'static str {
+fn status_icon(
+    status: Option<&PlaybackStatus>,
+    ignored: bool,
+    allowed: bool,
+    is_duplicate: bool,
+) -> &'static str {
     if ignored || !allowed {
         "✖"
+    } else if is_duplicate {
+        "⊘"
     } else if let Some(status) = status {
         format_playback_status_icon(*status)
     } else {
@@ -349,11 +443,21 @@ fn playback_status_word(status: Option<&PlaybackStatus>) -> Option<&'static str>
     }
 }
 
-fn summary_status_text(status: Option<&PlaybackStatus>, ignored: bool, allowed: bool) -> String {
-    detail_status_text(status, ignored, allowed)
+fn summary_status_text(
+    status: Option<&PlaybackStatus>,
+    ignored: bool,
+    allowed: bool,
+    is_duplicate: bool,
+) -> String {
+    detail_status_text(status, ignored, allowed, is_duplicate)
 }
 
-fn detail_status_text(status: Option<&PlaybackStatus>, ignored: bool, allowed: bool) -> String {
+fn detail_status_text(
+    status: Option<&PlaybackStatus>,
+    ignored: bool,
+    allowed: bool,
+    is_duplicate: bool,
+) -> String {
     let mut parts = Vec::new();
     if let Some(word) = playback_status_word(status) {
         parts.push(word.to_string());
@@ -363,6 +467,9 @@ fn detail_status_text(status: Option<&PlaybackStatus>, ignored: bool, allowed: b
     }
     if !allowed {
         parts.push("disallowed".to_string());
+    }
+    if is_duplicate {
+        parts.push("duplicate, skipped".to_string());
     }
 
     if parts.is_empty() {
@@ -415,11 +522,13 @@ fn format_track_length(duration: Duration) -> String {
     format!("{:02}:{:02}", total_seconds / 60, total_seconds % 60)
 }
 
-fn format_presence(config: &PlayerConfig, allowed: bool) -> String {
+fn format_presence(config: &PlayerConfig, allowed: bool, is_duplicate: bool) -> String {
     if !allowed {
         "disallowed by allowed_players".to_string()
     } else if config.ignore {
         format!("ignored (app_id = {})", config.app_id)
+    } else if is_duplicate {
+        "skipped (duplicate bus name for same identity)".to_string()
     } else {
         format!("enabled (allow_streaming = {})", config.allow_streaming)
     }

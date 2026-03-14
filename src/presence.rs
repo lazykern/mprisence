@@ -28,13 +28,16 @@ use crate::{
     cover::CoverManager,
     error::DiscordError,
     metadata,
-    player::{canonical_player_bus_name, cmus, PlaybackState},
+    player::{canonical_player_bus_name, cmus, PlaybackState, PlayerIdentifier},
     template::TemplateManager,
     utils,
 };
 
 pub struct Presence {
     player: Player,
+    /// Cached identifier for the currently active player connection.
+    /// Updated whenever the underlying bus name or unique connection changes.
+    player_id: PlayerIdentifier,
     template_manager: Arc<TemplateManager>,
     cover_manager: Arc<CoverManager>,
     last_player_state: Option<PlaybackState>,
@@ -61,8 +64,10 @@ impl Presence {
         info!("Initializing presence for player: {}", player.identity());
         trace!("Using Discord application ID: {}", player_config.app_id);
         trace!("Player configuration: {:#?}", player_config);
+        let player_id = PlayerIdentifier::from(&player);
         Self {
             player,
+            player_id,
             template_manager,
             cover_manager,
             last_player_state: None,
@@ -76,6 +81,11 @@ impl Presence {
             last_reconnect_attempt: Mutex::new(Instant::now()),
             config,
         }
+    }
+
+    /// Returns the identifier of the currently tracked player connection.
+    pub fn player_id(&self) -> &PlayerIdentifier {
+        &self.player_id
     }
 
     pub fn initialize_discord_client(&mut self) -> Result<(), DiscordError> {
@@ -119,7 +129,46 @@ impl Presence {
 
     pub async fn update(&mut self, player: Player) -> Result<(), DiscordError> {
         trace!("Updating presence for player: {}", player.identity());
-        self.validate_player(&player)?;
+
+        // Validate identity — only the identity must match; bus name and unique
+        // connection name are allowed to change (e.g. playerctld handoff, player
+        // restart, or deduplication winner switch).
+        if player.identity() != self.player.identity() {
+            error!(
+                "Player identity mismatch. Expected: {}, got: {}",
+                self.player.identity(),
+                player.identity()
+            );
+            return Err(DiscordError::InvalidPlayer(format!(
+                "Expected {}, got {}",
+                self.player.identity(),
+                player.identity()
+            )));
+        }
+
+        // If the bus name or unique D-Bus connection changed, update the stored
+        // reference and reset playback state so the next cycle does a full update.
+        if player.bus_name() != self.player.bus_name()
+            || player.unique_name() != self.player.unique_name()
+        {
+            let new_id = PlayerIdentifier::from(&player);
+            debug!(
+                "Player '{}' connection changed: {}:{} -> {}:{}",
+                self.player.identity(),
+                self.player_id.player_bus_name,
+                self.player_id.unique_name,
+                new_id.player_bus_name,
+                new_id.unique_name,
+            );
+            self.player_id = new_id;
+            self.player = player;
+            self.last_player_state = None;
+            self.last_cmus_track_id = None;
+            self.last_cmus_path = None;
+            self.cmus_error_logged = false;
+            // Skip Discord update this cycle; full update happens next poll.
+            return Ok(());
+        }
 
         let Some(_discord_client) = &self.discord_client else {
             return Ok(());
@@ -164,26 +213,6 @@ impl Presence {
             }
             err
         })
-    }
-
-    fn validate_player(&self, player: &Player) -> Result<(), DiscordError> {
-        if player.identity() != self.player.identity()
-            || player.bus_name() != self.player.bus_name()
-            || player.unique_name() != self.player.unique_name()
-        {
-            error!(
-                "Player validation failed - identity mismatch. Expected: {}, got: {}",
-                self.player.identity(),
-                player.identity()
-            );
-            return Err(DiscordError::InvalidPlayer(format!(
-                "Expected {}, got {}",
-                self.player.identity(),
-                player.identity()
-            )));
-        }
-        trace!("Player validation successful");
-        Ok(())
     }
 
     fn ensure_connection(&mut self) -> Result<(), DiscordError> {
