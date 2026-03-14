@@ -10,7 +10,12 @@ use mpris::PlayerFinder;
 use player::{is_playerctld_no_active_error, select_winner_idx, PlayerIdentifier};
 use presence::Presence;
 use smol_str::SmolStr;
-use std::{alloc::System, collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    alloc::System,
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 
 #[global_allocator]
 static GLOBAL: System = System;
@@ -54,10 +59,19 @@ pub struct Mprisence {
     /// Enforces at most one Discord presence per logical player, regardless of
     /// how many D-Bus bus names expose the same underlying player.
     media_players: HashMap<SmolStr, Presence>,
+    /// Last seen deduplication selection for identities that currently expose
+    /// multiple bus names.
+    dedup_selection: HashMap<SmolStr, DedupSelection>,
     template_manager: Arc<template::TemplateManager>,
     cover_manager: Arc<CoverManager>,
     config_rx: config::ConfigChangeReceiver,
     config: Arc<ConfigManager>,
+}
+
+#[derive(Clone, Debug)]
+struct DedupSelection {
+    buses_signature: String,
+    winner_bus: SmolStr,
 }
 
 impl Mprisence {
@@ -75,6 +89,7 @@ impl Mprisence {
         debug!("Service initialization complete");
         Ok(Self {
             media_players: HashMap::new(),
+            dedup_selection: HashMap::new(),
             template_manager,
             cover_manager,
             config_rx: config.subscribe(),
@@ -192,7 +207,8 @@ impl Mprisence {
         // Phase 2: for each identity group select one winner and update/create
         // the corresponding Presence.  This ensures at most one Discord IPC
         // connection per logical player identity.
-        let mut current_norm_ids = std::collections::HashSet::new();
+        let mut current_norm_ids = HashSet::new();
+        let mut duplicate_norm_ids = HashSet::new();
 
         for (norm_id, mut group) in candidates {
             current_norm_ids.insert(norm_id.clone());
@@ -208,14 +224,40 @@ impl Mprisence {
             let winner_idx = select_winner_idx(&ids, current_bus.as_deref());
 
             if ids.len() > 1 {
-                let bus_names: Vec<&str> =
+                duplicate_norm_ids.insert(norm_id.clone());
+
+                let mut bus_names: Vec<&str> =
                     ids.iter().map(|id| id.player_bus_name.as_str()).collect();
-                debug!(
-                    "Multiple bus names for '{}': [{}] — selected '{}'",
-                    ids[0].identity,
-                    bus_names.join(", "),
-                    ids[winner_idx].player_bus_name
-                );
+                bus_names.sort_unstable();
+
+                let buses_signature = bus_names.join(", ");
+                let winner_bus = SmolStr::new(ids[winner_idx].player_bus_name.as_str());
+
+                let next = DedupSelection {
+                    buses_signature: buses_signature.clone(),
+                    winner_bus: winner_bus.clone(),
+                };
+
+                match self.dedup_selection.get(&norm_id) {
+                    None => {
+                        warn!(
+                            "Duplicate MPRIS bus names detected for '{}': [{}] — selecting '{}'",
+                            ids[0].identity, buses_signature, winner_bus
+                        );
+                        self.dedup_selection.insert(norm_id.clone(), next);
+                    }
+                    Some(prev)
+                        if prev.buses_signature != buses_signature
+                            || prev.winner_bus != winner_bus =>
+                    {
+                        warn!(
+                            "Dedup selection changed for '{}': [{}] — now selecting '{}'",
+                            ids[0].identity, buses_signature, winner_bus
+                        );
+                        self.dedup_selection.insert(norm_id.clone(), next);
+                    }
+                    Some(_) => {}
+                }
             }
 
             let winner_player = group.remove(winner_idx);
@@ -280,6 +322,10 @@ impl Mprisence {
                 }
             }
             keep
+        });
+
+        self.dedup_selection.retain(|norm_id, _| {
+            current_norm_ids.contains(norm_id) && duplicate_norm_ids.contains(norm_id)
         });
 
         Ok(())
