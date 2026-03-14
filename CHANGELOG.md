@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.3](https://github.com/lazykern/mprisence/compare/v1.4.2...v1.4.3)
+
+* Fix
+  * Handle `playerctld`'s `NoActivePlayer` D-Bus error without leaving stale Discord presence behind ([#76](https://github.com/lazykern/mprisence/issues/76))
+  * Deduplicate proxy and real MPRIS bus names by player identity so the same player is only tracked once ([#77](https://github.com/lazykern/mprisence/issues/77))
+
 ## [1.4.2](https://github.com/lazykern/mprisence/compare/v1.4.1...v1.4.2)
 
 * Config
