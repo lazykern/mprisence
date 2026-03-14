@@ -195,11 +195,21 @@ impl Config {
 
         let mut matches = Vec::new();
 
+        let user_exact_bus_match = if normalized_identity != normalized_player_bus_name {
+            self.user_player.get(&normalized_player_bus_name).cloned()
+        } else {
+            None
+        };
+
         if normalized_identity != normalized_player_bus_name {
             matches.extend(self.collect_ordered_matches(&normalized_player_bus_name));
         }
 
         matches.extend(self.collect_ordered_matches(&normalized_identity));
+
+        if let Some(layer) = user_exact_bus_match {
+            matches.push(layer);
+        }
 
         self.resolve_player_config(matches)
     }
@@ -664,6 +674,24 @@ mod wildcard_tests {
         let res = cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "mpd");
         assert_eq!(res.app_id, "BUNDLED"); // inherited from bus-name match
         assert!(res.show_icon); // overridden by identity wildcard
+    }
+
+    #[test]
+    fn user_exact_bus_name_overrides_identity_matches() {
+        let mut cfg = Config::default();
+        cfg.user_player.insert(
+            "mpv".to_string(),
+            layer(Some(true), Some(false), Some("IDENTITY")),
+        );
+        cfg.user_player.insert(
+            "playerctld".to_string(),
+            layer(Some(false), Some(true), Some("BUS")),
+        );
+
+        let res = cfg.get_player_config("mpv", "playerctld");
+        assert_eq!(res.app_id, "BUS");
+        assert!(res.ignore);
+        assert!(!res.show_icon);
     }
 
     #[test]

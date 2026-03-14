@@ -395,7 +395,7 @@ When `allow_streaming` is `false`, mprisence will skip HTTP/HTTPS sources for th
 
 </details>
 
-Player config priority: user entries always override bundled ones. The resolver tries user exact > user regex > user wildcard > bundled exact > bundled regex > bundled wildcard; any field left unset on a higher-priority match is filled from the next match down, falling back to `[player.default]` (user, then bundled) and finally built-in defaults.
+Player config priority: user entries always override bundled ones. The resolver tries user exact > user regex > user wildcard > bundled exact > bundled regex > bundled wildcard; any field left unset on a higher-priority match is filled from the next match down, falling back to `[player.default]` (user, then bundled) and finally built-in defaults. When identity and bus-name differ (for example with proxies like `playerctld`), an exact user bus-name entry wins over identity-derived matches.
 
 ## CLI Commands
 
