@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.5](https://github.com/lazykern/mprisence/compare/v1.4.4...v1.4.5)
+
+* Config
+  * Add Gelly support (`bus name: io.m51.Gelly`)
+  * Enable `allow_streaming = true` for hosted music server players (Feishin, Supersonic, Gelly)
+
 ## [1.4.4](https://github.com/lazykern/mprisence/compare/v1.4.3...v1.4.4)
 
 * Cover Art
