@@ -230,6 +230,7 @@ api_key = "YOUR_API_KEY_HERE"
 Notes:
 
 - Clear cache: `rm -rf ~/.cache/mprisence/cover_art`.
+- Authenticated/self-hosted art URLs from players like Feishin (Subsonic/OpenSubsonic/Navidrome/Jellyfin API image routes) are treated as source input and re-hosted via your configured providers instead of being cached as direct Discord URLs.
 
 ### Custom Status Display
 

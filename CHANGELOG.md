@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+* Cover Art
+  * Treat authenticated/self-hosted API image URLs (Subsonic/OpenSubsonic/Navidrome/Jellyfin patterns) as non-direct and re-host them through configured providers instead of caching them as `direct`
+  * Invalidate cached `direct` entries that are no longer eligible under the stricter URL policy and fall back to provider-based hosting
+
 ## [1.4.3](https://github.com/lazykern/mprisence/compare/v1.4.2...v1.4.3)
 
 * Fix

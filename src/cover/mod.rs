@@ -22,6 +22,28 @@ use sources::{search_local_cover_art, ArtSource};
 const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 24 hours
 const CACHE_VALIDATION_INTERVAL: Duration = Duration::from_secs(60 * 60); // 1 hour
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DirectUrlPolicy {
+    allow_direct: bool,
+    reason: &'static str,
+}
+
+impl DirectUrlPolicy {
+    const fn allow() -> Self {
+        Self {
+            allow_direct: true,
+            reason: "public_url",
+        }
+    }
+
+    const fn deny(reason: &'static str) -> Self {
+        Self {
+            allow_direct: false,
+            reason,
+        }
+    }
+}
+
 pub struct CoverManager {
     providers: Vec<Box<dyn CoverArtProvider>>,
     cache: Arc<CoverCache>,
@@ -82,7 +104,13 @@ impl CoverManager {
                 match host {
                     Host::Domain(d) => {
                         let dl = d.to_ascii_lowercase();
-                        if dl == "localhost" || dl.ends_with(".localhost") {
+                        if dl == "localhost"
+                            || dl.ends_with(".localhost")
+                            || dl.ends_with(".local")
+                            || dl.ends_with(".localdomain")
+                            || dl.ends_with(".home.arpa")
+                            || dl.ends_with(".lan")
+                        {
                             return true;
                         }
                     }
@@ -110,6 +138,74 @@ impl CoverManager {
         false
     }
 
+    fn auth_query_reason(parsed: &Url) -> Option<&'static str> {
+        let mut has_subsonic_user = false;
+        let mut has_subsonic_password = false;
+        let mut has_subsonic_token = false;
+        let mut has_subsonic_salt = false;
+
+        for (key, _) in parsed.query_pairs() {
+            let key = key.to_ascii_lowercase();
+            match key.as_str() {
+                "u" => has_subsonic_user = true,
+                "p" => has_subsonic_password = true,
+                "t" => has_subsonic_token = true,
+                "s" => has_subsonic_salt = true,
+                "apikey"
+                | "api_key"
+                | "token"
+                | "auth"
+                | "authorization"
+                | "x-emby-token"
+                | "x-emby-authorization" => {
+                    return Some("auth_query_param");
+                }
+                _ => {}
+            }
+        }
+
+        if has_subsonic_user && has_subsonic_password {
+            return Some("subsonic_password_query");
+        }
+
+        if has_subsonic_token && has_subsonic_salt {
+            return Some("subsonic_token_query");
+        }
+
+        None
+    }
+
+    fn direct_url_policy(url_str: &str) -> DirectUrlPolicy {
+        let parsed = match Url::parse(url_str) {
+            Ok(url) => url,
+            Err(_) => return DirectUrlPolicy::deny("invalid_url"),
+        };
+
+        let scheme = parsed.scheme();
+        if scheme != "http" && scheme != "https" {
+            return DirectUrlPolicy::deny("unsupported_scheme");
+        }
+
+        if Self::is_local_or_private_url(url_str) {
+            return DirectUrlPolicy::deny("local_or_private_host");
+        }
+
+        let path = parsed.path().to_ascii_lowercase();
+        if path.contains("/rest/getcoverart") {
+            return DirectUrlPolicy::deny("subsonic_cover_endpoint");
+        }
+
+        if path.contains("/items/") && path.contains("/images") {
+            return DirectUrlPolicy::deny("jellyfin_image_endpoint");
+        }
+
+        if let Some(reason) = Self::auth_query_reason(&parsed) {
+            return DirectUrlPolicy::deny(reason);
+        }
+
+        DirectUrlPolicy::allow()
+    }
+
     pub async fn get_cover_art(
         &self,
         source: Option<ArtSource>,
@@ -121,13 +217,23 @@ impl CoverManager {
         // 1. Check Cache
         if let Some(mut entry) = self.cache_get_entry(&cache_key).await? {
             let url = entry.url.clone();
+            let mut drop_reason: Option<&'static str> = None;
+
+            if entry.provider.eq_ignore_ascii_case("direct") {
+                let policy = Self::direct_url_policy(&url);
+                if !policy.allow_direct {
+                    drop_reason = Some(policy.reason);
+                }
+            }
+
             let needs_validation = entry
                 .last_validated
                 .elapsed()
                 .map(|elapsed| elapsed >= CACHE_VALIDATION_INTERVAL)
                 .unwrap_or(true);
 
-            if !needs_validation || Self::validate_cover_url(&url).await {
+            if drop_reason.is_none() && (!needs_validation || Self::validate_cover_url(&url).await)
+            {
                 if needs_validation {
                     entry.last_validated = SystemTime::now();
                     self.cache_update_entry(&cache_key, &entry).await?;
@@ -137,14 +243,15 @@ impl CoverManager {
                     entry.provider, !needs_validation
                 );
                 return Ok(Some(url));
-            } else {
-                warn!(
-                    "Cached cover art URL {} failed validation; removing entry",
-                    url
-                );
-                recovered_cache_bytes = self.cache_load_bytes(entry).await?;
-                self.cache_remove_entry(&cache_key).await?;
             }
+
+            let reason = drop_reason.unwrap_or("validation_failed");
+            warn!(
+                "Cached cover art URL {} is no longer eligible (provider: {}, reason: {}); removing entry",
+                url, entry.provider, reason
+            );
+            recovered_cache_bytes = self.cache_load_bytes(entry).await?;
+            self.cache_remove_entry(&cache_key).await?;
         } else {
             recovered_cache_bytes = None;
         }
@@ -164,28 +271,36 @@ impl CoverManager {
 
         // 2. If we have a direct URL, decide whether to use it or transform
         if let Some(ArtSource::Url(ref url)) = source.as_ref() {
-            if Self::is_local_or_private_url(url) {
-                warn!("Detected local/private URL; will not use directly: {}", url);
-                // Try to fetch bytes so providers like ImgBB can upload
+            let policy = Self::direct_url_policy(url);
+
+            if !policy.allow_direct {
+                warn!(
+                    "Direct cover art URL is not eligible for Discord (reason: {}); attempting provider upload: {}",
+                    policy.reason, url
+                );
+                // Try to fetch bytes so providers can upload
                 let client = create_shared_client();
                 match client.get(url).send().await {
                     Ok(resp) if resp.status().is_success() => match resp.bytes().await {
                         Ok(bytes) => {
-                            debug!("Fetched image bytes from local URL ({} bytes)", bytes.len());
+                            debug!(
+                                "Fetched image bytes from source URL ({} bytes)",
+                                bytes.len()
+                            );
                             source_for_providers = Some(ArtSource::Bytes(bytes.to_vec()));
                         }
                         Err(e) => {
-                            warn!("Failed to read bytes from local URL response: {}", e);
+                            warn!("Failed to read bytes from source URL response: {}", e);
                         }
                     },
                     Ok(resp) => {
                         warn!(
-                            "Local URL fetch returned non-success status: {}",
+                            "Source URL fetch returned non-success status: {}",
                             resp.status()
                         );
                     }
                     Err(e) => {
-                        warn!("Failed to fetch local URL: {}", e);
+                        warn!("Failed to fetch source URL: {}", e);
                     }
                 }
             } else if Self::validate_cover_url(url).await {
@@ -556,4 +671,54 @@ pub async fn clean_cache() -> Result<(), CoverArtError> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CoverManager;
+
+    #[test]
+    fn denies_local_private_hosts_for_direct_usage() {
+        let policy = CoverManager::direct_url_policy("http://192.168.1.20:4533/cover.jpg");
+        assert!(!policy.allow_direct);
+        assert_eq!(policy.reason, "local_or_private_host");
+    }
+
+    #[test]
+    fn denies_subsonic_cover_endpoints_for_direct_usage() {
+        let policy = CoverManager::direct_url_policy(
+            "https://music.example.com/rest/getCoverArt.view?id=123",
+        );
+        assert!(!policy.allow_direct);
+        assert_eq!(policy.reason, "subsonic_cover_endpoint");
+    }
+
+    #[test]
+    fn denies_jellyfin_image_endpoints_for_direct_usage() {
+        let policy = CoverManager::direct_url_policy(
+            "https://media.example.com/Items/abcd1234/Images/Primary?tag=abcdef",
+        );
+        assert!(!policy.allow_direct);
+        assert_eq!(policy.reason, "jellyfin_image_endpoint");
+    }
+
+    #[test]
+    fn denies_auth_like_query_params_for_direct_usage() {
+        let policy =
+            CoverManager::direct_url_policy("https://cdn.example.com/cover.jpg?api_key=secret");
+        assert!(!policy.allow_direct);
+        assert_eq!(policy.reason, "auth_query_param");
+
+        let subsonic_policy =
+            CoverManager::direct_url_policy("https://cdn.example.com/cover.jpg?t=token&s=salt");
+        assert!(!subsonic_policy.allow_direct);
+        assert_eq!(subsonic_policy.reason, "subsonic_token_query");
+    }
+
+    #[test]
+    fn allows_plain_public_urls_for_direct_usage() {
+        let policy = CoverManager::direct_url_policy("https://cdn.example.com/cover.jpg");
+        assert!(policy.allow_direct);
+        assert_eq!(policy.reason, "public_url");
+    }
 }
