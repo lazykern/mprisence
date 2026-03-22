@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.4](https://github.com/lazykern/mprisence/compare/v1.4.3...v1.4.4)
 
 * Cover Art
   * Treat authenticated/self-hosted API image URLs (Subsonic/OpenSubsonic/Navidrome/Jellyfin patterns) as non-direct and re-host them through configured providers instead of caching them as `direct`
