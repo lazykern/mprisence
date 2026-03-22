@@ -274,7 +274,7 @@ impl CoverManager {
             let policy = Self::direct_url_policy(url);
 
             if !policy.allow_direct {
-                warn!(
+                info!(
                     "Direct cover art URL is not eligible for Discord (reason: {}); attempting provider upload: {}",
                     policy.reason, url
                 );
