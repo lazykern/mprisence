@@ -242,87 +242,82 @@ impl MetadataSource {
         Ok(tagged_file)
     }
 
-    impl_metadata_getter!(title, "xesam:title", &ItemKey::TrackTitle);
-    impl_metadata_getter!(album, "xesam:album", &ItemKey::AlbumTitle);
-    impl_metadata_getter!(initial_key, "xesam:initialKey", &ItemKey::InitialKey);
-    impl_metadata_getter!(bpm, "xesam:bpm", &ItemKey::Bpm);
-    impl_metadata_getter!(mood, "xesam:mood", &ItemKey::Mood);
+    impl_metadata_getter!(title, "xesam:title", ItemKey::TrackTitle);
+    impl_metadata_getter!(album, "xesam:album", ItemKey::AlbumTitle);
+    impl_metadata_getter!(initial_key, "xesam:initialKey", ItemKey::InitialKey);
+    impl_metadata_getter!(bpm, "xesam:bpm", ItemKey::Bpm);
+    impl_metadata_getter!(mood, "xesam:mood", ItemKey::Mood);
 
-    impl_metadata_getter!(isrc, "xesam:isrc", &ItemKey::Isrc);
-    impl_metadata_getter!(barcode, "xesam:barcode", &ItemKey::Barcode);
+    impl_metadata_getter!(isrc, "xesam:isrc", ItemKey::Isrc);
+    impl_metadata_getter!(barcode, "xesam:barcode", ItemKey::Barcode);
     impl_metadata_getter!(
         catalog_number,
         "xesam:catalogNumber",
-        &ItemKey::CatalogNumber
+        ItemKey::CatalogNumber
     );
-    impl_metadata_getter!(label, "xesam:label", &ItemKey::Label);
+    impl_metadata_getter!(label, "xesam:label", ItemKey::Label);
 
     impl_metadata_getter!(
         musicbrainz_track_id,
         "xesam:musicbrainzTrackID",
-        &ItemKey::MusicBrainzTrackId
+        ItemKey::MusicBrainzTrackId
     );
     impl_metadata_getter!(
         musicbrainz_album_id,
         "xesam:musicbrainzAlbumID",
-        &ItemKey::MusicBrainzReleaseId
+        ItemKey::MusicBrainzReleaseId
     );
     impl_metadata_getter!(
         musicbrainz_artist_id,
         "xesam:musicbrainzArtistID",
-        &ItemKey::MusicBrainzArtistId
+        ItemKey::MusicBrainzArtistId
     );
     impl_metadata_getter!(
         musicbrainz_album_artist_id,
         "xesam:musicbrainzAlbumArtistID",
-        &ItemKey::MusicBrainzReleaseArtistId
+        ItemKey::MusicBrainzReleaseArtistId
     );
     impl_metadata_getter!(
         musicbrainz_release_group_id,
         "xesam:musicbrainzReleaseGroupID",
-        &ItemKey::MusicBrainzReleaseGroupId
+        ItemKey::MusicBrainzReleaseGroupId
     );
 
     impl_metadata_getter!(
         track_number,
         "xesam:trackNumber",
-        &ItemKey::TrackNumber,
+        ItemKey::TrackNumber,
         parse_u32
     );
     impl_metadata_getter!(
         track_total,
         "xesam:trackTotal",
-        &ItemKey::TrackTotal,
+        ItemKey::TrackTotal,
         parse_u32
     );
     impl_metadata_getter!(
         disc_number,
         "xesam:discNumber",
-        &ItemKey::DiscNumber,
+        ItemKey::DiscNumber,
         parse_u32
     );
-    impl_metadata_getter!(
-        disc_total,
-        "xesam:discTotal",
-        &ItemKey::DiscTotal,
-        parse_u32
-    );
-    impl_metadata_getter!(year, "xesam:year", &ItemKey::Year, parse_u32);
+    impl_metadata_getter!(disc_total, "xesam:discTotal", ItemKey::DiscTotal, parse_u32);
+    impl_metadata_getter!(year, "xesam:year", ItemKey::Year, parse_u32);
 
-    impl_metadata_getter!(composer, "xesam:composer", &ItemKey::Composer);
-    impl_metadata_getter!(lyricist, "xesam:lyricist", &ItemKey::Lyricist);
-    impl_metadata_getter!(conductor, "xesam:conductor", &ItemKey::Conductor);
-    impl_metadata_getter!(remixer, "xesam:remixer", &ItemKey::Remixer);
-    impl_metadata_getter!(language, "xesam:language", &ItemKey::Language);
-    impl_metadata_getter!(encoded_by, "xesam:encodedBy", &ItemKey::EncodedBy);
+    impl_metadata_getter!(composer, "xesam:composer", ItemKey::Composer);
+    impl_metadata_getter!(lyricist, "xesam:lyricist", ItemKey::Lyricist);
+    impl_metadata_getter!(conductor, "xesam:conductor", ItemKey::Conductor);
+    impl_metadata_getter!(remixer, "xesam:remixer", ItemKey::Remixer);
+    impl_metadata_getter!(language, "xesam:language", ItemKey::Language);
+    impl_metadata_getter!(encoded_by, "xesam:encodedBy", ItemKey::EncodedBy);
     impl_metadata_getter!(
         encoder_settings,
         "xesam:encoderSettings",
-        &ItemKey::EncoderSettings
+        ItemKey::EncoderSettings
     );
-    impl_metadata_getter!(comment, "xesam:comment", &ItemKey::Comment);
+    impl_metadata_getter!(comment, "xesam:comment", ItemKey::Comment);
 
-    impl_metadata_getter!(genres, "xesam:genre", &ItemKey::Genre, array);
+    impl_metadata_getter!(genres, "xesam:genre", ItemKey::Genre, array);
     impl_metadata_getter!(copyright, "xesam:copyright");
     impl_metadata_getter!(publisher, "xesam:publisher");
     impl_metadata_getter!(movement, "xesam:movement");
@@ -340,7 +335,7 @@ impl MetadataSource {
                 self.tagged_file
                     .as_ref()
                     .and_then(|t| t.primary_tag())
-                    .and_then(|tag| tag.get_string(&ItemKey::TrackArtist))
+                    .and_then(|tag| tag.get_string(ItemKey::TrackArtist))
                     .map(|artist| vec![artist.to_string()])
             })
     }
@@ -355,7 +350,7 @@ impl MetadataSource {
                 self.tagged_file
                     .as_ref()
                     .and_then(|t| t.primary_tag())
-                    .and_then(|tag| tag.get_string(&ItemKey::AlbumArtist))
+                    .and_then(|tag| tag.get_string(ItemKey::AlbumArtist))
                     .map(|artist| vec![artist.to_string()])
             })
     }
