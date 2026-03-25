@@ -44,6 +44,12 @@ small_text = "{{#if player}}{{{player}}}{{else}}MPRIS{{/if}}"
 # - Built-in Helpers: https://handlebarsjs.com/guide/builtin-helpers.html
 # - eq: Compare two values for equality
 #   Example: {{#if (eq status "playing")}}Playing{{/if}}
+# - contains: Check whether one string contains another
+#   Example: {{#if (contains player "Spotify")}}Spotify{{/if}}
+# - regex_is_match: Match a string against a regex pattern
+#   Example: {{#if (regex_is_match pattern="^Spot.*" on=player)}}Spotify{{/if}}
+# - regex_captures: Capture named or indexed regex groups
+#   Example: {{#with (regex_captures pattern="^(?<name>.+) Desktop$" on=player)}}{{name}}{{/with}}
 #
 # Available template variables:
 # Core Metadata:

@@ -2,6 +2,7 @@ use log::{debug, error, info, trace};
 use std::sync::Arc;
 
 use handlebars::{handlebars_helper, no_escape, Handlebars};
+use handlebars_misc_helpers::regex_helpers;
 use mpris::Player;
 use serde::Serialize;
 
@@ -61,6 +62,13 @@ pub struct ActivityTexts {
 }
 
 handlebars_helper!(eq: |x: str, y: str| x == y);
+handlebars_helper!(contains: |haystack: str, needle: str| haystack.contains(needle));
+
+fn register_template_helpers(handlebars: &mut Handlebars<'static>) {
+    handlebars.register_helper("eq", Box::new(eq));
+    handlebars.register_helper("contains", Box::new(contains));
+    regex_helpers::register(handlebars);
+}
 
 impl TemplateManager {
     pub fn new(config: &Arc<ConfigManager>) -> Result<Self, TemplateError> {
@@ -70,7 +78,7 @@ impl TemplateManager {
         let template_config = config.template_config();
 
         trace!("Registering custom template helpers");
-        handlebars.register_helper("eq", Box::new(eq));
+        register_template_helpers(&mut handlebars);
 
         handlebars
             .register_template_string("details", &template_config.details)
@@ -112,10 +120,8 @@ impl TemplateManager {
         let mut handlebars = Handlebars::new();
         handlebars.register_escape_fn(no_escape);
 
-        // Register our helper
-        handlebars.register_helper("eq", Box::new(eq));
+        register_template_helpers(&mut handlebars);
 
-        // Register templates
         handlebars.register_template_string("details", details)?;
         handlebars.register_template_string("state", state)?;
         handlebars.register_template_string("large_text", large_text)?;
@@ -159,5 +165,95 @@ impl TemplateManager {
             large_text,
             small_text,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RenderContext, TemplateManager};
+    use crate::{error::TemplateError, metadata::MediaMetadata};
+
+    fn test_context() -> RenderContext {
+        RenderContext {
+            player: "Spotify Desktop".into(),
+            player_bus_name: "spotify".into(),
+            status: Some("Playing".into()),
+            status_icon: Some(">".into()),
+            volume: Some(0.5),
+            metadata: MediaMetadata {
+                title: Some("Song Title".into()),
+                artist_display: Some("Artist Name".into()),
+                ..MediaMetadata::default()
+            },
+        }
+    }
+
+    #[test]
+    fn renders_contains_helper() {
+        let manager = TemplateManager::new_raw(
+            "{{#if (contains player \"Spotify\")}}match{{else}}no{{/if}}",
+            "",
+            "",
+            "",
+        )
+        .expect("template manager should initialize");
+
+        let rendered = manager
+            .render("details", &test_context())
+            .expect("contains helper should render");
+
+        assert_eq!(rendered, "match");
+    }
+
+    #[test]
+    fn renders_regex_is_match_helper() {
+        let manager = TemplateManager::new_raw(
+            "{{#if (regex_is_match pattern=\"^Spot.*\" on=player)}}match{{else}}no{{/if}}",
+            "",
+            "",
+            "",
+        )
+        .expect("template manager should initialize");
+
+        let rendered = manager
+            .render("details", &test_context())
+            .expect("regex helper should render");
+
+        assert_eq!(rendered, "match");
+    }
+
+    #[test]
+    fn renders_regex_captures_helper() {
+        let manager = TemplateManager::new_raw(
+            "{{#with (regex_captures pattern=\"^(?<name>.+) Desktop$\" on=player)}}{{name}}{{/with}}",
+            "",
+            "",
+            "",
+        )
+        .expect("template manager should initialize");
+
+        let rendered = manager
+            .render("details", &test_context())
+            .expect("regex captures helper should render");
+
+        assert_eq!(rendered, "Spotify");
+    }
+
+    #[test]
+    fn invalid_regex_returns_template_error() {
+        let manager =
+            TemplateManager::new_raw("{{regex_is_match pattern=\"(\" on=player}}", "", "", "")
+                .expect("template manager should initialize");
+
+        let err = manager
+            .render("details", &test_context())
+            .expect_err("invalid regex should fail");
+
+        match err {
+            TemplateError::HandlebarsRender(render_err) => {
+                assert!(render_err.to_string().contains("regex parse error"));
+            }
+            other => panic!("unexpected template error: {other:?}"),
+        }
     }
 }
