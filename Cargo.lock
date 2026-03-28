@@ -1708,7 +1708,7 @@ dependencies = [
 
 [[package]]
 name = "mprisence"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",

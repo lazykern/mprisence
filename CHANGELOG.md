@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.5.1](https://github.com/lazykern/mprisence/compare/v1.5.0...v1.5.1)
+
+* Template
+  * Add `icontains` for case-insensitive substring matching in Handlebars templates alongside the existing `contains` and regex helpers
+
 ## [1.5.0](https://github.com/lazykern/mprisence/compare/v1.4.5...v1.5.0)
 
 * Template
