@@ -46,6 +46,8 @@ small_text = "{{#if player}}{{{player}}}{{else}}MPRIS{{/if}}"
 #   Example: {{#if (eq status "playing")}}Playing{{/if}}
 # - contains: Check whether one string contains another
 #   Example: {{#if (contains player "Spotify")}}Spotify{{/if}}
+# - icontains: Check whether one string contains another, case-insensitively
+#   Example: {{#if (icontains player "spotify")}}Spotify{{/if}}
 # - regex_is_match: Match a string against a regex pattern
 #   Example: {{#if (regex_is_match pattern="^Spot.*" on=player)}}Spotify{{/if}}
 # - regex_captures: Capture named or indexed regex groups

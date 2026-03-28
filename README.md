@@ -281,7 +281,7 @@ allowed_players = []
 # Note: Triple braces `{{{variable}}}` are used to prevent HTML escaping,
 # which is generally desired for Discord presence fields.
 # See: https://handlebarsjs.com/guide/#html-escaping
-# Extra helpers: `eq`, `contains`, `regex_is_match`, and `regex_captures`
+# Extra helpers: `eq`, `contains`, `icontains`, `regex_is_match`, and `regex_captures`
 
 # Display template
 [template]
@@ -302,6 +302,7 @@ small_text = "{{#if player}}{{{player}}}{{else}}MPRIS{{/if}}"
 
 # Match substrings or regex patterns in helpers
 # details = "{{#if (contains player \"Spotify\")}}{{{title}}}{{else}}{{{player}}}{{/if}}"
+# details = "{{#if (icontains player \"spotify\")}}{{{title}}}{{else}}{{{player}}}{{/if}}"
 # small_text = "{{#if (regex_is_match pattern=\"^(mpv|vlc)$\" on=player_bus_name)}}Video{{else}}Audio{{/if}}"
 
 # Activity type settings

@@ -63,10 +63,12 @@ pub struct ActivityTexts {
 
 handlebars_helper!(eq: |x: str, y: str| x == y);
 handlebars_helper!(contains: |haystack: str, needle: str| haystack.contains(needle));
+handlebars_helper!(icontains: |haystack: str, needle: str| haystack.to_lowercase().contains(&needle.to_lowercase()));
 
 fn register_template_helpers(handlebars: &mut Handlebars<'static>) {
     handlebars.register_helper("eq", Box::new(eq));
     handlebars.register_helper("contains", Box::new(contains));
+    handlebars.register_helper("icontains", Box::new(icontains));
     regex_helpers::register(handlebars);
 }
 
@@ -201,6 +203,23 @@ mod tests {
         let rendered = manager
             .render("details", &test_context())
             .expect("contains helper should render");
+
+        assert_eq!(rendered, "match");
+    }
+
+    #[test]
+    fn renders_icontains_helper() {
+        let manager = TemplateManager::new_raw(
+            "{{#if (icontains player \"spotify\")}}match{{else}}no{{/if}}",
+            "",
+            "",
+            "",
+        )
+        .expect("template manager should initialize");
+
+        let rendered = manager
+            .render("details", &test_context())
+            .expect("icontains helper should render");
 
         assert_eq!(rendered, "match");
     }
