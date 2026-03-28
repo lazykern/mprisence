@@ -3,7 +3,7 @@
 ## [1.5.0](https://github.com/lazykern/mprisence/compare/v1.4.5...v1.5.0)
 
 * Template
-  * Add `contains`, `regex_is_match`, and `regex_captures` Handlebars helpers for substring and regex-based matching in presence templates
+  * Add `contains`, plus `regex_is_match` and `regex_captures` from [`handlebars_misc_helpers`](https://github.com/davidB/handlebars_misc_helpers), for substring and regex-based matching in presence templates
 * Dependencies
   * Update core Rust dependencies: `clap` `4.5` -> `4.6.0`, `env_logger` `0.11.8` -> `0.11.10`, `smol_str` `0.3.4` -> `0.3.6`, `tokio` `1.48.0` -> `1.50.0`, `futures` `0.3` -> `0.3.32`, and `interprocess` `2.2.3` -> `2.4.0`
   * Upgrade `toml` `0.9.12` -> `1.1.0`, `reqwest` `0.12.24` -> `0.13.2`, and `lofty` `0.22.3` -> `0.23.3`
