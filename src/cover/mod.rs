@@ -322,14 +322,11 @@ impl CoverManager {
 
         // 3. Try to find local cover art if we have a file path
         if let Some(path) = metadata_source.url().and_then(|url| {
-            if url.starts_with("file://") {
-                match urlencoding::decode(&url[7..]) {
+            url.strip_prefix("file://")
+                .and_then(|stripped| match urlencoding::decode(stripped) {
                     Ok(dec) => Some(PathBuf::from(dec.into_owned())),
-                    Err(_) => return None,
-                }
-            } else {
-                None
-            }
+                    Err(_) => None,
+                })
         }) {
             if let Some(parent) = path.parent() {
                 debug!("Attempting to find local cover art in: {:?}", parent);

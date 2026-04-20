@@ -415,8 +415,8 @@ fn regex_from_pattern(pattern: &str) -> Option<Regex> {
         return None;
     }
 
-    let raw = if pattern.starts_with("re:") {
-        pattern[3..].to_string()
+    let raw = if let Some(stripped) = pattern.strip_prefix("re:") {
+        stripped.to_string()
     } else {
         pattern
             .trim_start_matches('/')
@@ -487,7 +487,7 @@ mod wildcard_tests {
 
         let res = cfg.get_player_config("VLC Media Player", "vlc");
         assert_eq!(res.app_id, "B");
-        assert_eq!(res.show_icon, false);
+        assert!(!res.show_icon);
     }
 
     #[test]
@@ -504,7 +504,7 @@ mod wildcard_tests {
 
         let res = cfg.get_player_config("vlc media classic", "vlc");
         assert_eq!(res.app_id, "B");
-        assert_eq!(res.show_icon, false);
+        assert!(!res.show_icon);
     }
 
     #[test]
@@ -539,7 +539,7 @@ mod wildcard_tests {
 
         let res = cfg.get_player_config("Fancy VLC", "vlc");
         assert_eq!(res.app_id, "A");
-        assert_eq!(res.show_icon, true);
+        assert!(res.show_icon);
     }
 
     #[test]
@@ -556,7 +556,7 @@ mod wildcard_tests {
 
         let res = cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "mpd");
         assert_eq!(res.app_id, "R");
-        assert_eq!(res.show_icon, true);
+        assert!(res.show_icon);
     }
 
     #[test]
@@ -577,7 +577,7 @@ mod wildcard_tests {
 
         let res = cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "mpd");
         assert_eq!(res.app_id, "R");
-        assert_eq!(res.show_icon, true);
+        assert!(res.show_icon);
     }
 
     #[test]
@@ -594,7 +594,7 @@ mod wildcard_tests {
 
         let res = cfg.get_player_config("Some Custom Player", "mpdris2-rs");
         assert_eq!(res.app_id, "R");
-        assert_eq!(res.show_icon, true);
+        assert!(res.show_icon);
     }
 
     #[test]
@@ -611,7 +611,7 @@ mod wildcard_tests {
 
         let res = cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "mpd");
         assert_eq!(res.app_id, "U");
-        assert_eq!(res.show_icon, true);
+        assert!(res.show_icon);
     }
 
     #[test]
@@ -631,8 +631,8 @@ mod wildcard_tests {
 
         let res = cfg.get_player_config("vlc", "vlc");
         assert_eq!(res.app_id, "BUNDLED"); // comes from bundled match
-        assert_eq!(res.show_icon, true); // overridden by user layer
-        assert_eq!(res.ignore, false); // inherited from bundled + defaults
+        assert!(res.show_icon); // overridden by user layer
+        assert!(!res.ignore); // inherited from bundled + defaults
     }
 
     #[test]
@@ -652,8 +652,8 @@ mod wildcard_tests {
 
         let res = cfg.get_player_config("VLC media player", "vlc_media_player");
         assert_eq!(res.app_id, "BUNDLED"); // inherited
-        assert_eq!(res.show_icon, true); // overridden by user regex
-        assert_eq!(res.ignore, true); // inherited from bundled exact
+        assert!(res.show_icon); // overridden by user regex
+        assert!(res.ignore); // inherited from bundled exact
     }
 
     #[test]
@@ -703,12 +703,14 @@ mod wildcard_tests {
 
     #[test]
     fn filters_players_by_allowed_patterns() {
-        let mut cfg = Config::default();
-        cfg.allowed_players = vec![
-            "vlc_media_player".to_string(),
-            "*mpd*".to_string(),
-            "re:.*youtube_music.*".to_string(),
-        ];
+        let cfg = Config {
+            allowed_players: vec![
+                "vlc_media_player".to_string(),
+                "*mpd*".to_string(),
+                "re:.*youtube_music.*".to_string(),
+            ],
+            ..Default::default()
+        };
 
         assert!(cfg.is_player_allowed("VLC media player", "vlc"));
         assert!(cfg.is_player_allowed("Music Player Daemon (mpdris2-rs)", "mpd"));

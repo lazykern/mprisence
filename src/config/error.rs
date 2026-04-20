@@ -12,7 +12,7 @@ pub enum ConfigError {
     Serialize(#[from] toml::ser::Error),
 
     #[error("Figment error: {0}")]
-    Figment(#[from] figment::Error),
+    Figment(Box<figment::Error>),
 
     #[error("IO error: {0}")]
     IO(#[from] std::io::Error),
@@ -24,5 +24,11 @@ pub enum ConfigError {
 impl<T> From<std::sync::PoisonError<T>> for ConfigError {
     fn from(err: std::sync::PoisonError<T>) -> Self {
         ConfigError::Lock(err.to_string())
+    }
+}
+
+impl From<figment::Error> for ConfigError {
+    fn from(err: figment::Error) -> Self {
+        Self::Figment(Box::new(err))
     }
 }

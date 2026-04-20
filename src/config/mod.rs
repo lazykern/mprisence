@@ -1,3 +1,4 @@
+use crate::utils::normalize_player_identity;
 use figment::providers::{Format, Toml};
 use figment::Figment;
 use log::trace;
@@ -7,9 +8,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
-use toml;
-
-use crate::utils::normalize_player_identity;
 
 const CONFIG_READY_TIMEOUT: Duration = Duration::from_millis(500);
 const CONFIG_READY_POLL_INTERVAL: Duration = Duration::from_millis(25);
@@ -263,10 +261,10 @@ fn setup_file_watcher(config_path: PathBuf, config: Arc<ConfigManager>) -> Resul
                             event.paths
                         );
 
-                        let is_relevant_event = event.paths.iter().any(|p| {
-                            p.file_name()
-                                .map_or(false, |name| name == config_filename.as_os_str())
-                        });
+                        let is_relevant_event = event
+                            .paths
+                            .iter()
+                            .any(|p| p.file_name() == Some(config_filename.as_os_str()));
 
                         let event_kind_matches = matches!(
                             event.kind,
@@ -400,7 +398,7 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     let bundled: Config = default_provider
         .clone()
         .extract()
-        .map_err(ConfigError::Figment)?;
+        .map_err(ConfigError::from)?;
     let mut figment = default_provider;
     let mut legacy_template_detail_override = None;
 
@@ -412,7 +410,7 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
         figment = figment.merge(user_config);
     }
 
-    let mut config: Config = figment.extract().map_err(ConfigError::Figment)?;
+    let mut config: Config = figment.extract().map_err(ConfigError::from)?;
     if let Some(legacy_details) = legacy_template_detail_override {
         config.template.details = legacy_details;
     }

@@ -134,7 +134,7 @@ impl Command {
                         }
 
                         let mut to_mark: Vec<usize> = Vec::new();
-                        for (_norm_id, indices) in &by_identity {
+                        for indices in by_identity.values() {
                             if indices.len() <= 1 {
                                 continue;
                             }

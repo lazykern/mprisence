@@ -29,8 +29,8 @@ impl ArtSource {
             return Some(Self::Url(url.to_string()));
         }
 
-        let path = if url.starts_with("file://") {
-            match urlencoding::decode(&url[7..]) {
+        let path = if let Some(stripped) = url.strip_prefix("file://") {
+            match urlencoding::decode(stripped) {
                 Ok(dec) => dec.parse().ok(),
                 Err(_) => return None,
             }

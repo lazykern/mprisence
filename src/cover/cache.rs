@@ -421,60 +421,58 @@ impl CoverCache {
         let now = SystemTime::now();
 
         trace!("Starting cache cleanup scan");
-        for entry in fs::read_dir(&self.cache_dir)? {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_dir() {
-                    trace!("Skipping directory: {:?}", path);
-                    continue;
-                }
+        for entry in (fs::read_dir(&self.cache_dir)?).flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                trace!("Skipping directory: {:?}", path);
+                continue;
+            }
 
-                if path
-                    .extension()
-                    .and_then(|ext| ext.to_str())
-                    .map(|ext| ext.eq_ignore_ascii_case("bin"))
-                    .unwrap_or(false)
-                {
-                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                        let metadata_path = self.entry_path_from_key(stem);
-                        if !metadata_path.exists() {
-                            debug!(
-                                "Removing orphaned cached data file {:?} (missing {:?})",
-                                path, metadata_path
-                            );
-                            if let Some(file_name) = path.file_name().and_then(|f| f.to_str()) {
-                                self.remove_data_file(file_name);
-                            } else {
-                                let len = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-                                if let Err(e) = fs::remove_file(&path) {
-                                    warn!("Failed to remove orphaned cache data {:?}: {}", path, e);
-                                } else if len > 0 {
-                                    self.adjust_usage(0, -(len as i64));
-                                }
+            if path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.eq_ignore_ascii_case("bin"))
+                .unwrap_or(false)
+            {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    let metadata_path = self.entry_path_from_key(stem);
+                    if !metadata_path.exists() {
+                        debug!(
+                            "Removing orphaned cached data file {:?} (missing {:?})",
+                            path, metadata_path
+                        );
+                        if let Some(file_name) = path.file_name().and_then(|f| f.to_str()) {
+                            self.remove_data_file(file_name);
+                        } else {
+                            let len = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                            if let Err(e) = fs::remove_file(&path) {
+                                warn!("Failed to remove orphaned cache data {:?}: {}", path, e);
+                            } else if len > 0 {
+                                self.adjust_usage(0, -(len as i64));
                             }
                         }
                     }
-                    continue;
                 }
+                continue;
+            }
 
-                trace!("Checking cache file: {:?}", path);
-                if let Ok(data) = fs::read(&path) {
-                    if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&data) {
-                        if now > entry.expires_at {
-                            debug!("Removing expired cache entry: {:?}", path);
-                            match self.remove_entry_at_path(&path) {
-                                Ok(_) => cleaned += 1,
-                                Err(_) => {
-                                    warn!("Failed to remove expired cache entry: {:?}", path);
-                                }
-                            }
-                        }
-                    } else {
-                        warn!("Removing invalid cache entry: {:?}", path);
+            trace!("Checking cache file: {:?}", path);
+            if let Ok(data) = fs::read(&path) {
+                if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&data) {
+                    if now > entry.expires_at {
+                        debug!("Removing expired cache entry: {:?}", path);
                         match self.remove_entry_at_path(&path) {
                             Ok(_) => cleaned += 1,
-                            Err(_) => warn!("Failed to cleanup invalid cache entry: {:?}", path),
+                            Err(_) => {
+                                warn!("Failed to remove expired cache entry: {:?}", path);
+                            }
                         }
+                    }
+                } else {
+                    warn!("Removing invalid cache entry: {:?}", path);
+                    match self.remove_entry_at_path(&path) {
+                        Ok(_) => cleaned += 1,
+                        Err(_) => warn!("Failed to cleanup invalid cache entry: {:?}", path),
                     }
                 }
             }

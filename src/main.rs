@@ -213,8 +213,7 @@ impl Mprisence {
         for (norm_id, mut group) in candidates {
             current_norm_ids.insert(norm_id.clone());
 
-            let ids: Vec<PlayerIdentifier> =
-                group.iter().map(|p| PlayerIdentifier::from(p)).collect();
+            let ids: Vec<PlayerIdentifier> = group.iter().map(PlayerIdentifier::from).collect();
 
             let current_bus = self
                 .media_players

@@ -431,9 +431,10 @@ impl MetadataSource {
     }
 
     pub fn to_media_metadata(&self) -> MediaMetadata {
-        let mut metadata = MediaMetadata::default();
-
-        metadata.title = self.title();
+        let mut metadata = MediaMetadata {
+            title: self.title(),
+            ..Default::default()
+        };
 
         if let Some(artists) = self.artists() {
             metadata.artists = artists.clone();

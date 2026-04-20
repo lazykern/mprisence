@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.5.2](https://github.com/lazykern/mprisence/compare/v1.5.1...v1.5.2)
+
+* Dependencies
+  * Upgrade `lofty` `0.23.3` -> `0.24.0`
+
 ## [1.5.1](https://github.com/lazykern/mprisence/compare/v1.5.0...v1.5.1)
 
 * Template

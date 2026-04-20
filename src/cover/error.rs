@@ -19,7 +19,7 @@ pub enum CoverArtError {
     NetworkError(String),
 
     #[error("Config error: {0}")]
-    Config(#[from] config::ConfigError),
+    Config(Box<config::ConfigError>),
 
     #[error("ImgBB error: {0}")]
     ImgBB(String),
@@ -60,5 +60,11 @@ impl CoverArtError {
 
     pub fn other<S: AsRef<str>>(message: S) -> Self {
         CoverArtError::Other(message.as_ref().to_string())
+    }
+}
+
+impl From<config::ConfigError> for CoverArtError {
+    fn from(err: config::ConfigError) -> Self {
+        Self::Config(Box::new(err))
     }
 }

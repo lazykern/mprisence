@@ -455,7 +455,7 @@ impl Presence {
         let track_url: Option<String> = metadata_source.url();
         let track_url_ref = track_url.as_deref();
 
-        if !player_config.allow_streaming && track_url_ref.map_or(false, utils::is_streaming_url) {
+        if !player_config.allow_streaming && track_url_ref.is_some_and(utils::is_streaming_url) {
             info!(
                 "Skipping Discord activity - streaming source blocked for player {}",
                 player.identity()
