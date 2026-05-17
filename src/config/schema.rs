@@ -4,7 +4,6 @@ use std::collections::{HashMap, HashSet};
 
 use crate::utils::normalize_player_identity;
 
-pub const DEFAULT_CLEAR_ON_PAUSE: bool = true;
 pub const DEFAULT_INTERVAL: u64 = 2000;
 pub const DEFAULT_EVENT_DRIVEN: bool = true;
 pub const DEFAULT_DISCOVERY_INTERVAL: u64 = 5000;
@@ -114,9 +113,6 @@ impl Default for ActivityTypesConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    #[serde(default = "default_clear_on_pause")]
-    pub clear_on_pause: bool,
-
     #[serde(default = "default_interval")]
     pub interval: u64,
 
@@ -151,10 +147,6 @@ pub struct Config {
     pub user_player_patterns: HashSet<String>,
 }
 
-fn default_clear_on_pause() -> bool {
-    DEFAULT_CLEAR_ON_PAUSE
-}
-
 fn default_interval() -> u64 {
     DEFAULT_INTERVAL
 }
@@ -174,7 +166,6 @@ fn default_allowed_players() -> Vec<String> {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            clear_on_pause: default_clear_on_pause(),
             interval: default_interval(),
             event_driven: default_event_driven(),
             discovery_interval: default_discovery_interval(),

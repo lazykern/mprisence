@@ -363,7 +363,7 @@ impl Presence {
         })?;
 
         if playback_status == PlaybackStatus::Stopped
-            || (self.config.clear_on_pause() && playback_status == PlaybackStatus::Paused)
+            || playback_status == PlaybackStatus::Paused
         {
             if !self.error_logged.load(Ordering::Relaxed) {
                 info!(

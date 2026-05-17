@@ -285,7 +285,6 @@ impl Command {
 
                 println!("\nGeneral");
                 print_key_value("interval", format!("{} ms", config.interval()));
-                print_key_value("clear_on_pause", format_bool(config.clear_on_pause()));
                 print_key_value("config_path", config_path.display());
                 print_key_value("allowed_players", format_vector(&config.allowed_players()));
 

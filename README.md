@@ -267,9 +267,6 @@ status_display_type = "details"
 
 ```toml
 # Basic settings
-# Whether to clear Discord activity when media is paused
-clear_on_pause = true
-
 # When true (default), mprisence subscribes to MPRIS `PropertiesChanged` /
 # `Seeked` signals and pushes Discord updates the moment they fire. When
 # false, mprisence falls back to polling every `interval` ms. The polling

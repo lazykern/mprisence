@@ -111,13 +111,6 @@ impl ConfigManager {
             .is_player_allowed(identity, player_bus_name)
     }
 
-    pub fn clear_on_pause(&self) -> bool {
-        self.config
-            .read()
-            .expect("Failed to read config: RwLock poisoned")
-            .clear_on_pause
-    }
-
     pub fn activity_type_config(&self) -> schema::ActivityTypesConfig {
         self.config
             .read()
