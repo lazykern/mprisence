@@ -238,11 +238,11 @@ Use `status_display_type` to control which text Discord shows in your status.
 
 | `status_display_type`                                                                 | Preview                                                     |
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `name`: shows the player/app name in your status                                      | ![Status display type name](./assets/status_name.png)       |
-| `state`: shows the rendered `template.state` value (default template shows artist(s)) | ![Status display type state](./assets/status_state.png)     |
-| `details`: shows the rendered `template.details` value (default template shows title) | ![Status display type details](./assets/status_details.png) |
+| `name`: shows the player/app name in your status                                      | ![Status display type name](https://raw.githubusercontent.com/lazykern/mprisence/main/assets/status_name.png)       |
+| `state`: shows the rendered `template.state` value (default template shows artist(s)) | ![Status display type state](https://raw.githubusercontent.com/lazykern/mprisence/main/assets/status_state.png)     |
+| `details`: shows the rendered `template.details` value (default template shows title) | ![Status display type details](https://raw.githubusercontent.com/lazykern/mprisence/main/assets/status_details.png) |
 
-Set a global default in `[player.default]`, then override per player only when needed.
+Set a global default in `[player.default]`, then override per player only when needed. With the bundled app ID, `name` would show `mprisence`, so it falls back to `state`.
 
 ```toml
 # Global default for all players
@@ -382,7 +382,7 @@ app_id = "1121632048155742288" # Default Discord Application ID
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png" # Default icon URL
 show_icon = false # Show player icon as small image by default?
 allow_streaming = false # Allow HTTP/HTTPS streaming content? False clears Discord activity for those players.
-status_display_type = "name" # Controls which text Discord shows in your status.
+status_display_type = "name" # Controls status text; bundled app ID would show "mprisence", so it maps to "state".
                               # For example:
                               # "name"    -> Player/app name
                               # "state"   -> Rendered template.state value (default: "{{{artists}}}")

@@ -25,7 +25,10 @@ use lofty::prelude::TaggedFileExt as _;
 
 use crate::{
     config::{
-        schema::{ActivityType, ActivityTypesConfig, PlayerConfig},
+        schema::{
+            ActivityType, ActivityTypesConfig, PlayerConfig, StatusDisplayType,
+            DEFAULT_PLAYER_APP_ID,
+        },
         ConfigManager,
     },
     cover::CoverManager,
@@ -76,6 +79,16 @@ impl UpdateSnapshot {
             playback_status,
             track: TrackFingerprint::from_mpris(metadata),
         }
+    }
+}
+
+fn resolve_status_display_type(player_config: &PlayerConfig) -> StatusDisplayType {
+    if player_config.app_id == DEFAULT_PLAYER_APP_ID
+        && player_config.status_display_type == StatusDisplayType::Name
+    {
+        StatusDisplayType::State
+    } else {
+        player_config.status_display_type
     }
 }
 
@@ -749,12 +762,7 @@ impl Presence {
 
         let mut activity = Activity::default()
             .activity_type(activity_type.into())
-            .status_display_type(
-                self.config
-                    .get_player_config(self.player.identity(), self.player.bus_name())
-                    .status_display_type
-                    .into(),
-            );
+            .status_display_type(resolve_status_display_type(&player_config).into());
 
         if !activity_texts.details.is_empty() {
             trace!("Setting activity details: {}", activity_texts.details);
@@ -991,5 +999,54 @@ impl Presence {
 impl Drop for Presence {
     fn drop(&mut self) {
         self.stop_listener();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn player_config_with(app_id: &str, status_display_type: StatusDisplayType) -> PlayerConfig {
+        PlayerConfig {
+            app_id: app_id.to_string(),
+            status_display_type,
+            ..PlayerConfig::default()
+        }
+    }
+
+    #[test]
+    fn default_app_name_status_falls_back_to_state() {
+        let config = player_config_with(DEFAULT_PLAYER_APP_ID, StatusDisplayType::Name);
+
+        assert_eq!(
+            resolve_status_display_type(&config),
+            StatusDisplayType::State
+        );
+    }
+
+    #[test]
+    fn custom_app_keeps_name_status() {
+        let config = player_config_with("123456789012345678", StatusDisplayType::Name);
+
+        assert_eq!(
+            resolve_status_display_type(&config),
+            StatusDisplayType::Name
+        );
+    }
+
+    #[test]
+    fn explicit_non_name_status_is_unchanged() {
+        let default_app_state = player_config_with(DEFAULT_PLAYER_APP_ID, StatusDisplayType::State);
+        let default_app_details =
+            player_config_with(DEFAULT_PLAYER_APP_ID, StatusDisplayType::Details);
+
+        assert_eq!(
+            resolve_status_display_type(&default_app_state),
+            StatusDisplayType::State
+        );
+        assert_eq!(
+            resolve_status_display_type(&default_app_details),
+            StatusDisplayType::Details
+        );
     }
 }
