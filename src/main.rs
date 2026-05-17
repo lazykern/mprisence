@@ -6,8 +6,8 @@ use config::{get_config, ConfigManager};
 use cover::CoverManager;
 use error::MprisenceError;
 use log::{debug, error, info, trace, warn};
-use mpris::PlayerFinder;
 use mpris::Event as MprisEvent;
+use mpris::PlayerFinder;
 use player::{
     events::{EventOutcome, PlayerEvent, PlayerEventKind},
     is_playerctld_no_active_error, select_winner_idx, PlayerIdentifier,
@@ -416,19 +416,32 @@ impl Mprisence {
             mut evt: PlayerEvent,
             rx: &mut tokio::sync::mpsc::Receiver<PlayerEvent>,
         ) -> PlayerEvent {
-            if !matches!(evt.kind, PlayerEventKind::Mpris(MprisEvent::TrackChanged(_))) {
+            if !matches!(
+                evt.kind,
+                PlayerEventKind::Mpris(MprisEvent::TrackChanged(_))
+            ) {
                 return evt;
             }
             while let Ok(newer) = rx.try_recv() {
                 if newer.norm_id == evt.norm_id
-                    && matches!(newer.kind, PlayerEventKind::Mpris(MprisEvent::TrackChanged(_)))
+                    && matches!(
+                        newer.kind,
+                        PlayerEventKind::Mpris(MprisEvent::TrackChanged(_))
+                    )
                 {
-                    trace!("drain: skipping intermediate TrackChanged for {}", evt.norm_id);
+                    trace!(
+                        "drain: skipping intermediate TrackChanged for {}",
+                        evt.norm_id
+                    );
                     evt = newer;
                 } else {
                     // Non-TrackChanged or different player: can't put back, but these are
                     // stale action events (play/pause during a skip flurry) — safe to drop.
-                    trace!("drain: dropping stale {:?} for {} during skip drain", newer.kind, newer.norm_id);
+                    trace!(
+                        "drain: dropping stale {:?} for {} during skip drain",
+                        newer.kind,
+                        newer.norm_id
+                    );
                 }
             }
             evt

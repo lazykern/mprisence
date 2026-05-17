@@ -7,7 +7,7 @@ use std::thread::JoinHandle;
 use log::{debug, trace, warn};
 use mpris::{Event as MprisEvent, PlayerFinder};
 use smol_str::SmolStr;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Notify};
 
 /// Event emitted by a per-player listener thread, forwarded to the async event loop.
 #[derive(Debug)]
@@ -42,10 +42,21 @@ pub fn spawn_listener(
     norm_id: SmolStr,
     tx: mpsc::Sender<PlayerEvent>,
     cancel: Arc<AtomicBool>,
+    update_generation: Arc<std::sync::atomic::AtomicU64>,
+    update_notify: Arc<Notify>,
 ) -> JoinHandle<()> {
     std::thread::Builder::new()
         .name(format!("mpris-listener:{}", norm_id))
-        .spawn(move || run_listener(bus_name, norm_id, tx, cancel))
+        .spawn(move || {
+            run_listener(
+                bus_name,
+                norm_id,
+                tx,
+                cancel,
+                update_generation,
+                update_notify,
+            )
+        })
         .expect("failed to spawn mpris listener thread")
 }
 
@@ -54,12 +65,10 @@ fn run_listener(
     norm_id: SmolStr,
     tx: mpsc::Sender<PlayerEvent>,
     cancel: Arc<AtomicBool>,
+    update_generation: Arc<std::sync::atomic::AtomicU64>,
+    update_notify: Arc<Notify>,
 ) {
-    debug!(
-        "listener spawn for {} (bus={})",
-        norm_id,
-        bus_name.as_str()
-    );
+    debug!("listener spawn for {} (bus={})", norm_id, bus_name.as_str());
 
     let player = match find_player_by_bus_name(&bus_name) {
         Ok(p) => p,
@@ -103,6 +112,10 @@ fn run_listener(
         match event {
             Ok(ev) => {
                 trace!("event from {}: {:?}", norm_id, ev);
+                if matches!(ev, MprisEvent::TrackChanged(_)) {
+                    update_generation.fetch_add(1, Ordering::Relaxed);
+                    update_notify.notify_waiters();
+                }
                 let msg = PlayerEvent {
                     norm_id: norm_id.clone(),
                     kind: PlayerEventKind::Mpris(ev),
