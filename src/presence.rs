@@ -1,7 +1,7 @@
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
     thread::JoinHandle,
@@ -56,6 +56,10 @@ pub struct Presence {
     needs_reconnection: AtomicBool,
     error_logged: AtomicBool,
     last_reconnect_attempt: Mutex<Instant>,
+    /// Monotonically increasing counter, incremented on every TrackChanged event.
+    /// update_activity checks this before and after the cover art fetch so that
+    /// rapid track skips don't push stale cover art for superseded tracks.
+    update_generation: Arc<AtomicU64>,
     config: Arc<ConfigManager>,
     /// Cancellation flag for the per-player event listener thread (event-driven mode only).
     listener_cancel: Option<Arc<AtomicBool>>,
@@ -93,6 +97,7 @@ impl Presence {
             needs_reconnection: AtomicBool::new(false),
             error_logged: AtomicBool::new(false),
             last_reconnect_attempt: Mutex::new(Instant::now()),
+            update_generation: Arc::new(AtomicU64::new(0)),
             config,
             listener_cancel: None,
             listener_handle: None,
@@ -224,7 +229,7 @@ impl Presence {
 
         trace!("Updating Discord presence");
         self.last_player_state = Some(new_state);
-        self.update_activity(&player).await.map_err(|err| {
+        self.update_activity(&player, None).await.map_err(|err| {
             if matches!(err, DiscordError::ActivityError(_)) {
                 if !self.error_logged.load(Ordering::Relaxed) {
                     warn!("Discord connection error, will attempt to reconnect next update");
@@ -245,7 +250,7 @@ impl Presence {
             return Ok(());
         };
         self.ensure_connection()?;
-        self.update_activity(&self.player).await
+        self.update_activity(&self.player, None).await
     }
 
     fn ensure_connection(&mut self) -> Result<(), DiscordError> {
@@ -352,7 +357,7 @@ impl Presence {
         activity_type_config.default
     }
 
-    async fn update_activity(&self, player: &Player) -> Result<(), DiscordError> {
+    async fn update_activity(&self, player: &Player, generation: Option<u64>) -> Result<(), DiscordError> {
         let Some(discord_client) = &self.discord_client else {
             return Ok(());
         };
@@ -542,6 +547,15 @@ impl Presence {
             .template_manager
             .render_activity_texts(player, media_metadata)?;
 
+        // Checkpoint 1: abort before the expensive cover art HTTP fetch if a newer
+        // TrackChanged has already superseded this update.
+        if let Some(gen) = generation {
+            if self.update_generation.load(Ordering::Relaxed) != gen {
+                trace!("update_activity: generation mismatch before cover fetch — aborting");
+                return Ok(());
+            }
+        }
+
         let cover_art_url = match self
             .cover_manager
             .get_cover_art(metadata_source.art_source(), &metadata_source)
@@ -562,6 +576,14 @@ impl Presence {
                 None
             }
         };
+
+        // Checkpoint 2: discard result if superseded while cover art was fetching.
+        if let Some(gen) = generation {
+            if self.update_generation.load(Ordering::Relaxed) != gen {
+                trace!("update_activity: generation mismatch after cover fetch — discarding");
+                return Ok(());
+            }
+        }
 
         let activity_type = self.determine_activity_type(
             &self.config.activity_type_config(),
@@ -695,6 +717,7 @@ impl Presence {
             self.player.identity()
         );
 
+        let mut is_track_change = false;
         match kind {
             PlayerEventKind::Mpris(MprisEvent::PlayerShutDown)
             | PlayerEventKind::ListenerExited => {
@@ -722,6 +745,7 @@ impl Presence {
             PlayerEventKind::Mpris(MprisEvent::TrackChanged(_)) => {
                 // Force the next polling-style diff (if event_driven flips off) to detect a change.
                 self.last_player_state = None;
+                is_track_change = true;
             }
             PlayerEventKind::Mpris(MprisEvent::Playing)
             | PlayerEventKind::Mpris(MprisEvent::Paused)
@@ -731,13 +755,21 @@ impl Presence {
             }
         }
 
+        // Stamp the generation for TrackChanged so update_activity can detect
+        // if a newer skip has superseded this one mid-fetch.
+        let generation = if is_track_change {
+            Some(self.update_generation.fetch_add(1, Ordering::Relaxed) + 1)
+        } else {
+            None
+        };
+
         let Some(_discord_client) = &self.discord_client else {
             return Ok(EventOutcome::Continue);
         };
 
         self.ensure_connection()?;
 
-        if let Err(err) = self.update_activity(&self.player).await {
+        if let Err(err) = self.update_activity(&self.player, generation).await {
             if matches!(err, DiscordError::ActivityError(_)) {
                 if !self.error_logged.load(Ordering::Relaxed) {
                     warn!("Discord connection error, will attempt to reconnect next event");

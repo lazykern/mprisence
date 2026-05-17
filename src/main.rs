@@ -7,8 +7,9 @@ use cover::CoverManager;
 use error::MprisenceError;
 use log::{debug, error, info, trace, warn};
 use mpris::PlayerFinder;
+use mpris::Event as MprisEvent;
 use player::{
-    events::{EventOutcome, PlayerEvent},
+    events::{EventOutcome, PlayerEvent, PlayerEventKind},
     is_playerctld_no_active_error, select_winner_idx, PlayerIdentifier,
 };
 use presence::Presence;
@@ -155,7 +156,6 @@ impl Mprisence {
     pub async fn update(&mut self) -> Result<(), MprisenceError> {
         trace!("Starting Discord presence update cycle");
 
-        let event_driven = self.config.event_driven();
         let discord_running = discord::is_discord_running();
         if !discord_running {
             trace!("Discord is not running, destroying all Discord clients");
@@ -276,15 +276,12 @@ impl Mprisence {
                         winner_id.identity, e
                     );
                 }
-                // In event-driven mode, signals push Discord updates; the discovery tick
-                // only needs to keep the cached `self.player` fresh (so handle_event has a
-                // live D-Bus handle) and spawn/restart listeners when the bus changes.
-                if event_driven && presence.player_bus_name() == winner_player.bus_name() {
-                    trace!(
-                        "discover: skipping Discord push for {} (event-driven, bus unchanged)",
-                        winner_id.identity
-                    );
-                } else if let Err(e) = presence.update(winner_player).await {
+                // In event-driven mode, signals drive most Discord updates. The discovery
+                // tick still calls presence.update() so that position jumps (seeks on
+                // players that don't emit Seeked) are caught by the has_position_jump
+                // check inside update(). The internal diff logic prevents unnecessary
+                // Discord pushes when nothing has changed.
+                if let Err(e) = presence.update(winner_player).await {
                     warn!(
                         "Failed to update presence for {}: {}",
                         winner_id.identity, e
@@ -411,6 +408,31 @@ impl Mprisence {
     }
 
     async fn run_event_driven(&mut self) -> Result<(), MprisenceError> {
+        /// Drain the mpsc channel for TrackChanged events on the same player.
+        /// When the user skips rapidly, multiple TrackChanged events queue up.
+        /// Processing them all wastes cover art fetches on tracks the user has
+        /// already moved past. This keeps only the latest one.
+        fn drain_latest_track_change(
+            mut evt: PlayerEvent,
+            rx: &mut tokio::sync::mpsc::Receiver<PlayerEvent>,
+        ) -> PlayerEvent {
+            if !matches!(evt.kind, PlayerEventKind::Mpris(MprisEvent::TrackChanged(_))) {
+                return evt;
+            }
+            while let Ok(newer) = rx.try_recv() {
+                if newer.norm_id == evt.norm_id
+                    && matches!(newer.kind, PlayerEventKind::Mpris(MprisEvent::TrackChanged(_)))
+                {
+                    trace!("drain: skipping intermediate TrackChanged for {}", evt.norm_id);
+                    evt = newer;
+                } else {
+                    // Non-TrackChanged or different player: can't put back, but these are
+                    // stale action events (play/pause during a skip flurry) — safe to drop.
+                    trace!("drain: dropping stale {:?} for {} during skip drain", newer.kind, newer.norm_id);
+                }
+            }
+            evt
+        }
         let (event_tx, mut event_rx) = mpsc::channel::<PlayerEvent>(64);
 
         let mut discovery_interval =
@@ -427,6 +449,10 @@ impl Mprisence {
         loop {
             tokio::select! {
                 Some(evt) = event_rx.recv() => {
+                    // For TrackChanged events, drain any newer ones for the same player
+                    // that already queued while we were processing the previous event.
+                    // This prevents Discord from cycling through every skipped track.
+                    let evt = drain_latest_track_change(evt, &mut event_rx);
                     self.handle_player_event(evt, &event_tx).await;
                 },
                 _ = discovery_interval.tick() => {
