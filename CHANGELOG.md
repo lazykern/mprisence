@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.0](https://github.com/lazykern/mprisence/compare/v1.5.2...v1.6.0)
+
+* Player
+  * Replace polling with D-Bus event monitoring
+  * Debounce rapid track skips to avoid stale Discord updates
+  * Remove deprecated `clear_on_pause`
+* Cover Art
+  * Prefer catbox litter URLs by default
+  * Prevent stale cover updates
+* Rich Presence
+  * Fall back from `name` to `state` for the bundled app ID
+
 ## [1.5.2](https://github.com/lazykern/mprisence/compare/v1.5.1...v1.5.2)
 
 * Dependencies
