@@ -201,9 +201,9 @@ After following the installation steps, you can modify `~/.config/mprisence/conf
 
 ### Local Album Covers
 
-mprisence will first attempt to find cover art from MusicBrainz. If it's not found, it can re-host local cover art through Catbox (no key required) or ImgBB (requires an API key).
+By default, mprisence prefers Catbox uploads through Litterbox first for local/embedded cover art, then falls back to other configured providers such as MusicBrainz or ImgBB.
 
-Update the provider order to include whichever host you prefer (e.g., `["musicbrainz", "catbox", "imgbb"]`, `["catbox"]`, etc.).
+Update the provider order to include whichever host you prefer (e.g., `["catbox", "musicbrainz", "imgbb"]`, `["catbox"]`, etc.).
 
 **Catbox (no key required)**
 
@@ -213,7 +213,7 @@ provider = ["catbox"]
 
 [cover.provider.catbox]
 # user_hash = "your_user_hash" # optional: lets you delete uploads later
-use_litter = false            # true -> upload to Litterbox instead of permanent Catbox storage
+use_litter = true             # default: upload to temporary Litterbox before permanent Catbox storage
 litter_hours = 24             # valid values: 1, 12, 24, 72
 ```
 
@@ -336,8 +336,8 @@ local_search_depth = 2
 
 [cover.provider]
 # Cover art providers in order of preference
-# (catbox will be used as a fallback if musicbrainz fails or local art isn't found)
-provider = ["musicbrainz", "catbox"] # Also checks local files first based on above
+# (catbox+litter is the default first re-hosting option)
+provider = ["catbox", "musicbrainz"] # Also checks local files first based on above
 
 [cover.provider.musicbrainz]
 # Minimum score (0-100) for MusicBrainz matches. Higher = stricter.
@@ -345,7 +345,7 @@ min_score = 100
 
 [cover.provider.catbox]
 # user_hash = "your_user_hash" # optional: lets you delete uploads later
-use_litter = false            # true -> upload to Litterbox instead of permanent Catbox storage
+use_litter = true             # default: upload to temporary Litterbox before permanent Catbox storage
 litter_hours = 24             # valid values: 1, 12, 24, 72
 
 [cover.provider.imgbb]
@@ -446,7 +446,7 @@ RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
 
 2. **Cover Art Not Displaying**
    - **Check the logs:** Run with `RUST_LOG=debug mprisence` to see the cover art process.
-   - **Provider Order:** Cover art is checked in this order: Cache -> Direct URL (from metadata) -> Local Files -> Configured Providers (e.g., MusicBrainz, ImgBB).
+   - **Provider Order:** Cover art is checked in this order: Cache -> Direct URL (from metadata) -> Local Files -> Configured Providers (default: Catbox/Litterbox first, then MusicBrainz).
    - **MusicBrainz:** Does the track metadata (title, artist, album) accurately match the MusicBrainz database? Check the `min_score` in your config.
    - **ImgBB:**
      - Is a local file available (embedded or matching `file_names` in the folder/parent folders)? ImgBB is primarily used to _upload_ local art.

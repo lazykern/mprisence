@@ -557,6 +557,22 @@ mod tests {
     }
 
     #[test]
+    fn bundled_defaults_prefer_catbox_with_litter() {
+        let temp_dir = temp_config_dir();
+        let config_path = temp_dir.join("missing-config.toml");
+
+        let config = load_config_from_file(&config_path).expect("config should load");
+        assert_eq!(
+            config.cover.provider.provider,
+            vec!["catbox".to_string(), "musicbrainz".to_string()]
+        );
+        assert!(config.cover.provider.catbox.use_litter);
+        assert_eq!(config.cover.provider.catbox.litter_hours, 24);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
     fn legacy_template_detail_overrides_bundled_details() {
         let temp_dir = temp_config_dir();
         let config_path = temp_dir.join("config.toml");

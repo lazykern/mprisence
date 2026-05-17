@@ -27,10 +27,10 @@ const DEFAULT_TEMPLATE_LARGE_TEXT: &str =
 const DEFAULT_TEMPLATE_SMALL_TEXT: &str = "{{{player}}}";
 
 const DEFAULT_COVER_FILE_NAMES: [&str; 5] = ["cover", "folder", "front", "album", "art"];
-const DEFAULT_COVER_PROVIDERS: [&str; 2] = ["musicbrainz", "imgbb"];
+const DEFAULT_COVER_PROVIDERS: [&str; 2] = ["catbox", "musicbrainz"];
 const DEFAULT_COVER_LOCAL_SEARCH_DEPTH: usize = 2;
 const DEFAULT_MUSICBRAINZ_MIN_SCORE: u8 = 95;
-const DEFAULT_CATBOX_USE_LITTER: bool = false;
+const DEFAULT_CATBOX_USE_LITTER: bool = true;
 const DEFAULT_CATBOX_LITTER_HOURS: u8 = 24;
 
 pub(crate) mod normalized_string {
@@ -612,6 +612,17 @@ mod wildcard_tests {
         let res = cfg.get_player_config("Music Player Daemon (mpdris2-rs)", "mpd");
         assert_eq!(res.app_id, "U");
         assert!(res.show_icon);
+    }
+
+    #[test]
+    fn cover_defaults_prefer_catbox_with_litter() {
+        let cfg = Config::default();
+        assert_eq!(
+            cfg.cover.provider.provider,
+            vec!["catbox".to_string(), "musicbrainz".to_string()]
+        );
+        assert!(cfg.cover.provider.catbox.use_litter);
+        assert_eq!(cfg.cover.provider.catbox.litter_hours, 24);
     }
 
     #[test]
