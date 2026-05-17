@@ -156,10 +156,10 @@ local_search_depth = 2
 
 [cover.provider]
 # Cover art providers (in order of preference)
-# "musicbrainz" - Fetch from MusicBrainz database
 # "catbox"     - Upload using Catbox (optionally via temp Litterbox)
+# "musicbrainz" - Fetch from MusicBrainz database
 # "imgbb"      - Upload and host on ImgBB
-provider = ["musicbrainz", "catbox"]
+provider = ["catbox", "musicbrainz"]
 
 [cover.provider.imgbb]
 # Your ImgBB API key (required to use the imgbb provider).
@@ -181,8 +181,9 @@ min_score = 95
 # user_hash = "your_catbox_user_hash"
 
 # When true, uploads go to the temporary Litterbox service rather than Catbox itself.
+# Enabled by default so Catbox uploads prefer temporary Litterbox hosting first.
 # Valid values for litter_hours are 1, 12, 24, or 72 hours. Anything else is clamped to 24.
-use_litter = false
+use_litter = true
 litter_hours = 24
 
 # ------------------

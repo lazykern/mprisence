@@ -22,7 +22,7 @@ file_names = ["cover", "folder", "front", "album", "art"]
 local_search_depth = 2
 
 [cover.provider]
-provider = ["musicbrainz", "catbox"]
+provider = ["catbox", "musicbrainz"]
 
 [cover.provider.imgbb]
 expiration = 86400
@@ -31,7 +31,7 @@ expiration = 86400
 min_score = 100
 
 [cover.provider.catbox]
-use_litter = false
+use_litter = true
 litter_hours = 24
 
 [player]
