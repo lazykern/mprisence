@@ -125,6 +125,11 @@ pub struct Presence {
     last_cmus_path: Mutex<Option<PathBuf>>,
     cmus_error_logged: AtomicBool,
     discord_client: Option<Arc<Mutex<DiscordIpcClient>>>,
+    /// The Discord application id the current `discord_client` was opened with.
+    /// Each cycle re-resolves the effective app id (player + website overlay).
+    /// A mismatch triggers IPC client recycling so the new app's icon/name
+    /// takes effect.
+    last_effective_app_id: Mutex<Option<String>>,
     needs_initial_connection: AtomicBool,
     needs_reconnection: AtomicBool,
     error_logged: AtomicBool,
@@ -167,6 +172,7 @@ impl Presence {
             last_cmus_path: Mutex::new(None),
             cmus_error_logged: AtomicBool::new(false),
             discord_client: None,
+            last_effective_app_id: Mutex::new(None),
             needs_initial_connection: AtomicBool::new(true),
             needs_reconnection: AtomicBool::new(false),
             error_logged: AtomicBool::new(false),
@@ -186,15 +192,24 @@ impl Presence {
     }
 
     pub fn initialize_discord_client(&mut self) -> Result<(), DiscordError> {
-        if self.discord_client.is_none() {
-            let player_config = self.config.get_player_config(
-                self.player.identity(),
-                &canonical_player_bus_name(self.player.bus_name()),
-            );
-            let client = DiscordIpcClient::new(&player_config.app_id);
-            self.discord_client = Some(Arc::new(Mutex::new(client)));
-            self.needs_initial_connection.store(true, Ordering::Relaxed);
+        if self.discord_client.is_some() {
+            return Ok(());
         }
+        let player_config = self.config.get_player_config(
+            self.player.identity(),
+            &canonical_player_bus_name(self.player.bus_name()),
+        );
+        self.initialize_discord_client_with_app_id(&player_config.app_id)
+    }
+
+    fn initialize_discord_client_with_app_id(
+        &mut self,
+        app_id: &str,
+    ) -> Result<(), DiscordError> {
+        let client = DiscordIpcClient::new(app_id);
+        self.discord_client = Some(Arc::new(Mutex::new(client)));
+        self.needs_initial_connection.store(true, Ordering::Relaxed);
+        *self.last_effective_app_id.lock() = Some(app_id.to_string());
         Ok(())
     }
 
@@ -220,6 +235,7 @@ impl Presence {
             }
             trace!("Discord connection closed successfully");
             self.discord_client = None;
+            *self.last_effective_app_id.lock() = None;
         }
         Ok(())
     }
@@ -299,7 +315,7 @@ impl Presence {
 
         trace!("Updating Discord presence");
         self.last_player_state = Some(new_state);
-        self.update_activity(&player, None).await.map_err(|err| {
+        self.update_activity(None).await.map_err(|err| {
             if matches!(err, DiscordError::ActivityError(_)) {
                 if !self.error_logged.load(Ordering::Relaxed) {
                     warn!("Discord connection error, will attempt to reconnect next update");
@@ -320,7 +336,7 @@ impl Presence {
             return Ok(());
         };
         self.ensure_connection()?;
-        self.update_activity(&self.player, None).await
+        self.update_activity(None).await
     }
 
     fn ensure_connection(&mut self) -> Result<(), DiscordError> {
@@ -504,15 +520,14 @@ impl Presence {
     }
 
     async fn update_activity(
-        &self,
-        player: &Player,
+        &mut self,
         generation: Option<u64>,
     ) -> Result<(), DiscordError> {
-        let Some(discord_client) = &self.discord_client else {
+        if self.discord_client.is_none() {
             return Ok(());
-        };
+        }
 
-        let playback_status = player.get_playback_status().map_err(|err| {
+        let playback_status = self.player.get_playback_status().map_err(|err| {
             error!("Failed to get playback status: {}", err);
             DiscordError::ActivityError(format!("Failed to get playback status: {}", err))
         })?;
@@ -521,7 +536,7 @@ impl Presence {
             if !self.error_logged.load(Ordering::Relaxed) {
                 info!(
                     "Clearing Discord activity - player {} is {}",
-                    player.identity(),
+                    self.player.identity(),
                     if playback_status == PlaybackStatus::Stopped {
                         "stopped"
                     } else {
@@ -529,21 +544,23 @@ impl Presence {
                     }
                 );
             }
-            discord_client.lock().clear_activity().map_err(|err| {
-                if !self.error_logged.load(Ordering::Relaxed) {
-                    error!("Failed to clear Discord activity: {}", err);
-                    self.error_logged.store(true, Ordering::Relaxed);
-                }
-                DiscordError::ActivityError(err.to_string())
-            })?;
+            if let Some(discord_client) = self.discord_client.clone() {
+                discord_client.lock().clear_activity().map_err(|err| {
+                    if !self.error_logged.load(Ordering::Relaxed) {
+                        error!("Failed to clear Discord activity: {}", err);
+                        self.error_logged.store(true, Ordering::Relaxed);
+                    }
+                    DiscordError::ActivityError(err.to_string())
+                })?;
+            }
             return Ok(());
         }
 
         trace!(
             "Building Discord activity for player: {}",
-            player.identity()
+            self.player.identity()
         );
-        let metadata = match player.get_metadata() {
+        let metadata = match self.player.get_metadata() {
             Ok(metadata) => metadata,
             Err(e) => {
                 warn!("Failed to get metadata for player: {}", e);
@@ -553,11 +570,9 @@ impl Presence {
         let update_snapshot = UpdateSnapshot::from_mpris(playback_status.clone(), &metadata);
         trace!("Metadata: {:?}", metadata);
 
-        let player_bus_name = canonical_player_bus_name(player.bus_name());
-        let player_config = self
-            .config
-            .get_player_config(player.identity(), &player_bus_name);
-        let is_cmus = player_bus_name == "cmus" || player.identity().eq_ignore_ascii_case("cmus");
+        let player_bus_name = canonical_player_bus_name(self.player.bus_name());
+        let is_cmus =
+            player_bus_name == "cmus" || self.player.identity().eq_ignore_ascii_case("cmus");
         let cmus_override_url = if is_cmus {
             let track_token = metadata
                 .track_id()
@@ -650,10 +665,37 @@ impl Presence {
         let track_url: Option<String> = metadata_source.url();
         let track_url_ref = track_url.as_deref();
 
+        let player_config = self.config.get_player_config_with_url(
+            self.player.identity(),
+            &player_bus_name,
+            track_url_ref,
+        );
+
+        // Reconcile the Discord IPC client when the resolved app id changes
+        // (e.g. the active [website.*] overlay matched a different service).
+        let new_app_id = player_config.app_id.clone();
+        let needs_app_swap = {
+            let last = self.last_effective_app_id.lock();
+            last.as_deref() != Some(new_app_id.as_str())
+        };
+        if needs_app_swap {
+            debug!(
+                "Effective Discord app id changed to {} (recycling IPC client)",
+                new_app_id
+            );
+            self.destroy_discord_client()?;
+            self.initialize_discord_client_with_app_id(&new_app_id)?;
+            self.ensure_connection()?;
+        }
+
+        let Some(discord_client) = self.discord_client.clone() else {
+            return Ok(());
+        };
+
         if !player_config.allow_streaming && track_url_ref.is_some_and(utils::is_streaming_url) {
             info!(
                 "Skipping Discord activity - streaming source blocked for player {}",
-                player.identity()
+                self.player.identity()
             );
             discord_client.lock().clear_activity().map_err(|err| {
                 if !self.error_logged.load(Ordering::Relaxed) {
@@ -671,7 +713,7 @@ impl Presence {
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards");
 
-            let position = player.get_position().unwrap_or_default();
+            let position = self.player.get_position().unwrap_or_default();
             trace!("Player position: {:?}", position);
             let start_dur = now.checked_sub(position).unwrap_or_default();
             trace!("Start duration: {:?}", start_dur);
@@ -697,7 +739,7 @@ impl Presence {
 
         let activity_texts = self
             .template_manager
-            .render_activity_texts(player, media_metadata)?;
+            .render_activity_texts(&self.player, media_metadata)?;
 
         // Checkpoint 1: abort before the expensive cover art HTTP fetch if a newer
         // TrackChanged has already superseded this update.
@@ -746,7 +788,7 @@ impl Presence {
         // This protects polling and event-driven mode even while the event loop is blocked
         // awaiting a slow cover provider: only the currently playing track may update Discord.
         if self.should_discard_stale_update(
-            player,
+            &self.player,
             generation,
             &update_snapshot,
             "after cover fetch",
@@ -825,7 +867,7 @@ impl Presence {
         // Final checkpoint immediately before the Discord write, so a stale async
         // cover-art result cannot overwrite a newer song/status.
         if self.should_discard_stale_update(
-            player,
+            &self.player,
             generation,
             &update_snapshot,
             "before Discord update",
@@ -940,7 +982,7 @@ impl Presence {
 
         self.ensure_connection()?;
 
-        if let Err(err) = self.update_activity(&self.player, generation).await {
+        if let Err(err) = self.update_activity(generation).await {
             if matches!(err, DiscordError::ActivityError(_)) {
                 if !self.error_logged.load(Ordering::Relaxed) {
                     warn!("Discord connection error, will attempt to reconnect next event");

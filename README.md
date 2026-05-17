@@ -16,6 +16,7 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
 - **Media Players**: VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer, Supersonic, Feishin, kew, Quod Libet, Euphonica
 - **Streaming**: YouTube Music, Spotify (disabled by default)
 - **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
+- **Websites (overlays on top of any browser)**: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Spotify Web (disabled by default). When `xesam:url` matches a website's `match_pattern`, the website's icon and Discord application replace the browser's, so Discord shows e.g. *Listening to YouTube Music* instead of *Firefox*. See [Website Overrides](#website-overrides) below.
 
 Note: MPD frontends (e.g., Euphonica) will also show MPD rich presence in Discord; you can disable the MPD entry in your config (see [Configuration Reference](#configuration-reference)
 
@@ -253,6 +254,36 @@ status_display_type = "name" # name | state | details
 [player.vlc_media_player]
 status_display_type = "details"
 ```
+
+### Website Overrides
+
+Browsers like Firefox or Chrome publish the playing tab's URL through MPRIS (`xesam:url`). mprisence inspects that URL and, when its host matches a `[website.<key>]` entry, **overlays the website's Discord application on top of the browser's player config** — so listening to YouTube Music in Firefox shows up as *Listening to YouTube Music* in Discord instead of *Firefox*.
+
+When the URL changes (e.g. you navigate from `music.youtube.com` to `soundcloud.com`), mprisence transparently recycles its Discord IPC client so the new application's name and icon take effect.
+
+Bundled entries: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL (each ships with a placeholder app ID you can replace with your own registered Discord application), and Spotify Web (ships with `ignore = true`).
+
+```toml
+# Top-level table — sibling to [player.*].
+[website.youtube_music]
+match_pattern = "music.youtube.com"      # exact host, `*?` wildcards, or `re:` / `/.../` regex
+app_id        = "1125082278339559505"    # your Discord application id
+icon          = "https://…/yt-music.png"
+allow_streaming = true                   # required since the source URL is HTTPS
+ignore        = false                    # set true to skip presence for this site
+
+# Per-user override: enable Spotify Web (bundled config ships ignore = true).
+[website.spotify_web]
+ignore = false
+app_id = "YOUR_SPOTIFY_WEB_APP_ID"
+```
+
+Notes:
+
+- The pattern is matched against the URL **host** (e.g. `music.youtube.com`). If host parsing fails, the full URL is used as a fallback target for substring matching.
+- A more specific pattern always wins (exact host > regex > wildcard > plain substring).
+- User entries override bundled ones with the same key. Fields you leave unset fall through to the matched browser's `[player.*]` config.
+- Inspect resolved entries with `mprisence config` — the new *Website Overrides* section lists every site and its effective values.
 
 ### Configuration Reference
 

@@ -126,6 +126,27 @@ impl ConfigManager {
             .get_player_config(identity, player_bus_name)
     }
 
+    /// Resolves the per-player config and additionally overlays any matching
+    /// `[website.*]` entry when `url` is the currently playing track's URL.
+    pub fn get_player_config_with_url(
+        &self,
+        identity: &str,
+        player_bus_name: &str,
+        url: Option<&str>,
+    ) -> schema::PlayerConfig {
+        self.config
+            .read()
+            .expect("Failed to read config: RwLock poisoned")
+            .get_player_config_with_url(identity, player_bus_name, url)
+    }
+
+    pub fn website_configs(&self) -> HashMap<String, schema::WebsiteConfig> {
+        self.config
+            .read()
+            .expect("Failed to read config: RwLock poisoned")
+            .effective_website_configs()
+    }
+
     pub fn time_config(&self) -> schema::TimeConfig {
         self.config
             .read()
@@ -424,6 +445,8 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     config.bundled_player = bundled.player;
     config.user_player = load_user_player_configs(path)?;
     config.user_player_patterns = collect_user_player_patterns(path)?;
+    config.bundled_website = bundled.website;
+    config.user_website = load_user_website_configs(path)?;
     Ok(config)
 }
 
@@ -489,6 +512,25 @@ fn load_user_player_configs(
     let contents = std::fs::read_to_string(path)?;
     let parsed: PlayerOnly = toml::from_str(&contents)?;
     Ok(parsed.player)
+}
+
+fn load_user_website_configs(
+    path: &Path,
+) -> Result<HashMap<String, schema::WebsiteConfigLayer>, ConfigError> {
+    if !path.exists() {
+        return Ok(HashMap::new());
+    }
+
+    #[derive(serde::Deserialize)]
+    struct WebsiteOnly {
+        #[serde(default)]
+        #[serde(with = "schema::normalized_website_string")]
+        website: HashMap<String, schema::WebsiteConfigLayer>,
+    }
+
+    let contents = std::fs::read_to_string(path)?;
+    let parsed: WebsiteOnly = toml::from_str(&contents)?;
+    Ok(parsed.website)
 }
 
 fn collect_user_player_patterns(path: &Path) -> Result<HashSet<String>, ConfigError> {
@@ -606,6 +648,36 @@ mod tests {
 
         let config = load_config_from_file(&config_path).expect("config should load");
         assert_eq!(config.template.details.as_ref(), "new override");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn user_website_overrides_bundled_at_load_time() {
+        let temp_dir = temp_config_dir();
+        let config_path = temp_dir.join("config.toml");
+
+        fs::write(
+            &config_path,
+            r#"
+[website.youtube_music]
+match_pattern = "music.youtube.com"
+app_id = "USER_APP"
+icon = "user-icon"
+allow_streaming = true
+"#,
+        )
+        .expect("failed to write config");
+
+        let config = load_config_from_file(&config_path).expect("config should load");
+        let resolved = config.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://music.youtube.com/watch?v=x"),
+        );
+        assert_eq!(resolved.app_id, "USER_APP");
+        assert_eq!(resolved.icon, "user-icon");
+        assert!(resolved.allow_streaming);
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

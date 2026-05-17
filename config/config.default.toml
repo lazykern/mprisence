@@ -230,3 +230,55 @@ allow_streaming = true
 [player.brave]
 ignore = true
 allow_streaming = true
+
+# ------------------------------------------------------------------
+# Website overrides — applied when xesam:url host matches the pattern.
+# Patterns use the same syntax as [player.*] keys:
+#   bare = exact host match (or substring fallback against the host)
+#   `*`/`?` wildcards, `re:`/`/.../` for regex
+# Match runs against the URL host (e.g. `music.youtube.com`).
+# When matched, the fields below overlay the active player's PlayerConfig
+# (browsers that ship with `ignore = true` are unmuted automatically by the
+# overlay setting `ignore = false` or by the user enabling the browser).
+# ------------------------------------------------------------------
+
+[website.youtube_music]
+match_pattern = "music.youtube.com"
+app_id = "1125082278339559505" # shared with [player."*youtube_music*"]
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/768px-Youtube_Music_icon.svg.png"
+allow_streaming = true
+ignore = false
+
+[website.soundcloud]
+match_pattern = "soundcloud.com"
+# TODO(app_id): register a SoundCloud Discord application id
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Antu_soundcloud.svg/1200px-Antu_soundcloud.svg.png"
+allow_streaming = true
+ignore = false
+
+[website.apple_music]
+match_pattern = "music.apple.com"
+# TODO(app_id): register an Apple Music Discord application id
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/Apple_Music_icon.svg/1200px-Apple_Music_icon.svg.png"
+allow_streaming = true
+ignore = false
+
+[website.bandcamp]
+match_pattern = "bandcamp.com"
+# TODO(app_id): register a Bandcamp Discord application id
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Bandcamp-button-bc-circle.svg/1200px-Bandcamp-button-bc-circle.svg.png"
+allow_streaming = true
+ignore = false
+
+[website.tidal]
+match_pattern = "tidal.com"
+# TODO(app_id): register a TIDAL Discord application id
+icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Tidal_%28service%29_logo.svg/1200px-Tidal_%28service%29_logo.svg.png"
+allow_streaming = true
+ignore = false
+
+# Spotify Web mirrors the [player.spotify] ignore policy — users override
+# `ignore = false` in their own config to enable it.
+[website.spotify_web]
+match_pattern = "open.spotify.com"
+ignore = true

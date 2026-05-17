@@ -4,11 +4,10 @@
 
 * Player
   * Replace polling with D-Bus event monitoring
-  * Debounce rapid track skips to avoid stale Discord updates
+* Config
+  * Add `event_driven` (default: `true`; set `false` to use polling)
   * Remove deprecated `clear_on_pause`
-* Cover Art
-  * Prefer catbox litter URLs by default
-  * Prevent stale cover updates
+  * Default cover providers now prefer Catbox with Litterbox
 * Rich Presence
   * Fall back from `name` to `state` for the bundled app ID
 

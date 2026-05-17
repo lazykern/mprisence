@@ -1,6 +1,7 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use url::Url;
 
 use crate::utils::normalize_player_identity;
 
@@ -85,6 +86,55 @@ pub(crate) mod normalized_string {
     }
 }
 
+pub(crate) mod normalized_website_string {
+    use crate::utils::normalize_player_identity;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::HashMap;
+
+    pub fn serialize<S>(
+        map: &HashMap<String, super::WebsiteConfigLayer>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        map.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<HashMap<String, super::WebsiteConfigLayer>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let temp_map = HashMap::<String, super::WebsiteConfigLayer>::deserialize(deserializer)?;
+
+        let mut final_map: HashMap<String, super::WebsiteConfigLayer> = HashMap::new();
+
+        for (key, value) in temp_map {
+            let normalized_key = normalize_player_identity(&key);
+
+            if let Some(existing) = final_map.get_mut(&normalized_key) {
+                log::debug!(
+                    "Merging duplicate website config for '{}' (from '{}')",
+                    normalized_key,
+                    key
+                );
+                existing.merge_from(value);
+            } else {
+                log::debug!(
+                    "Normalizing website config key from '{}' to '{}'",
+                    key,
+                    normalized_key
+                );
+                final_map.insert(normalized_key, value);
+            }
+        }
+
+        Ok(final_map)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivityTypesConfig {
     #[serde(default = "default_use_content_type")]
@@ -145,6 +195,16 @@ pub struct Config {
 
     #[serde(skip)]
     pub user_player_patterns: HashSet<String>,
+
+    #[serde(default)]
+    #[serde(with = "normalized_website_string")]
+    pub website: HashMap<String, WebsiteConfigLayer>,
+
+    #[serde(skip)]
+    pub bundled_website: HashMap<String, WebsiteConfigLayer>,
+
+    #[serde(skip)]
+    pub user_website: HashMap<String, WebsiteConfigLayer>,
 }
 
 fn default_interval() -> u64 {
@@ -178,6 +238,9 @@ impl Default for Config {
             bundled_player: HashMap::default(),
             user_player: HashMap::default(),
             user_player_patterns: HashSet::new(),
+            website: HashMap::default(),
+            bundled_website: HashMap::default(),
+            user_website: HashMap::default(),
         }
     }
 }
@@ -221,6 +284,65 @@ impl Config {
         }
 
         self.resolve_player_config(matches)
+    }
+
+    /// Like `get_player_config` but additionally overlays any matching
+    /// `[website.*]` layers on top when the current track's URL matches.
+    pub fn get_player_config_with_url(
+        &self,
+        identity: &str,
+        player_bus_name: &str,
+        url: Option<&str>,
+    ) -> PlayerConfig {
+        let base = self.get_player_config(identity, player_bus_name);
+        self.apply_website_overrides(base, url)
+    }
+
+    fn apply_website_overrides(&self, mut base: PlayerConfig, url: Option<&str>) -> PlayerConfig {
+        let Some(raw_url) = url else {
+            return base;
+        };
+        if raw_url.is_empty() {
+            return base;
+        }
+        let host_or_url = url_host_for_match(raw_url);
+        for layer in self.collect_matching_website_layers(&host_or_url) {
+            base = layer.apply_over(base);
+        }
+        base
+    }
+
+    fn collect_matching_website_layers(&self, url_host: &str) -> Vec<WebsiteConfigLayer> {
+        let mut layers = Vec::new();
+        if let Some(layer) = find_matching_website_layer(&self.bundled_website, url_host) {
+            layers.push(layer);
+        }
+        if let Some(layer) = find_matching_website_layer(&self.user_website, url_host) {
+            layers.push(layer);
+        }
+        layers
+    }
+
+    /// Resolved (non-Layer) view of every configured website, used by
+    /// `mprisence config websites` and for inspection.
+    pub fn effective_website_configs(&self) -> HashMap<String, WebsiteConfig> {
+        let mut keys: HashSet<String> = HashSet::new();
+        for key in self.bundled_website.keys().chain(self.user_website.keys()) {
+            keys.insert(key.clone());
+        }
+
+        let mut result = HashMap::new();
+        for key in keys {
+            let mut resolved = WebsiteConfig::default();
+            if let Some(layer) = self.bundled_website.get(&key) {
+                resolved = layer.apply_into_website(resolved);
+            }
+            if let Some(layer) = self.user_website.get(&key) {
+                resolved = layer.apply_into_website(resolved);
+            }
+            result.insert(key, resolved);
+        }
+        result
     }
 
     pub fn effective_player_configs(&self) -> HashMap<String, PlayerConfig> {
@@ -1186,4 +1308,338 @@ impl Default for PlayerConfig {
             override_activity_type: None,
         }
     }
+}
+
+/// Site-specific override applied on top of the resolved `PlayerConfig`
+/// whenever `xesam:url` matches `match_pattern`. Mirrors
+/// `PlayerConfigLayer` but adds the URL pattern.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WebsiteConfigLayer {
+    #[serde(default)]
+    pub match_pattern: Option<String>,
+
+    #[serde(default)]
+    pub ignore: Option<bool>,
+
+    #[serde(default)]
+    pub app_id: Option<String>,
+
+    #[serde(default)]
+    pub icon: Option<String>,
+
+    #[serde(default)]
+    pub show_icon: Option<bool>,
+
+    #[serde(default)]
+    pub allow_streaming: Option<bool>,
+
+    #[serde(default)]
+    pub status_display_type: Option<StatusDisplayType>,
+
+    #[serde(default)]
+    pub override_activity_type: Option<ActivityType>,
+}
+
+impl WebsiteConfigLayer {
+    pub fn apply_over(&self, mut base: PlayerConfig) -> PlayerConfig {
+        if let Some(value) = self.ignore {
+            base.ignore = value;
+        }
+        if let Some(value) = &self.app_id {
+            base.app_id = value.clone();
+        }
+        if let Some(value) = &self.icon {
+            base.icon = value.clone();
+        }
+        if let Some(value) = self.show_icon {
+            base.show_icon = value;
+        }
+        if let Some(value) = self.allow_streaming {
+            base.allow_streaming = value;
+        }
+        if let Some(value) = self.status_display_type {
+            base.status_display_type = value;
+        }
+        if let Some(value) = self.override_activity_type {
+            base.override_activity_type = Some(value);
+        }
+        base
+    }
+
+    pub fn merge_from(&mut self, other: WebsiteConfigLayer) {
+        if other.match_pattern.is_some() {
+            self.match_pattern = other.match_pattern;
+        }
+        if other.ignore.is_some() {
+            self.ignore = other.ignore;
+        }
+        if other.app_id.is_some() {
+            self.app_id = other.app_id;
+        }
+        if other.icon.is_some() {
+            self.icon = other.icon;
+        }
+        if other.show_icon.is_some() {
+            self.show_icon = other.show_icon;
+        }
+        if other.allow_streaming.is_some() {
+            self.allow_streaming = other.allow_streaming;
+        }
+        if other.status_display_type.is_some() {
+            self.status_display_type = other.status_display_type;
+        }
+        if other.override_activity_type.is_some() {
+            self.override_activity_type = other.override_activity_type;
+        }
+    }
+
+    fn apply_into_website(&self, mut base: WebsiteConfig) -> WebsiteConfig {
+        if let Some(value) = &self.match_pattern {
+            base.match_pattern = value.clone();
+        }
+        if let Some(value) = self.ignore {
+            base.ignore = value;
+        }
+        if let Some(value) = &self.app_id {
+            base.app_id = Some(value.clone());
+        }
+        if let Some(value) = &self.icon {
+            base.icon = Some(value.clone());
+        }
+        if let Some(value) = self.show_icon {
+            base.show_icon = Some(value);
+        }
+        if let Some(value) = self.allow_streaming {
+            base.allow_streaming = Some(value);
+        }
+        if let Some(value) = self.status_display_type {
+            base.status_display_type = Some(value);
+        }
+        if let Some(value) = self.override_activity_type {
+            base.override_activity_type = Some(value);
+        }
+        base
+    }
+}
+
+/// Resolved, inspectable form of a website entry (used by CLI listing).
+/// Unlike `PlayerConfig` we keep fields optional because website entries
+/// only override what they explicitly set.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WebsiteConfig {
+    #[serde(default)]
+    pub match_pattern: String,
+    #[serde(default)]
+    pub ignore: bool,
+    #[serde(default)]
+    pub app_id: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub show_icon: Option<bool>,
+    #[serde(default)]
+    pub allow_streaming: Option<bool>,
+    #[serde(default)]
+    pub status_display_type: Option<StatusDisplayType>,
+    #[serde(default)]
+    pub override_activity_type: Option<ActivityType>,
+}
+
+fn url_host_for_match(url: &str) -> String {
+    if let Ok(parsed) = Url::parse(url) {
+        if let Some(host) = parsed.host_str() {
+            return host.to_string();
+        }
+    }
+    url.to_string()
+}
+
+#[cfg(test)]
+mod website_tests {
+    use super::*;
+
+    fn website(match_pattern: &str, app_id: Option<&str>) -> WebsiteConfigLayer {
+        WebsiteConfigLayer {
+            match_pattern: Some(match_pattern.to_string()),
+            app_id: app_id.map(|s| s.to_string()),
+            allow_streaming: Some(true),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn website_layer_applies_over_player_config() {
+        let base = PlayerConfig {
+            app_id: "PLAYER".into(),
+            icon: "player-icon".into(),
+            allow_streaming: false,
+            ..PlayerConfig::default()
+        };
+
+        let layer = WebsiteConfigLayer {
+            match_pattern: Some("music.youtube.com".to_string()),
+            app_id: Some("WEBSITE".into()),
+            icon: Some("yt-icon".into()),
+            allow_streaming: Some(true),
+            ..Default::default()
+        };
+
+        let result = layer.apply_over(base);
+        assert_eq!(result.app_id, "WEBSITE");
+        assert_eq!(result.icon, "yt-icon");
+        assert!(result.allow_streaming);
+        // Untouched fields preserved.
+        assert!(!result.ignore);
+    }
+
+    #[test]
+    fn website_match_host_swaps_app_id() {
+        let mut cfg = Config::default();
+        cfg.bundled_website
+            .insert("youtube_music".into(), website("music.youtube.com", Some("YT")));
+
+        let resolved = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://music.youtube.com/watch?v=abc"),
+        );
+        assert_eq!(resolved.app_id, "YT");
+        assert!(resolved.allow_streaming);
+    }
+
+    #[test]
+    fn website_match_regex_on_host() {
+        let mut cfg = Config::default();
+        cfg.bundled_website.insert(
+            "bandcamp".into(),
+            website("re:.*\\.bandcamp\\.com$", Some("BC")),
+        );
+
+        let resolved = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://artist.bandcamp.com/track/y"),
+        );
+        assert_eq!(resolved.app_id, "BC");
+    }
+
+    #[test]
+    fn website_no_match_returns_base_player_config() {
+        let mut cfg = Config::default();
+        cfg.bundled_website
+            .insert("youtube_music".into(), website("music.youtube.com", Some("YT")));
+        // Player default supplies the base app id.
+        let baseline = cfg.get_player_config("Firefox", "firefox");
+
+        let resolved = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://github.com/lazykern/mprisence"),
+        );
+        assert_eq!(resolved.app_id, baseline.app_id);
+        assert_eq!(resolved.allow_streaming, baseline.allow_streaming);
+    }
+
+    #[test]
+    fn website_no_url_returns_base_player_config() {
+        let mut cfg = Config::default();
+        cfg.bundled_website
+            .insert("youtube_music".into(), website("music.youtube.com", Some("YT")));
+        let baseline = cfg.get_player_config("Firefox", "firefox");
+
+        let resolved = cfg.get_player_config_with_url("Firefox", "firefox", None);
+        assert_eq!(resolved.app_id, baseline.app_id);
+    }
+
+    #[test]
+    fn website_user_overrides_bundled() {
+        let mut cfg = Config::default();
+        cfg.bundled_website
+            .insert("youtube_music".into(), website("music.youtube.com", Some("BUNDLED")));
+        cfg.user_website
+            .insert("youtube_music".into(), website("music.youtube.com", Some("USER")));
+
+        let resolved = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://music.youtube.com/watch?v=x"),
+        );
+        assert_eq!(resolved.app_id, "USER");
+    }
+
+    #[test]
+    fn website_ignore_propagates_to_resolved_player_config() {
+        let mut cfg = Config::default();
+        cfg.bundled_website.insert(
+            "spotify_web".into(),
+            WebsiteConfigLayer {
+                match_pattern: Some("open.spotify.com".into()),
+                ignore: Some(true),
+                ..Default::default()
+            },
+        );
+
+        let resolved = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://open.spotify.com/track/abc"),
+        );
+        assert!(resolved.ignore);
+    }
+
+    #[test]
+    fn website_pattern_more_specific_than_substring_wins() {
+        let mut cfg = Config::default();
+        // Both patterns would match the URL; exact host should win over substring.
+        cfg.bundled_website
+            .insert("youtube_dot_com".into(), website("youtube.com", Some("GENERIC")));
+        cfg.bundled_website
+            .insert("youtube_music".into(), website("music.youtube.com", Some("SPECIFIC")));
+
+        let resolved = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://music.youtube.com/watch?v=x"),
+        );
+        assert_eq!(resolved.app_id, "SPECIFIC");
+    }
+}
+
+/// Picks the most specific matching website layer from a single source map.
+/// Priority: exact host > regex > wildcard > plain substring fallback.
+fn find_matching_website_layer(
+    source: &HashMap<String, WebsiteConfigLayer>,
+    url_host: &str,
+) -> Option<WebsiteConfigLayer> {
+    let mut best: Option<(WebsiteConfigLayer, (u8, usize))> = None;
+
+    for layer in source.values() {
+        let Some(pattern) = layer.match_pattern.as_deref() else {
+            continue;
+        };
+        if pattern.is_empty() {
+            continue;
+        }
+
+        let score: Option<(u8, usize)> = if pattern == url_host {
+            Some((3, pattern.len()))
+        } else if let Some(re) = regex_from_pattern(pattern) {
+            re.is_match(url_host).then_some((2, pattern.len()))
+        } else if is_wildcard_pattern(pattern) {
+            wildcard_match(pattern, url_host).then(|| (1, pattern_specificity(pattern)))
+        } else if url_host.contains(pattern) {
+            Some((0, pattern.len()))
+        } else {
+            None
+        };
+
+        let Some(score) = score else { continue };
+
+        match &best {
+            Some((_, current)) if *current >= score => {}
+            _ => best = Some((layer.clone(), score)),
+        }
+    }
+
+    best.map(|(layer, _)| layer)
 }

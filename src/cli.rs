@@ -1,7 +1,7 @@
 use crate::{
     config::{
         get_config,
-        schema::{ActivityType, PlayerConfig, StatusDisplayType},
+        schema::{ActivityType, PlayerConfig, StatusDisplayType, WebsiteConfig},
     },
     error::Error,
     player::{
@@ -363,6 +363,58 @@ impl Command {
                         }
 
                         if index + 1 < player_configs.len() {
+                            println!();
+                        }
+                    }
+                }
+
+                let mut website_configs: Vec<(String, WebsiteConfig)> =
+                    config.website_configs().into_iter().collect();
+                website_configs.sort_by(|a, b| a.0.cmp(&b.0));
+
+                println!("\nWebsite Overrides");
+                println!("{}", create_divider());
+                if website_configs.is_empty() {
+                    println!("  (none)");
+                } else {
+                    for (index, (key, cfg)) in website_configs.iter().enumerate() {
+                        println!("{} {}", player_config_icon(cfg.ignore), key);
+                        print_nested_key_value("match_pattern", &cfg.match_pattern, 4);
+                        if let Some(app_id) = cfg.app_id.as_deref() {
+                            print_nested_key_value("app_id", app_id, 4);
+                        } else {
+                            print_nested_key_value("app_id", "(inherits from player)", 4);
+                        }
+                        if let Some(icon) = cfg.icon.as_deref() {
+                            print_nested_key_value("icon", icon, 4);
+                        }
+                        if let Some(allow_streaming) = cfg.allow_streaming {
+                            print_nested_key_value(
+                                "allow_streaming",
+                                format_bool(allow_streaming),
+                                4,
+                            );
+                        }
+                        if let Some(show_icon) = cfg.show_icon {
+                            print_nested_key_value("show_icon", format_bool(show_icon), 4);
+                        }
+                        print_nested_key_value("ignore", format_bool(cfg.ignore), 4);
+                        if let Some(sdt) = cfg.status_display_type {
+                            print_nested_key_value(
+                                "status_display_type",
+                                format_status_display_type(sdt),
+                                4,
+                            );
+                        }
+                        if let Some(activity_type) = cfg.override_activity_type {
+                            print_nested_key_value(
+                                "activity_type",
+                                format_activity_type(Some(activity_type)),
+                                4,
+                            );
+                        }
+
+                        if index + 1 < website_configs.len() {
                             println!();
                         }
                     }
