@@ -1,5 +1,7 @@
 clear_on_pause = true
 interval = 2000
+event_driven = true
+discovery_interval = 5000
 allowed_players = []
 
 [template]

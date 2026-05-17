@@ -7,7 +7,10 @@ use cover::CoverManager;
 use error::MprisenceError;
 use log::{debug, error, info, trace, warn};
 use mpris::PlayerFinder;
-use player::{is_playerctld_no_active_error, select_winner_idx, PlayerIdentifier};
+use player::{
+    events::{EventOutcome, PlayerEvent},
+    is_playerctld_no_active_error, select_winner_idx, PlayerIdentifier,
+};
 use presence::Presence;
 use smol_str::SmolStr;
 use std::{
@@ -16,6 +19,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use tokio::sync::mpsc;
 
 #[global_allocator]
 static GLOBAL: System = System;
@@ -151,6 +155,7 @@ impl Mprisence {
     pub async fn update(&mut self) -> Result<(), MprisenceError> {
         trace!("Starting Discord presence update cycle");
 
+        let event_driven = self.config.event_driven();
         let discord_running = discord::is_discord_running();
         if !discord_running {
             trace!("Discord is not running, destroying all Discord clients");
@@ -271,7 +276,15 @@ impl Mprisence {
                         winner_id.identity, e
                     );
                 }
-                if let Err(e) = presence.update(winner_player).await {
+                // In event-driven mode, signals push Discord updates; the discovery tick
+                // only needs to keep the cached `self.player` fresh (so handle_event has a
+                // live D-Bus handle) and spawn/restart listeners when the bus changes.
+                if event_driven && presence.player_bus_name() == winner_player.bus_name() {
+                    trace!(
+                        "discover: skipping Discord push for {} (event-driven, bus unchanged)",
+                        winner_id.identity
+                    );
+                } else if let Err(e) = presence.update(winner_player).await {
                     warn!(
                         "Failed to update presence for {}: {}",
                         winner_id.identity, e
@@ -288,6 +301,15 @@ impl Mprisence {
                 if let Err(e) = presence.initialize_discord_client() {
                     warn!(
                         "Failed to initialize Discord client for new player {}: {}",
+                        winner_id.identity, e
+                    );
+                }
+                // Always do the initial Discord push when a new player is discovered,
+                // even in event-driven mode — signals only fire on *changes*, so the
+                // current state must be pushed once at creation time.
+                if let Err(e) = presence.update_from_current_state().await {
+                    warn!(
+                        "Failed to set initial presence for {}: {}",
                         winner_id.identity, e
                     );
                 }
@@ -332,7 +354,16 @@ impl Mprisence {
 
     pub async fn run(&mut self) -> Result<(), MprisenceError> {
         info!("Starting mprisence service");
+        if self.config.event_driven() {
+            info!("Run mode: event-driven (D-Bus signal monitoring)");
+            self.run_event_driven().await
+        } else {
+            info!("Run mode: polling (interval={}ms)", self.config.interval());
+            self.run_polling().await
+        }
+    }
 
+    async fn run_polling(&mut self) -> Result<(), MprisenceError> {
         let mut interval = tokio::time::interval(Duration::from_millis(self.config.interval()));
         let mut cache_cleanup_interval = tokio::time::interval(Duration::from_secs(6 * 60 * 60));
 
@@ -355,6 +386,9 @@ impl Mprisence {
                     match change {
                         config::ConfigChange::Reloaded => {
                             debug!("Configuration change detected");
+                            if self.config.event_driven() {
+                                warn!("event_driven flag flipped at runtime; restart mprisence to switch modes");
+                            }
                             interval = tokio::time::interval(Duration::from_millis(self.config.interval()));
 
                             if let Err(e) = self.handle_config_change().await {
@@ -374,5 +408,112 @@ impl Mprisence {
         }
 
         Ok(())
+    }
+
+    async fn run_event_driven(&mut self) -> Result<(), MprisenceError> {
+        let (event_tx, mut event_rx) = mpsc::channel::<PlayerEvent>(64);
+
+        let mut discovery_interval =
+            tokio::time::interval(Duration::from_millis(self.config.discovery_interval()));
+        let mut cache_cleanup_interval = tokio::time::interval(Duration::from_secs(6 * 60 * 60));
+
+        // Prime once so listeners attach to whatever is already running.
+        debug!("discovery tick (event-driven, initial)");
+        if let Err(e) = self.update().await {
+            error!("Initial discovery failed: {}", e);
+        }
+        self.ensure_listeners(&event_tx);
+
+        loop {
+            tokio::select! {
+                Some(evt) = event_rx.recv() => {
+                    self.handle_player_event(evt, &event_tx).await;
+                },
+                _ = discovery_interval.tick() => {
+                    debug!("discovery tick (event-driven)");
+                    if let Err(e) = self.update().await {
+                        error!("Failed to refresh players: {}", e);
+                    }
+                    self.ensure_listeners(&event_tx);
+                },
+                _ = cache_cleanup_interval.tick() => {
+                    debug!("Starting periodic cache cleanup");
+                    match cover::clean_cache().await {
+                        Ok(_) => debug!("Cache cleanup completed successfully"),
+                        Err(e) => error!("Cache cleanup failed: {}", e)
+                    }
+                },
+                Ok(change) = self.config_rx.recv() => {
+                    match change {
+                        config::ConfigChange::Reloaded => {
+                            debug!("Configuration change detected");
+                            if !self.config.event_driven() {
+                                warn!("event_driven flag flipped to false at runtime; restart mprisence to switch back to polling mode");
+                            }
+                            discovery_interval = tokio::time::interval(
+                                Duration::from_millis(self.config.discovery_interval()),
+                            );
+                            if let Err(e) = self.handle_config_change().await {
+                                error!("Failed to handle configuration change: {}", e);
+                            }
+                            self.ensure_listeners(&event_tx);
+                        },
+                        config::ConfigChange::Error(e) => {
+                            error!("Configuration error: {}", e);
+                        }
+                    }
+                },
+                else => {
+                    warn!("All event sources have closed, initiating shutdown");
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn ensure_listeners(&mut self, tx: &mpsc::Sender<PlayerEvent>) {
+        for (norm_id, presence) in self.media_players.iter_mut() {
+            presence.ensure_listener(tx.clone(), norm_id.clone());
+        }
+    }
+
+    async fn handle_player_event(&mut self, evt: PlayerEvent, tx: &mpsc::Sender<PlayerEvent>) {
+        let PlayerEvent { norm_id, kind } = evt;
+        trace!("dispatch event to {}: {:?}", norm_id, kind);
+
+        let outcome = match self.media_players.get_mut(&norm_id) {
+            Some(presence) => match presence.handle_event(kind).await {
+                Ok(outcome) => outcome,
+                Err(e) => {
+                    warn!("handle_event failed for {}: {}", norm_id, e);
+                    EventOutcome::Continue
+                }
+            },
+            None => {
+                trace!("event for unknown presence {} (already removed)", norm_id);
+                return;
+            }
+        };
+
+        if matches!(outcome, EventOutcome::ShouldRemove) {
+            debug!(
+                "removing presence {} (listener reported termination)",
+                norm_id
+            );
+            if let Some(mut presence) = self.media_players.remove(&norm_id) {
+                presence.stop_listener();
+                if let Err(e) = presence.destroy_discord_client() {
+                    warn!("Failed to destroy Discord client for {}: {}", norm_id, e);
+                }
+            }
+            // Trigger a fresh discovery so a replacement (e.g. restarted player on a new
+            // unique_name) gets picked up quickly without waiting for the next tick.
+            if let Err(e) = self.update().await {
+                error!("Post-removal rediscovery failed: {}", e);
+            }
+            self.ensure_listeners(tx);
+        }
     }
 }

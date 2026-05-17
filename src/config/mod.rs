@@ -82,6 +82,20 @@ impl ConfigManager {
             .interval
     }
 
+    pub fn event_driven(&self) -> bool {
+        self.config
+            .read()
+            .expect("Failed to read config: RwLock poisoned")
+            .event_driven
+    }
+
+    pub fn discovery_interval(&self) -> u64 {
+        self.config
+            .read()
+            .expect("Failed to read config: RwLock poisoned")
+            .discovery_interval
+    }
+
     pub fn allowed_players(&self) -> Vec<String> {
         self.config
             .read()

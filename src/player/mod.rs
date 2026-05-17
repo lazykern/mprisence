@@ -5,6 +5,7 @@ use mpris::{DBusError, PlaybackStatus, Player};
 use smol_str::SmolStr;
 
 pub mod cmus;
+pub mod events;
 
 const MPRIS_BUS_PREFIX: &str = "org.mpris.MediaPlayer2.";
 const PLAYERCTLD_NO_ACTIVE_PLAYER_ERROR: &str = "com.github.altdesktop.playerctld.NoActivePlayer";

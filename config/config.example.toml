@@ -8,7 +8,16 @@
 # Whether to clear Discord activity when media is paused
 clear_on_pause = true
 
-# How often to update Discord presence (in milliseconds)
+# When true (default), mprisence subscribes to MPRIS PropertiesChanged / Seeked
+# signals and pushes Discord updates the moment they fire. When false, mprisence
+# falls back to polling every `interval` ms. Restart mprisence to switch modes.
+event_driven = true
+
+# Event-driven mode only: how often to scan the D-Bus session bus for newly
+# launched or quit players (milliseconds).
+discovery_interval = 5000
+
+# Polling fallback only: how often to poll each player (milliseconds).
 interval = 2000
 
 # Restrict discovery to specific players (by identity, wildcard, or regex).

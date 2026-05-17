@@ -14,3 +14,6 @@ flamegraph*
 *.tar.gz
 
 AGENTS.md
+
+# Benchmark raw run data (keep only bench/RESULTS.md)
+/bench/*/

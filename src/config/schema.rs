@@ -6,6 +6,8 @@ use crate::utils::normalize_player_identity;
 
 pub const DEFAULT_CLEAR_ON_PAUSE: bool = true;
 pub const DEFAULT_INTERVAL: u64 = 2000;
+pub const DEFAULT_EVENT_DRIVEN: bool = true;
+pub const DEFAULT_DISCOVERY_INTERVAL: u64 = 5000;
 pub const DEFAULT_USE_CONTENT_TYPE: bool = true;
 pub const DEFAULT_ACTIVITY_TYPE: ActivityType = ActivityType::Listening;
 pub const DEFAULT_TIME_SHOW: bool = true;
@@ -118,6 +120,12 @@ pub struct Config {
     #[serde(default = "default_interval")]
     pub interval: u64,
 
+    #[serde(default = "default_event_driven")]
+    pub event_driven: bool,
+
+    #[serde(default = "default_discovery_interval")]
+    pub discovery_interval: u64,
+
     #[serde(default = "default_allowed_players")]
     pub allowed_players: Vec<String>,
 
@@ -151,6 +159,14 @@ fn default_interval() -> u64 {
     DEFAULT_INTERVAL
 }
 
+fn default_event_driven() -> bool {
+    DEFAULT_EVENT_DRIVEN
+}
+
+fn default_discovery_interval() -> u64 {
+    DEFAULT_DISCOVERY_INTERVAL
+}
+
 fn default_allowed_players() -> Vec<String> {
     Vec::new()
 }
@@ -160,6 +176,8 @@ impl Default for Config {
         Config {
             clear_on_pause: default_clear_on_pause(),
             interval: default_interval(),
+            event_driven: default_event_driven(),
+            discovery_interval: default_discovery_interval(),
             allowed_players: default_allowed_players(),
             template: TemplateConfig::default(),
             time: TimeConfig::default(),

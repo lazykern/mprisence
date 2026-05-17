@@ -146,13 +146,13 @@ impl TemplateManager {
 
     pub fn render_activity_texts(
         &self,
-        player: Player,
+        player: &Player,
         metadata: MediaMetadata,
     ) -> Result<ActivityTexts, TemplateError> {
         trace!("Creating activity texts for player: {}", player.identity());
 
         debug!("Creating render context with player and metadata information");
-        let render_context = RenderContext::new(&player, metadata);
+        let render_context = RenderContext::new(player, metadata);
 
         trace!("Rendering all activity text templates");
         let details = self.render("details", &render_context)?;

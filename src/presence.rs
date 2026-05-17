@@ -4,6 +4,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    thread::JoinHandle,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -13,8 +14,10 @@ use discord_rich_presence::{
 };
 use log::{debug, error, info, trace, warn};
 use mime_guess::mime;
-use mpris::{PlaybackStatus, Player};
+use mpris::{Event as MprisEvent, PlaybackStatus, Player};
 use parking_lot::Mutex;
+use smol_str::SmolStr;
+use tokio::sync::mpsc;
 use url::Url;
 
 use lofty::file::AudioFile as _;
@@ -28,7 +31,11 @@ use crate::{
     cover::CoverManager,
     error::DiscordError,
     metadata,
-    player::{canonical_player_bus_name, cmus, PlaybackState, PlayerIdentifier},
+    player::{
+        canonical_player_bus_name, cmus,
+        events::{self, EventOutcome, PlayerEvent, PlayerEventKind},
+        PlaybackState, PlayerIdentifier,
+    },
     template::TemplateManager,
     utils,
 };
@@ -41,15 +48,22 @@ pub struct Presence {
     template_manager: Arc<TemplateManager>,
     cover_manager: Arc<CoverManager>,
     last_player_state: Option<PlaybackState>,
-    last_cmus_track_id: Option<Box<str>>,
-    last_cmus_path: Option<PathBuf>,
-    cmus_error_logged: bool,
+    last_cmus_track_id: Mutex<Option<Box<str>>>,
+    last_cmus_path: Mutex<Option<PathBuf>>,
+    cmus_error_logged: AtomicBool,
     discord_client: Option<Arc<Mutex<DiscordIpcClient>>>,
     needs_initial_connection: AtomicBool,
     needs_reconnection: AtomicBool,
     error_logged: AtomicBool,
     last_reconnect_attempt: Mutex<Instant>,
     config: Arc<ConfigManager>,
+    /// Cancellation flag for the per-player event listener thread (event-driven mode only).
+    listener_cancel: Option<Arc<AtomicBool>>,
+    /// Handle to the listener thread; kept so future code can join, but currently detached on drop.
+    #[allow(dead_code)]
+    listener_handle: Option<JoinHandle<()>>,
+    /// The MPRIS bus name the active listener is bound to (used to detect winner-bus handoff).
+    listener_bus: Option<SmolStr>,
 }
 
 impl Presence {
@@ -71,21 +85,29 @@ impl Presence {
             template_manager,
             cover_manager,
             last_player_state: None,
-            last_cmus_track_id: None,
-            last_cmus_path: None,
-            cmus_error_logged: false,
+            last_cmus_track_id: Mutex::new(None),
+            last_cmus_path: Mutex::new(None),
+            cmus_error_logged: AtomicBool::new(false),
             discord_client: None,
             needs_initial_connection: AtomicBool::new(true),
             needs_reconnection: AtomicBool::new(false),
             error_logged: AtomicBool::new(false),
             last_reconnect_attempt: Mutex::new(Instant::now()),
             config,
+            listener_cancel: None,
+            listener_handle: None,
+            listener_bus: None,
         }
     }
 
     /// Returns the identifier of the currently tracked player connection.
     pub fn player_id(&self) -> &PlayerIdentifier {
         &self.player_id
+    }
+
+    /// Returns the raw MPRIS bus name of the player handle currently cached on this presence.
+    pub fn player_bus_name(&self) -> &str {
+        self.player.bus_name()
     }
 
     pub fn initialize_discord_client(&mut self) -> Result<(), DiscordError> {
@@ -163,9 +185,9 @@ impl Presence {
             self.player_id = new_id;
             self.player = player;
             self.last_player_state = None;
-            self.last_cmus_track_id = None;
-            self.last_cmus_path = None;
-            self.cmus_error_logged = false;
+            *self.last_cmus_track_id.lock() = None;
+            *self.last_cmus_path.lock() = None;
+            self.cmus_error_logged.store(false, Ordering::Relaxed);
             // Skip Discord update this cycle; full update happens next poll.
             return Ok(());
         }
@@ -202,7 +224,7 @@ impl Presence {
 
         trace!("Updating Discord presence");
         self.last_player_state = Some(new_state);
-        self.update_activity(player).await.map_err(|err| {
+        self.update_activity(&player).await.map_err(|err| {
             if matches!(err, DiscordError::ActivityError(_)) {
                 if !self.error_logged.load(Ordering::Relaxed) {
                     warn!("Discord connection error, will attempt to reconnect next update");
@@ -213,6 +235,17 @@ impl Presence {
             }
             err
         })
+    }
+
+    /// Push current player state to Discord without consuming the player.
+    /// Used on initial discovery in event-driven mode — signals only fire on changes,
+    /// so the current state must be pushed once when a new player is first seen.
+    pub async fn update_from_current_state(&mut self) -> Result<(), DiscordError> {
+        let Some(_) = &self.discord_client else {
+            return Ok(());
+        };
+        self.ensure_connection()?;
+        self.update_activity(&self.player).await
     }
 
     fn ensure_connection(&mut self) -> Result<(), DiscordError> {
@@ -319,7 +352,7 @@ impl Presence {
         activity_type_config.default
     }
 
-    async fn update_activity(&mut self, player: Player) -> Result<(), DiscordError> {
+    async fn update_activity(&self, player: &Player) -> Result<(), DiscordError> {
         let Some(discord_client) = &self.discord_client else {
             return Ok(());
         };
@@ -377,36 +410,41 @@ impl Presence {
                 .map(|id| id.to_string())
                 .or_else(|| metadata.url().map(|url| url.to_string()))
                 .or_else(|| metadata.title().map(|title| title.to_string()));
-            let track_changed = track_token.as_deref() != self.last_cmus_track_id.as_deref();
+            let track_changed = {
+                let guard = self.last_cmus_track_id.lock();
+                track_token.as_deref() != guard.as_deref()
+            };
 
             if track_changed {
-                self.last_cmus_track_id = track_token.map(|token| token.into_boxed_str());
-                self.last_cmus_path = None;
-                self.cmus_error_logged = false;
+                *self.last_cmus_track_id.lock() =
+                    track_token.map(|token| token.into_boxed_str());
+                *self.last_cmus_path.lock() = None;
+                self.cmus_error_logged.store(false, Ordering::Relaxed);
             }
 
-            if self.last_cmus_path.is_none() {
+            if self.last_cmus_path.lock().is_none() {
                 match cmus::get_current_track_path().await {
                     Ok(Some(path)) => {
-                        self.last_cmus_path = Some(path);
+                        *self.last_cmus_path.lock() = Some(path);
                     }
                     Ok(None) => {}
                     Err(err) => {
-                        if !self.cmus_error_logged {
+                        if !self.cmus_error_logged.load(Ordering::Relaxed) {
                             warn!("cmus-remote failed: {}", err);
-                            self.cmus_error_logged = true;
+                            self.cmus_error_logged.store(true, Ordering::Relaxed);
                         }
                     }
                 }
             }
 
-            if let Some(path) = &self.last_cmus_path {
-                match Url::from_file_path(path) {
+            let cmus_path = self.last_cmus_path.lock().clone();
+            if let Some(path) = cmus_path {
+                match Url::from_file_path(&path) {
                     Ok(url) => Some(url.to_string()),
                     Err(_) => {
-                        if !self.cmus_error_logged {
+                        if !self.cmus_error_logged.load(Ordering::Relaxed) {
                             warn!("cmus-remote returned non-file path: {:?}", path);
-                            self.cmus_error_logged = true;
+                            self.cmus_error_logged.store(true, Ordering::Relaxed);
                         }
                         None
                     }
@@ -640,8 +678,116 @@ impl Presence {
         trace!("Presence managers updated successfully");
 
         self.last_player_state = None;
-        self.last_cmus_track_id = None;
-        self.last_cmus_path = None;
-        self.cmus_error_logged = false;
+        *self.last_cmus_track_id.lock() = None;
+        *self.last_cmus_path.lock() = None;
+        self.cmus_error_logged.store(false, Ordering::Relaxed);
+    }
+
+    /// Event-driven mode entry point. Returns `ShouldRemove` when the listener has terminated
+    /// and the presence entry should be dropped from the registry.
+    pub async fn handle_event(
+        &mut self,
+        kind: PlayerEventKind,
+    ) -> Result<EventOutcome, DiscordError> {
+        trace!(
+            "handling {:?} for {}",
+            kind,
+            self.player.identity()
+        );
+
+        match kind {
+            PlayerEventKind::Mpris(MprisEvent::PlayerShutDown)
+            | PlayerEventKind::ListenerExited => {
+                debug!(
+                    "player {} reported shutdown via event stream",
+                    self.player.identity()
+                );
+                return Ok(EventOutcome::ShouldRemove);
+            }
+            PlayerEventKind::ListenerError(msg) => {
+                warn!("listener error for {}: {}", self.player.identity(), msg);
+                return Ok(EventOutcome::Continue);
+            }
+            PlayerEventKind::Mpris(MprisEvent::VolumeChanged(_))
+            | PlayerEventKind::Mpris(MprisEvent::LoopingChanged(_))
+            | PlayerEventKind::Mpris(MprisEvent::ShuffleToggled(_))
+            | PlayerEventKind::Mpris(MprisEvent::PlaybackRateChanged(_))
+            | PlayerEventKind::Mpris(MprisEvent::TrackAdded(_))
+            | PlayerEventKind::Mpris(MprisEvent::TrackRemoved(_))
+            | PlayerEventKind::Mpris(MprisEvent::TrackMetadataChanged { .. })
+            | PlayerEventKind::Mpris(MprisEvent::TrackListReplaced) => {
+                trace!("ignoring event variant (no Discord-relevant change)");
+                return Ok(EventOutcome::Continue);
+            }
+            PlayerEventKind::Mpris(MprisEvent::TrackChanged(_)) => {
+                // Force the next polling-style diff (if event_driven flips off) to detect a change.
+                self.last_player_state = None;
+            }
+            PlayerEventKind::Mpris(MprisEvent::Playing)
+            | PlayerEventKind::Mpris(MprisEvent::Paused)
+            | PlayerEventKind::Mpris(MprisEvent::Stopped)
+            | PlayerEventKind::Mpris(MprisEvent::Seeked { .. }) => {
+                // Fall through to update.
+            }
+        }
+
+        let Some(_discord_client) = &self.discord_client else {
+            return Ok(EventOutcome::Continue);
+        };
+
+        self.ensure_connection()?;
+
+        if let Err(err) = self.update_activity(&self.player).await {
+            if matches!(err, DiscordError::ActivityError(_)) {
+                if !self.error_logged.load(Ordering::Relaxed) {
+                    warn!("Discord connection error, will attempt to reconnect next event");
+                    self.error_logged.store(true, Ordering::Relaxed);
+                }
+                self.last_player_state = None;
+                self.needs_reconnection.store(true, Ordering::Relaxed);
+            }
+            return Err(err);
+        }
+
+        Ok(EventOutcome::Continue)
+    }
+
+    /// Spawn a listener if none exists, or replace the existing one when the underlying
+    /// player bus name has changed (e.g. playerctld handoff or player restart).
+    pub fn ensure_listener(&mut self, tx: mpsc::Sender<PlayerEvent>, norm_id: SmolStr) {
+        let current_bus = SmolStr::new(self.player.bus_name());
+        if let Some(existing) = &self.listener_bus {
+            if existing == &current_bus {
+                return;
+            }
+            debug!(
+                "listener bus changed for {}: {} -> {}; restarting",
+                norm_id, existing, current_bus
+            );
+            self.stop_listener();
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        let handle = events::spawn_listener(current_bus.clone(), norm_id, tx, cancel.clone());
+        self.listener_cancel = Some(cancel);
+        self.listener_handle = Some(handle);
+        self.listener_bus = Some(current_bus);
+    }
+
+    /// Cancel the listener thread (detached; thread exits on the next event or D-Bus tick).
+    pub fn stop_listener(&mut self) {
+        if let Some(cancel) = self.listener_cancel.take() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+        // Drop the JoinHandle without joining — the blocking D-Bus call cannot be interrupted
+        // synchronously, so the thread is left to exit on its own when the next event arrives
+        // or the player disappears.
+        self.listener_handle.take();
+        self.listener_bus = None;
+    }
+}
+
+impl Drop for Presence {
+    fn drop(&mut self) {
+        self.stop_listener();
     }
 }
