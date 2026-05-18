@@ -478,8 +478,18 @@ impl CoverArtProvider for MusicbrainzProvider {
         }
 
         info!("Falling back to MusicBrainz search based on metadata");
-        let artists = metadata_source.artists().unwrap_or_default();
-        let album_artists = metadata_source.album_artists().unwrap_or_default();
+        let artists: Vec<String> = metadata_source
+            .artists()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|a| !a.trim().is_empty())
+            .collect();
+        let album_artists: Vec<String> = metadata_source
+            .album_artists()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|a| !a.trim().is_empty())
+            .collect();
 
         if let Some(album) = metadata_source.album() {
             if !album.is_empty() {
