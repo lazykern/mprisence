@@ -88,10 +88,9 @@ impl Command {
                         let player_bus_name = canonical_player_bus_name(player.bus_name());
                         let id = normalize_player_identity(&identity);
                         let allowed = config.is_player_allowed(&identity, &player_bus_name);
-                        let player_config = config.get_player_config(&identity, &player_bus_name);
                         let status = player.get_playback_status().ok();
 
-                        let (title, artists, album, length) = match player.get_metadata() {
+                        let (title, artists, album, length, url) = match player.get_metadata() {
                             Ok(metadata) => {
                                 let title = metadata.title().map(|value| value.to_string());
                                 let artists = metadata.artists().map(|values| {
@@ -104,11 +103,23 @@ impl Command {
                                 let length = metadata
                                     .length()
                                     .map(|value| Duration::from_micros(value.as_micros() as u64));
+                                let url = metadata.url().map(|value| value.to_string());
 
-                                (title, artists, album, length)
+                                (title, artists, album, length, url)
                             }
-                            Err(_) => (None, None, None, None),
+                            Err(_) => (None, None, None, None, None),
                         };
+
+                        // Resolve URL-aware config so the CLI reflects what
+                        // the runtime would actually push (website overrides
+                        // can fully replace the browser's player config).
+                        let (player_config, _suffix) = config.get_player_config_with_title_fallback(
+                            &identity,
+                            &player_bus_name,
+                            url.as_deref(),
+                            title.as_deref(),
+                        );
+                        let website_match = config.matched_website_for_url(url.as_deref());
 
                         entries.push(PlayerDisplay {
                             id,
@@ -119,6 +130,8 @@ impl Command {
                             artists,
                             album,
                             length,
+                            url,
+                            website_match,
                             config: player_config,
                             allowed,
                             is_duplicate: false,
@@ -261,6 +274,15 @@ impl Command {
                             }
                             if let Some(length) = entry.length {
                                 println!("  Length   : {}", format_track_length(length));
+                            }
+                            if let Some(url) = &entry.url {
+                                println!("  URL      : {}", url);
+                            }
+                            if let Some((key, website)) = &entry.website_match {
+                                println!(
+                                    "  Website  : {}",
+                                    format_website_match(key, website)
+                                );
                             }
                             println!(
                                 "  Presence : {}",
@@ -470,6 +492,13 @@ struct PlayerDisplay {
     artists: Option<Vec<String>>,
     album: Option<String>,
     length: Option<Duration>,
+    /// xesam:url from the player's MPRIS metadata. Surfaced in the
+    /// detailed view so the user can see what the runtime sees when
+    /// resolving website overrides.
+    url: Option<String>,
+    /// (key, resolved config) of the `[website.*]` entry that the runtime
+    /// would project onto this player. None when no website matches.
+    website_match: Option<(String, WebsiteConfig)>,
     config: PlayerConfig,
     allowed: bool,
     /// True when another bus name for the same identity was chosen as the
@@ -585,6 +614,17 @@ fn format_artists(artists: &[String]) -> String {
 fn format_track_length(duration: Duration) -> String {
     let total_seconds = duration.as_secs();
     format!("{:02}:{:02}", total_seconds / 60, total_seconds % 60)
+}
+
+fn format_website_match(key: &str, website: &WebsiteConfig) -> String {
+    let pattern_summary = if website.match_patterns.is_empty() {
+        "no patterns".to_string()
+    } else if website.match_patterns.len() == 1 {
+        format!("matched \"{}\"", website.match_patterns[0])
+    } else {
+        format!("patterns: {}", website.match_patterns.join(", "))
+    };
+    format!("{} ({})", key, pattern_summary)
 }
 
 fn format_presence(config: &PlayerConfig, allowed: bool, is_duplicate: bool) -> String {

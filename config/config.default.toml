@@ -218,9 +218,13 @@ allow_streaming = true
 #   bare = exact host match (or substring fallback against the host)
 #   `*`/`?` wildcards, `re:`/`/.../` for regex
 # Match runs against the URL host (e.g. `music.youtube.com`).
-# When matched, the fields below overlay the active player's PlayerConfig
-# (browsers that ship with `ignore = true` are unmuted automatically by the
-# overlay setting `ignore = false` or by the user enabling the browser).
+# When matched, the website entry is the *authoritative* config for the
+# player — it fully replaces the browser's [player.*] config (ignore,
+# allow_streaming, app_id, icon, name, activity type). The browser does
+# not need to be enabled or unhidden separately. User entries are merged
+# per-key with bundled entries (user fields win, unset fields fall back
+# to bundled — including match patterns) so flipping `ignore` on a
+# bundled site only takes one TOML line in the user config.
 # ------------------------------------------------------------------
 
 [website.youtube_music]
@@ -344,7 +348,7 @@ title_suffix = " - YouTube"
 app_id = "1301894190904639559"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/youtube.png"
 allow_streaming = true
-ignore = true
+ignore = false
 
 [website.apple_podcasts]
 match_pattern = "podcasts.apple.com"

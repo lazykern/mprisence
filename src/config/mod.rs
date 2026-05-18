@@ -152,6 +152,19 @@ impl ConfigManager {
             .effective_website_configs()
     }
 
+    /// Returns the matched website key and its resolved config for a URL,
+    /// if any `[website.*]` entry applies. Used by the CLI to surface which
+    /// override the runtime would project onto a player.
+    pub fn matched_website_for_url(
+        &self,
+        url: Option<&str>,
+    ) -> Option<(String, schema::WebsiteConfig)> {
+        self.config
+            .read()
+            .expect("Failed to read config: RwLock poisoned")
+            .matched_website_for_url(url)
+    }
+
     pub fn time_config(&self) -> schema::TimeConfig {
         self.config
             .read()
@@ -452,6 +465,7 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     config.user_player_patterns = collect_user_player_patterns(path)?;
     config.bundled_website = bundled.website;
     config.user_website = load_user_website_configs(path)?;
+    config.rebuild_merged_website();
     Ok(config)
 }
 

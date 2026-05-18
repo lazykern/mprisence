@@ -257,11 +257,13 @@ status_display_type = "details"
 
 ### Website Overrides
 
-Browsers like Firefox or Chrome publish the playing tab's URL through MPRIS (`xesam:url`). mprisence inspects that URL and, when its host matches a `[website.<key>]` entry, **overlays the website's Discord application on top of the browser's player config** — so listening to YouTube Music in Firefox shows up as *Listening to YouTube Music* in Discord instead of *Firefox*.
+Browsers like Firefox, Zen or Chrome publish the playing tab's URL through MPRIS (`xesam:url`). mprisence inspects that URL and, when its host matches a `[website.<key>]` entry, **uses that website entry as the authoritative configuration for the player** — so listening to YouTube Music in any browser shows up as *Listening to YouTube Music* in Discord instead of *Firefox* or *Zen*.
+
+The website entry fully replaces the browser's `[player.*]` config for that URL: `ignore`, `allow_streaming`, `app_id`, `icon`, `name`, and activity type all come from the matched website. You do not need to also enable or unhide the browser's `[player.*]` entry — adding a `[website.*]` is enough.
 
 When the URL changes (e.g. you navigate from `music.youtube.com` to `soundcloud.com`), mprisence transparently recycles its Discord IPC client so the new application's name and icon take effect.
 
-Bundled entries: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL (each ships with a placeholder app ID you can replace with your own registered Discord application), and Spotify Web (ships with `ignore = true`).
+Bundled entries: YouTube, YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music, Pocket Casts, Apple Podcasts, Podurama (each ships with a placeholder app ID you can replace with your own registered Discord application), and Spotify Web (ships with `ignore = true`).
 
 ```toml
 # Top-level table — sibling to [player.*].
@@ -273,6 +275,8 @@ allow_streaming = true                   # required since the source URL is HTTP
 ignore        = false                    # set true to skip presence for this site
 
 # Per-user override: enable Spotify Web (bundled config ships ignore = true).
+# Patterns are inherited from the bundled entry — you only need to write the
+# fields you want to change.
 [website.spotify_web]
 ignore = false
 app_id = "YOUR_SPOTIFY_WEB_APP_ID"
@@ -282,8 +286,9 @@ Notes:
 
 - The pattern is matched against the URL **host** (e.g. `music.youtube.com`). If host parsing fails, the full URL is used as a fallback target for substring matching.
 - A more specific pattern always wins (exact host > regex > wildcard > plain substring).
-- User entries override bundled ones with the same key. Fields you leave unset fall through to the matched browser's `[player.*]` config.
-- Inspect resolved entries with `mprisence config` — the new *Website Overrides* section lists every site and its effective values.
+- User entries are merged with bundled entries by key, user fields winning. **Fields you leave unset fall through to the bundled entry, including `match_pattern`/`match_patterns`** — so a user `[website.youtube] ignore = false` block with no patterns still matches `youtube.com` via the bundled patterns.
+- Any http/https URL that does NOT match a `[website.*]` entry is auto-ignored so random browser audio (ads, podcasts on unknown sites) does not leak into Discord. Opt back in by adding a `[website.*]` entry that matches the host.
+- Inspect resolved entries with `mprisence config` — the *Website Overrides* section lists every site and its effective values. `mprisence players list -d` shows the matched website (if any) for each running player so you can see exactly what the daemon would push.
 
 ### Configuration Reference
 
