@@ -146,6 +146,10 @@ pub struct Presence {
     /// `update_generation` so in-flight cover fetches for the old track can
     /// self-cancel).
     last_pushed_track: Mutex<Option<TrackFingerprint>>,
+    /// Guard to prevent spawning multiple simultaneous background cover-art
+    /// fetch tasks for the same track. Set to `true` before spawning; the task
+    /// resets it to `false` on completion (success or failure).
+    cover_fetch_in_flight: Arc<AtomicBool>,
     config: Arc<ConfigManager>,
     /// Cancellation flag for the per-player event listener thread (event-driven mode only).
     listener_cancel: Option<Arc<AtomicBool>>,
@@ -187,6 +191,7 @@ impl Presence {
             update_generation: Arc::new(AtomicU64::new(0)),
             update_notify: Arc::new(Notify::new()),
             last_pushed_track: Mutex::new(None),
+            cover_fetch_in_flight: Arc::new(AtomicBool::new(false)),
             config,
             listener_cancel: None,
             listener_handle: None,
@@ -197,6 +202,14 @@ impl Presence {
     /// Returns the identifier of the currently tracked player connection.
     pub fn player_id(&self) -> &PlayerIdentifier {
         &self.player_id
+    }
+
+    /// Returns the current track's URL (xesam:url) if available.
+    pub fn current_url(&self) -> Option<String> {
+        self.player
+            .get_metadata()
+            .ok()
+            .and_then(|m| m.url().map(|s| s.to_string()))
     }
 
     pub fn initialize_discord_client(&mut self) -> Result<(), DiscordError> {
@@ -302,6 +315,15 @@ impl Presence {
         let dbus_delay = start_time.elapsed();
         trace!("D-Bus interaction took: {:?}", dbus_delay);
 
+        // In event-driven mode the discovery tick fires at `discovery_interval`
+        // (default 5 s), not `interval` (default 2 s). Using the wrong value
+        // causes every tick to be detected as a position jump.
+        let effective_interval = if self.config.event_driven() {
+            self.config.discovery_interval()
+        } else {
+            self.config.interval()
+        };
+
         let should_update = self
             .last_player_state
             .as_ref()
@@ -309,7 +331,7 @@ impl Presence {
                 new_state.has_significant_changes(previous_state)
                     || new_state.has_position_jump(
                         previous_state,
-                        Duration::from_millis(self.config.interval()),
+                        Duration::from_millis(effective_interval),
                         dbus_delay,
                     )
             })
@@ -344,6 +366,9 @@ impl Presence {
             return Ok(());
         };
         self.ensure_connection()?;
+        // Seed `last_player_state` so the next polling tick's diff sees no change
+        // and skips re-pushing (and re-fetching cover art) for the same track.
+        self.last_player_state = Some(PlaybackState::from(&self.player));
         self.update_activity(None).await
     }
 
@@ -594,6 +619,8 @@ impl Presence {
         if track_changed {
             self.update_generation.fetch_add(1, Ordering::Relaxed);
             self.update_notify.notify_waiters();
+            // Allow the new track to spawn its own cover-art background task.
+            self.cover_fetch_in_flight.store(false, Ordering::Release);
         }
 
         let player_bus_name = canonical_player_bus_name(self.player.bus_name());
@@ -833,7 +860,13 @@ impl Presence {
         self.error_logged.store(false, Ordering::Relaxed);
 
         // Slow path: cache miss → background cover fetch + second push when ready.
-        if cached_cover.is_none() {
+        // Guard: skip if a background task is already in flight for this track
+        // (prevents duplicate uploads when position-jump ticks re-enter this path).
+        if cached_cover.is_none()
+            && !self
+                .cover_fetch_in_flight
+                .swap(true, Ordering::AcqRel)
+        {
             let cover_manager = Arc::clone(&self.cover_manager);
             let discord_client_for_task = Arc::clone(&discord_client);
             let update_generation = Arc::clone(&self.update_generation);
@@ -842,11 +875,20 @@ impl Presence {
             let player_config_for_task = player_config.clone();
             let identity_for_task = self.player.identity().to_string();
             let metadata_source_for_task = metadata_source;
+            let cover_in_flight = Arc::clone(&self.cover_fetch_in_flight);
             // Always use the freshly-loaded generation (post-bump) so this task
             // self-cancels on any subsequent track change in either run mode.
             let spawn_gen = update_generation.load(Ordering::Relaxed);
 
             tokio::spawn(async move {
+                // Ensure the in-flight flag is always reset when the task exits.
+                struct InFlightGuard(Arc<AtomicBool>);
+                impl Drop for InFlightGuard {
+                    fn drop(&mut self) {
+                        self.0.store(false, Ordering::Release);
+                    }
+                }
+                let _guard = InFlightGuard(cover_in_flight);
                 let art_source = metadata_source_for_task.art_source();
                 let cover_art_result = tokio::select! {
                     result = cover_manager.get_cover_art(art_source.clone(), &metadata_source_for_task) => result,

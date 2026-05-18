@@ -140,10 +140,13 @@ impl Mprisence {
 
         self.media_players.retain(|_norm_id, presence| {
             let pid = presence.player_id();
-            !self
-                .config
-                .get_player_config(&pid.identity, &pid.player_bus_name)
-                .ignore
+            let url = presence.current_url();
+            let player_config = self.config.get_player_config_with_url(
+                &pid.identity,
+                &pid.player_bus_name,
+                url.as_deref(),
+            );
+            !player_config.ignore
                 && self
                     .config
                     .is_player_allowed(&pid.identity, &pid.player_bus_name)
@@ -201,8 +204,26 @@ impl Mprisence {
                 .config
                 .get_player_config(&id.identity, &id.player_bus_name);
             if player_config.ignore {
-                trace!("Skipping ignored player: {}", id.identity);
-                continue;
+                // Before skipping, check if a website override un-ignores this player
+                // (e.g. SoundCloud in a browser that is ignored by default).
+                let url = player
+                    .get_metadata()
+                    .ok()
+                    .and_then(|m| m.url().map(|s| s.to_string()));
+                let effective_config = self.config.get_player_config_with_url(
+                    &id.identity,
+                    &id.player_bus_name,
+                    url.as_deref(),
+                );
+                if effective_config.ignore {
+                    trace!("Skipping ignored player: {}", id.identity);
+                    continue;
+                }
+                trace!(
+                    "Player '{}' ignored at player level but un-ignored by website override (url: {:?})",
+                    id.identity,
+                    url
+                );
             }
 
             let norm_id = SmolStr::new(utils::normalize_player_identity(&id.identity));
@@ -320,8 +341,15 @@ impl Mprisence {
                 let pid = presence.player_id();
                 (pid.identity.clone(), pid.player_bus_name.clone())
             };
-            let player_config = self.config.get_player_config(&identity, &player_bus_name);
             let allowed = self.config.is_player_allowed(&identity, &player_bus_name);
+            // Use URL-aware config to respect website overrides (e.g. SoundCloud
+            // un-ignoring a browser that is ignored by default).
+            let url = presence.current_url();
+            let player_config = self.config.get_player_config_with_url(
+                &identity,
+                &player_bus_name,
+                url.as_deref(),
+            );
             let keep = current_norm_ids.contains(norm_id) && !player_config.ignore && allowed;
             if !keep {
                 let reason = if !current_norm_ids.contains(norm_id) {
@@ -453,7 +481,7 @@ impl Mprisence {
         let mut cache_cleanup_interval = tokio::time::interval(Duration::from_secs(6 * 60 * 60));
 
         // Prime once so listeners attach to whatever is already running.
-        debug!("discovery tick (event-driven, initial)");
+        debug!("discovery tick (initial)");
         if let Err(e) = self.update().await {
             error!("Initial discovery failed: {}", e);
         }
@@ -469,7 +497,7 @@ impl Mprisence {
                     self.handle_player_event(evt, &event_tx).await;
                 },
                 _ = discovery_interval.tick() => {
-                    debug!("discovery tick (event-driven)");
+                    trace!("discovery tick");
                     if let Err(e) = self.update().await {
                         error!("Failed to refresh players: {}", e);
                     }
