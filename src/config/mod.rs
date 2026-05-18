@@ -126,20 +126,6 @@ impl ConfigManager {
             .get_player_config(identity, player_bus_name)
     }
 
-    /// Resolves the per-player config and additionally overlays any matching
-    /// `[website.*]` entry when `url` is the currently playing track's URL.
-    pub fn get_player_config_with_url(
-        &self,
-        identity: &str,
-        player_bus_name: &str,
-        url: Option<&str>,
-    ) -> schema::PlayerConfig {
-        self.config
-            .read()
-            .expect("Failed to read config: RwLock poisoned")
-            .get_player_config_with_url(identity, player_bus_name, url)
-    }
-
     /// Get player config using title-suffix inference when URL is unavailable.
     /// Returns (effective_config, suffix_to_strip).
     pub fn get_player_config_with_title_fallback(
