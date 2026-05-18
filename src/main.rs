@@ -10,7 +10,7 @@ use mpris::Event as MprisEvent;
 use mpris::PlayerFinder;
 use player::{
     events::{EventOutcome, PlayerEvent, PlayerEventKind},
-    is_playerctld_no_active_error, select_winner_idx, PlayerIdentifier,
+    is_playerctld_no_active_error, select_richest_player, select_winner_idx, PlayerIdentifier,
 };
 use presence::Presence;
 use smol_str::SmolStr;
@@ -230,6 +230,51 @@ impl Mprisence {
             candidates.entry(norm_id).or_default().push(player);
         }
 
+        // Phase 1.5: merge identity groups that share the same xesam:url.
+        // This handles cases like plasma-browser-integration and the native
+        // browser MPRIS endpoint both exposing the same track from the same tab.
+        {
+            // Build a map from URL → first norm_id that owns it.
+            let mut url_to_norm: HashMap<String, SmolStr> = HashMap::new();
+            let mut merge_targets: Vec<(SmolStr, SmolStr)> = Vec::new(); // (from, into)
+
+            for (norm_id, players) in &candidates {
+                for player in players {
+                    if let Ok(meta) = player.get_metadata() {
+                        if let Some(url) = meta.url() {
+                            if url.is_empty() {
+                                continue;
+                            }
+                            match url_to_norm.get(url) {
+                                Some(existing) if existing != norm_id => {
+                                    // This group shares a URL with another group — merge
+                                    merge_targets.push((norm_id.clone(), existing.clone()));
+                                    break;
+                                }
+                                None => {
+                                    url_to_norm.insert(url.to_string(), norm_id.clone());
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            for (from, into) in merge_targets {
+                if from == into {
+                    continue;
+                }
+                if let Some(players) = candidates.remove(&from) {
+                    debug!(
+                        "Merging duplicate player group '{}' into '{}' (same xesam:url)",
+                        from, into
+                    );
+                    candidates.entry(into).or_default().extend(players);
+                }
+            }
+        }
+
         // Phase 2: for each identity group select one winner and update/create
         // the corresponding Presence.  This ensures at most one Discord IPC
         // connection per logical player identity.
@@ -239,14 +284,19 @@ impl Mprisence {
         for (norm_id, mut group) in candidates {
             current_norm_ids.insert(norm_id.clone());
 
-            let ids: Vec<PlayerIdentifier> = group.iter().map(PlayerIdentifier::from).collect();
-
             let current_bus = self
                 .media_players
                 .get(&norm_id)
                 .map(|presence| presence.player_id().player_bus_name.clone());
 
-            let winner_idx = select_winner_idx(&ids, current_bus.as_deref());
+            let ids: Vec<PlayerIdentifier> = group.iter().map(PlayerIdentifier::from).collect();
+
+            let winner_idx = if group.len() > 1 {
+                // Use metadata-aware selection for merged/duplicate groups
+                select_richest_player(&group, current_bus.as_deref())
+            } else {
+                select_winner_idx(&ids, current_bus.as_deref())
+            };
 
             if ids.len() > 1 {
                 duplicate_norm_ids.insert(norm_id.clone());

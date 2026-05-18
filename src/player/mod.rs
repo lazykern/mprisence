@@ -114,6 +114,66 @@ pub fn is_proxy_bus_name(canonical_bus_name: &str) -> bool {
     canonical_bus_name == "playerctld"
 }
 
+/// Score a player's metadata richness (higher = richer).
+/// Used to break ties when multiple bus names expose the same content.
+fn metadata_richness(player: &Player) -> u8 {
+    let mut score: u8 = 0;
+    if let Ok(meta) = player.get_metadata() {
+        if meta.title().is_some() {
+            score += 1;
+        }
+        if meta.album_name().is_some_and(|a| !a.is_empty()) {
+            score += 2;
+        }
+        if meta.artists().is_some_and(|a| a.iter().any(|s| !s.is_empty())) {
+            score += 2;
+        }
+        if meta.art_url().is_some() {
+            score += 3;
+        }
+        if meta.length().is_some() {
+            score += 1;
+        }
+    }
+    score
+}
+
+/// Given a group of `Player`s that represent the same content (merged by URL),
+/// returns the index of the one with the richest metadata.
+/// Falls back to `select_winner_idx` tie-breaking if scores are equal.
+pub fn select_richest_player(players: &[Player], current_bus: Option<&str>) -> usize {
+    if players.len() <= 1 {
+        return 0;
+    }
+
+    let ids: Vec<PlayerIdentifier> = players.iter().map(PlayerIdentifier::from).collect();
+
+    // First, prefer stability (current bus).
+    if let Some(current) = current_bus {
+        if let Some(idx) = ids
+            .iter()
+            .position(|id| id.player_bus_name.as_str() == current)
+        {
+            // Only keep current if it still has reasonable metadata.
+            if metadata_richness(&players[idx]) > 0 {
+                return idx;
+            }
+        }
+    }
+
+    // Otherwise, pick the richest.
+    let mut best_idx = 0;
+    let mut best_score = metadata_richness(&players[0]);
+    for (i, player) in players.iter().enumerate().skip(1) {
+        let score = metadata_richness(player);
+        if score > best_score {
+            best_score = score;
+            best_idx = i;
+        }
+    }
+    best_idx
+}
+
 /// Given a slice of `PlayerIdentifier`s that all share the same player identity,
 /// returns the index of the preferred ("winner") entry.
 ///
