@@ -849,6 +849,15 @@ impl Presence {
 
         if !self.error_logged.load(Ordering::Relaxed) {
             debug!("Updating Discord activity");
+            info!(
+                "Activity payload: details={:?}, state={:?}, large_text={:?}, small_text={:?}, cover_art={:?}, activity_type={:?}",
+                activity_texts.details,
+                activity_texts.state,
+                activity_texts.large_text,
+                activity_texts.small_text,
+                cached_cover.as_deref(),
+                activity_type,
+            );
         }
         Self::build_and_push_activity(
             &discord_client,
