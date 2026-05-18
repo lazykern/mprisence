@@ -148,20 +148,7 @@ pub fn select_richest_player(players: &[Player], current_bus: Option<&str>) -> u
 
     let ids: Vec<PlayerIdentifier> = players.iter().map(PlayerIdentifier::from).collect();
 
-    // First, prefer stability (current bus).
-    if let Some(current) = current_bus {
-        if let Some(idx) = ids
-            .iter()
-            .position(|id| id.player_bus_name.as_str() == current)
-        {
-            // Only keep current if it still has reasonable metadata.
-            if metadata_richness(&players[idx]) > 0 {
-                return idx;
-            }
-        }
-    }
-
-    // Otherwise, pick the richest.
+    // Find the richest player.
     let mut best_idx = 0;
     let mut best_score = metadata_richness(&players[0]);
     for (i, player) in players.iter().enumerate().skip(1) {
@@ -171,6 +158,19 @@ pub fn select_richest_player(players: &[Player], current_bus: Option<&str>) -> u
             best_idx = i;
         }
     }
+
+    // Prefer stability only when the current bus is equally rich.
+    if let Some(current) = current_bus {
+        if let Some(idx) = ids
+            .iter()
+            .position(|id| id.player_bus_name.as_str() == current)
+        {
+            if metadata_richness(&players[idx]) >= best_score {
+                return idx;
+            }
+        }
+    }
+
     best_idx
 }
 
