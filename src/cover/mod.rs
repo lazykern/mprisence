@@ -206,6 +206,25 @@ impl CoverManager {
         DirectUrlPolicy::allow()
     }
 
+    /// Synchronous, in-process cache-only lookup. No HTTP, no validation.
+    /// Used by the presence fast path so Discord receives a track update
+    /// without waiting for slow providers when a usable cached URL exists.
+    /// Returns `None` on miss, deserialize error, or expired entry — the
+    /// async `get_cover_art` path will revalidate / re-fetch as needed.
+    pub fn try_cached_cover_art(&self, metadata_source: &MetadataSource) -> Option<String> {
+        let cache_key = CoverCache::generate_key(metadata_source);
+        let entry = self.cache.get_by_key(&cache_key).ok().flatten()?;
+
+        if entry.provider.eq_ignore_ascii_case("direct") {
+            let policy = Self::direct_url_policy(&entry.url);
+            if !policy.allow_direct {
+                return None;
+            }
+        }
+
+        Some(entry.url)
+    }
+
     pub async fn get_cover_art(
         &self,
         source: Option<ArtSource>,

@@ -741,58 +741,10 @@ impl Presence {
             .template_manager
             .render_activity_texts(&self.player, media_metadata, player_config.name.as_deref())?;
 
-        // Checkpoint 1: abort before the expensive cover art HTTP fetch if a newer
-        // TrackChanged has already superseded this update.
+        // Checkpoint 1: abort before any cover lookup if a newer TrackChanged
+        // has already superseded this update.
         if !self.generation_matches(generation) {
-            trace!("before cover fetch: generation mismatch; discarding stale update");
-            return Ok(());
-        }
-
-        let cover_art_result = if let Some(gen) = generation {
-            tokio::select! {
-                result = self.cover_manager.get_cover_art(metadata_source.art_source(), &metadata_source) => result,
-                _ = self.update_notify.notified() => {
-                    if self.update_generation.load(Ordering::Relaxed) != gen {
-                        trace!("cover fetch cancelled: newer track arrived while provider was working");
-                        return Ok(());
-                    }
-                    self.cover_manager
-                        .get_cover_art(metadata_source.art_source(), &metadata_source)
-                        .await
-                }
-            }
-        } else {
-            self.cover_manager
-                .get_cover_art(metadata_source.art_source(), &metadata_source)
-                .await
-        };
-
-        let cover_art_url = match cover_art_result {
-            Ok(Some(url)) => {
-                debug!("Found cover art URL for Discord presence");
-                trace!("Cover art URL: {}", url);
-                Some(url)
-            }
-            Ok(None) => {
-                debug!("No cover art available for Discord presence");
-                None
-            }
-            Err(e) => {
-                warn!("Failed to retrieve cover art: {}", e);
-                trace!("Cover art must be accessible via HTTP/HTTPS for Discord");
-                None
-            }
-        };
-
-        // Checkpoint 2: discard result if the player changed while cover art was fetching.
-        // This protects polling and event-driven mode even while the event loop is blocked
-        // awaiting a slow cover provider: only the currently playing track may update Discord.
-        if self.should_discard_stale_update(
-            &self.player,
-            generation,
-            &update_snapshot,
-            "after cover fetch",
-        ) {
+            trace!("before cover lookup: generation mismatch; discarding stale update");
             return Ok(());
         }
 
@@ -801,71 +753,20 @@ impl Presence {
             &player_config,
             track_url_ref,
         );
+        let status_display_type = resolve_status_display_type(&player_config);
 
-        let mut activity = Activity::default()
-            .activity_type(activity_type.into())
-            .status_display_type(resolve_status_display_type(&player_config).into());
-
-        if !activity_texts.details.is_empty() {
-            trace!("Setting activity details: {}", activity_texts.details);
-            activity = activity.details(&activity_texts.details);
-        }
-
-        if !activity_texts.state.is_empty() {
-            trace!("Setting activity state: {}", activity_texts.state);
-            activity = activity.state(&activity_texts.state);
-        }
-
-        if let Some(start) = start_s {
-            activity = activity.timestamps({
-                let ts = Timestamps::default().start(start as i64);
-                if let Some(end) = end_s {
-                    trace!("Setting activity timestamps: start={}, end={}", start, end);
-                    ts.end(end as i64)
-                } else {
-                    trace!("Setting activity timestamps: start={}", start);
-                    ts
-                }
-            });
-        }
-
-        let mut assets = Assets::default();
-
-        if let Some(img_url) = &cover_art_url {
-            trace!("Setting Discord large image asset (cover art): {}", img_url);
-            assets = assets.large_image(img_url);
-            if !activity_texts.large_text.is_empty() {
-                trace!("Setting Discord large text: {}", activity_texts.large_text);
-                assets = assets.large_text(&activity_texts.large_text);
-            }
-
-            if player_config.show_icon {
-                trace!(
-                    "Setting Discord small image asset (player icon): {}",
-                    player_config.icon
-                );
-                assets = assets.small_image(player_config.icon.as_str());
-                if !activity_texts.small_text.is_empty() {
-                    trace!("Setting Discord small text: {}", activity_texts.small_text);
-                    assets = assets.small_text(&activity_texts.small_text);
-                }
-            }
+        // Fast path: try a sync, in-process cache lookup so a cached cover
+        // attaches to the very first push. Cache miss → push immediately with
+        // the player icon, then fetch the real cover in the background.
+        let cached_cover = self.cover_manager.try_cached_cover_art(&metadata_source);
+        if cached_cover.is_some() {
+            debug!("Serving cached cover art on fast path");
         } else {
-            trace!(
-                "No cover art found, using player icon as large image: {}",
-                player_config.icon
-            );
-            assets = assets.large_image(player_config.icon.as_str());
-            if !activity_texts.large_text.is_empty() {
-                trace!("Setting Discord large text: {}", activity_texts.large_text);
-                assets = assets.large_text(&activity_texts.large_text);
-            }
+            trace!("No cached cover; pushing placeholder and spawning background fetch");
         }
 
-        activity = activity.assets(assets);
-
-        // Final checkpoint immediately before the Discord write, so a stale async
-        // cover-art result cannot overwrite a newer song/status.
+        // Final checkpoint right before the Discord write so a stale push
+        // cannot overwrite a newer song/status.
         if self.should_discard_stale_update(
             &self.player,
             generation,
@@ -878,16 +779,23 @@ impl Presence {
         if !self.error_logged.load(Ordering::Relaxed) {
             debug!("Updating Discord activity");
         }
-        discord_client
-            .lock()
-            .set_activity(activity)
-            .map_err(|err| {
-                if !self.error_logged.load(Ordering::Relaxed) {
-                    error!("Failed to set Discord activity: {}", err);
-                    self.error_logged.store(true, Ordering::Relaxed);
-                }
-                DiscordError::ActivityError(err.to_string())
-            })?;
+        Self::build_and_push_activity(
+            &discord_client,
+            &activity_texts,
+            start_s,
+            end_s,
+            cached_cover.as_deref(),
+            &player_config,
+            activity_type,
+            status_display_type,
+        )
+        .map_err(|err| {
+            if !self.error_logged.load(Ordering::Relaxed) {
+                error!("Failed to set Discord activity: {}", err);
+                self.error_logged.store(true, Ordering::Relaxed);
+            }
+            err
+        })?;
         if !self.error_logged.load(Ordering::Relaxed) {
             info!(
                 "Updated Discord activity for {} - {} ({:?})",
@@ -898,6 +806,151 @@ impl Presence {
         }
         self.error_logged.store(false, Ordering::Relaxed);
 
+        // Slow path: cache miss → background cover fetch + second push when ready.
+        if cached_cover.is_none() {
+            let cover_manager = Arc::clone(&self.cover_manager);
+            let discord_client_for_task = Arc::clone(&discord_client);
+            let update_generation = Arc::clone(&self.update_generation);
+            let update_notify = Arc::clone(&self.update_notify);
+            let texts_for_task = activity_texts.clone();
+            let player_config_for_task = player_config.clone();
+            let identity_for_task = self.player.identity().to_string();
+            let metadata_source_for_task = metadata_source;
+            let gen_value = generation;
+
+            tokio::spawn(async move {
+                let art_source = metadata_source_for_task.art_source();
+                let cover_art_result = if let Some(gen) = gen_value {
+                    tokio::select! {
+                        result = cover_manager.get_cover_art(art_source.clone(), &metadata_source_for_task) => result,
+                        _ = update_notify.notified() => {
+                            if update_generation.load(Ordering::Relaxed) != gen {
+                                trace!("background cover fetch cancelled: newer track arrived");
+                                return;
+                            }
+                            cover_manager
+                                .get_cover_art(art_source.clone(), &metadata_source_for_task)
+                                .await
+                        }
+                    }
+                } else {
+                    cover_manager
+                        .get_cover_art(art_source.clone(), &metadata_source_for_task)
+                        .await
+                };
+
+                let cover_url = match cover_art_result {
+                    Ok(Some(url)) => url,
+                    Ok(None) => {
+                        debug!("Background cover fetch produced no art for {}", identity_for_task);
+                        return;
+                    }
+                    Err(err) => {
+                        warn!(
+                            "Background cover fetch failed for {}: {}",
+                            identity_for_task, err
+                        );
+                        return;
+                    }
+                };
+
+                if let Some(gen) = gen_value {
+                    if update_generation.load(Ordering::Relaxed) != gen {
+                        trace!(
+                            "background cover result discarded: newer track for {}",
+                            identity_for_task
+                        );
+                        return;
+                    }
+                }
+
+                debug!("Found cover art URL for Discord presence");
+                if let Err(err) = Self::build_and_push_activity(
+                    &discord_client_for_task,
+                    &texts_for_task,
+                    start_s,
+                    end_s,
+                    Some(cover_url.as_str()),
+                    &player_config_for_task,
+                    activity_type,
+                    status_display_type,
+                ) {
+                    warn!(
+                        "Failed to push cover art update for {}: {}",
+                        identity_for_task, err
+                    );
+                } else {
+                    info!(
+                        "Updated Discord cover art for {} - {}",
+                        identity_for_task, texts_for_task.details
+                    );
+                }
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Build a Discord `Activity` and push it. Callable from both the fast
+    /// path (event handler) and the slow path (background cover fetch task)
+    /// because it captures no `&self` state — all inputs are owned or
+    /// `Arc`-shared.
+    fn build_and_push_activity(
+        discord_client: &Arc<Mutex<DiscordIpcClient>>,
+        texts: &crate::template::ActivityTexts,
+        start_s: Option<u64>,
+        end_s: Option<u64>,
+        cover_art_url: Option<&str>,
+        player_config: &PlayerConfig,
+        activity_type: ActivityType,
+        status_display_type: StatusDisplayType,
+    ) -> Result<(), DiscordError> {
+        let mut activity = Activity::default()
+            .activity_type(activity_type.into())
+            .status_display_type(status_display_type.into());
+
+        if !texts.details.is_empty() {
+            activity = activity.details(&texts.details);
+        }
+        if !texts.state.is_empty() {
+            activity = activity.state(&texts.state);
+        }
+
+        if let Some(start) = start_s {
+            activity = activity.timestamps({
+                let ts = Timestamps::default().start(start as i64);
+                if let Some(end) = end_s {
+                    ts.end(end as i64)
+                } else {
+                    ts
+                }
+            });
+        }
+
+        let mut assets = Assets::default();
+        if let Some(img_url) = cover_art_url {
+            assets = assets.large_image(img_url);
+            if !texts.large_text.is_empty() {
+                assets = assets.large_text(&texts.large_text);
+            }
+            if player_config.show_icon {
+                assets = assets.small_image(player_config.icon.as_str());
+                if !texts.small_text.is_empty() {
+                    assets = assets.small_text(&texts.small_text);
+                }
+            }
+        } else {
+            assets = assets.large_image(player_config.icon.as_str());
+            if !texts.large_text.is_empty() {
+                assets = assets.large_text(&texts.large_text);
+            }
+        }
+        activity = activity.assets(assets);
+
+        discord_client
+            .lock()
+            .set_activity(activity)
+            .map_err(|err| DiscordError::ActivityError(err.to_string()))?;
         Ok(())
     }
 

@@ -55,7 +55,7 @@ pub struct TemplateManager {
     handlebars: Handlebars<'static>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ActivityTexts {
     pub details: String,
     pub state: String,
