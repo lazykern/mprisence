@@ -201,46 +201,6 @@ impl CoverManager {
         false
     }
 
-    /// Attempt to fetch the cover art URL from a SoundCloud track page by
-    /// extracting the og:image meta tag. Returns the `i1.sndcdn.com` artwork URL.
-    async fn soundcloud_artwork_from_track_url(track_url: &str) -> Option<String> {
-        let parsed = Url::parse(track_url).ok()?;
-        let host = parsed.host_str()?.to_ascii_lowercase();
-
-        if host != "soundcloud.com" && host != "www.soundcloud.com" && host != "m.soundcloud.com" {
-            return None;
-        }
-
-        let client = create_shared_client();
-        let resp = match client.get(track_url).send().await {
-            Ok(r) if r.status().is_success() => r,
-            _ => return None,
-        };
-
-        let body = resp.text().await.ok()?;
-
-        // Look for og:image meta tag containing sndcdn.com artwork
-        // Pattern: <meta property="og:image" content="https://i1.sndcdn.com/artworks-...">
-        for line in body.lines() {
-            if line.contains("og:image") {
-                if let Some(start) = line.find("https://i1.sndcdn.com/artworks-") {
-                    let rest = &line[start..];
-                    let end = rest.find('"').unwrap_or(rest.len());
-                    let url = &rest[..end];
-                    // Prefer t500x500 size for Discord
-                    let artwork_url = if url.contains("-large.") {
-                        url.replace("-large.", "-t500x500.")
-                    } else {
-                        url.to_string()
-                    };
-                    return Some(artwork_url);
-                }
-            }
-        }
-
-        None
-    }
-
     /// Attempt to extract a YouTube video ID from a YouTube / YouTube Music
     /// track URL and return the public thumbnail URL.
     fn youtube_thumbnail_from_track_url(track_url: &str) -> Option<String> {
@@ -530,20 +490,6 @@ impl CoverManager {
         }
 
         // 4. Try configured providers with the prepared source
-        // But first, if track URL is SoundCloud, try extracting artwork directly
-        // from the page (faster than uploading to providers)
-        if let Some(track_url) = metadata_source.url().as_deref() {
-            if let Some(artwork_url) = Self::soundcloud_artwork_from_track_url(track_url).await {
-                debug!(
-                    "Extracted SoundCloud artwork URL from track page: {}",
-                    artwork_url
-                );
-                self.cache_store_entry(&cache_key, "soundcloud_artwork", &artwork_url, None, None)
-                    .await?;
-                return Ok(Some(artwork_url));
-            }
-        }
-
         if let Some(source_for_providers) = source_for_providers {
             for provider in &self.providers {
                 if !provider.supports_source_type(&source_for_providers) {
