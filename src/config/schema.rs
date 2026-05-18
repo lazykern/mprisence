@@ -471,10 +471,10 @@ impl Config {
                 resolved = layer.apply_over(resolved);
             }
             if let Some(layer) = self.bundled_player.get(&key) {
-                resolved = layer.apply_over(resolved);
+                resolved = layer.apply_as_matched_over(resolved);
             }
             if let Some(layer) = self.user_player.get(&key) {
-                resolved = layer.apply_over(resolved);
+                resolved = layer.apply_as_matched_over(resolved);
             }
 
             result.insert(key, resolved);
@@ -495,7 +495,7 @@ impl Config {
         }
 
         for layer in matches {
-            resolved = layer.apply_over(resolved);
+            resolved = layer.apply_as_matched_over(resolved);
         }
 
         resolved
@@ -902,7 +902,75 @@ mod wildcard_tests {
         let res = cfg.get_player_config("VLC media player", "vlc_media_player");
         assert_eq!(res.app_id, "BUNDLED"); // inherited
         assert!(res.show_icon); // overridden by user regex
-        assert!(res.ignore); // inherited from bundled exact
+        assert!(!res.ignore); // explicit user match opts the player in
+    }
+
+    #[test]
+    fn matched_player_entry_without_ignore_opts_in_from_ignored_default() {
+        let mut cfg = Config::default();
+        cfg.bundled_player.insert(
+            "default".to_string(),
+            layer(Some(false), Some(true), Some("MPRISENCE")),
+        );
+        cfg.user_player.insert(
+            "custom_player".to_string(),
+            PlayerConfigLayer {
+                app_id: Some("CUSTOM".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let custom = cfg.get_player_config("Custom Player", "custom_player");
+        assert_eq!(custom.app_id, "CUSTOM");
+        assert!(!custom.ignore);
+
+        let unknown = cfg.get_player_config("Unknown Player", "unknown_player");
+        assert_eq!(unknown.app_id, "MPRISENCE");
+        assert!(unknown.ignore);
+    }
+
+    #[test]
+    fn explicit_ignore_true_on_matched_player_still_wins() {
+        let mut cfg = Config::default();
+        cfg.bundled_player.insert(
+            "default".to_string(),
+            layer(Some(false), Some(true), Some("MPRISENCE")),
+        );
+        cfg.user_player.insert(
+            "custom_player".to_string(),
+            PlayerConfigLayer {
+                ignore: Some(true),
+                app_id: Some("CUSTOM".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let custom = cfg.get_player_config("Custom Player", "custom_player");
+        assert_eq!(custom.app_id, "CUSTOM");
+        assert!(custom.ignore);
+    }
+
+    #[test]
+    fn effective_player_configs_show_matched_entries_as_enabled() {
+        let mut cfg = Config::default();
+        cfg.bundled_player.insert(
+            "default".to_string(),
+            layer(Some(false), Some(true), Some("MPRISENCE")),
+        );
+        cfg.user_player.insert(
+            "custom_player".to_string(),
+            PlayerConfigLayer {
+                app_id: Some("CUSTOM".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let effective = cfg.effective_player_configs();
+        let custom = effective
+            .get("custom_player")
+            .expect("custom player config");
+        assert_eq!(custom.app_id, "CUSTOM");
+        assert!(!custom.ignore);
     }
 
     #[test]
@@ -1334,6 +1402,17 @@ impl PlayerConfigLayer {
         }
 
         base
+    }
+
+    /// Apply a non-default `[player.*]` match. A concrete player entry is an
+    /// opt-in by default, so it clears `[player.default].ignore = true` unless
+    /// the entry explicitly sets `ignore`.
+    pub fn apply_as_matched_over(&self, base: PlayerConfig) -> PlayerConfig {
+        let mut resolved = self.apply_over(base);
+        if self.ignore.is_none() {
+            resolved.ignore = false;
+        }
+        resolved
     }
 
     pub fn merge_from(&mut self, other: PlayerConfigLayer) {

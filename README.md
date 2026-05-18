@@ -410,9 +410,10 @@ expiration = 86400
 ```toml
 # Use 'mprisence players list' to get the correct player identity (e.g., vlc_media_player)
 
-# Default settings applied to ALL players unless overridden below
+# Default settings applied to ALL players unless overridden below.
+# Keep this true to prevent unknown players from showing as "mprisence".
 [player.default]
-ignore = false # Set to true to disable presence for all players by default
+ignore = true # Set to false only if you want to allow unknown players by default
 app_id = "1121632048155742288" # Default Discord Application ID
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png" # Default icon URL
 show_icon = false # Show player icon as small image by default?
@@ -425,6 +426,7 @@ status_display_type = "name" # Controls status text; bundled app ID would show "
 
 # Override settings for a specific player (VLC in this example)
 [player.vlc_media_player]
+# Any non-default [player.*] match opts that player in, so ignore = false is not needed.
 # You can override any key from [player.default] here
 app_id = "YOUR_VLC_APP_ID_HERE" # Use a VLC-specific Discord App ID
 icon = "https://example.com/vlc-icon.png" # Use a VLC-specific icon
@@ -447,7 +449,7 @@ When `allow_streaming` is `false`, mprisence will skip HTTP/HTTPS sources for th
 
 </details>
 
-Player config priority: user entries always override bundled ones. The resolver tries user exact > user regex > user wildcard > bundled exact > bundled regex > bundled wildcard; any field left unset on a higher-priority match is filled from the next match down, falling back to `[player.default]` (user, then bundled) and finally built-in defaults. When identity and bus-name differ (for example with proxies like `playerctld`), an exact user bus-name entry wins over identity-derived matches.
+Player config priority: user entries always override bundled ones. The resolver tries user exact > user regex > user wildcard > bundled exact > bundled regex > bundled wildcard; any field left unset on a higher-priority match is filled from the next match down, falling back to `[player.default]` (user, then bundled) and finally built-in defaults. A non-default `[player.*]` match enables that player unless the matching entry explicitly sets `ignore = true`, while unmatched players can remain hidden behind `[player.default].ignore = true`. When identity and bus-name differ (for example with proxies like `playerctld`), an exact user bus-name entry wins over identity-derived matches.
 
 ## CLI Commands
 
