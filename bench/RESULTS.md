@@ -9,7 +9,7 @@
 - Three configurations:
   - `main-poll-2s` — `/usr/bin/mprisence` 1.4.5 (no event-driven code path), `interval=2000`
   - `branch-poll-2s` — feature branch, `event_driven=false`, `interval=2000` (regression control)
-  - `branch-event` — feature branch, `event_driven=true`, `discovery_interval=5000`
+  - `branch-event` — feature branch, `event_driven=true`, `fallback_poll_interval=5000`
 
 ## Active workload (120 s, with `pause → play → seek → next` at t=40/50/60/70)
 
@@ -95,4 +95,4 @@ XDG_CONFIG_HOME=/tmp/bench-cfg-bp ./scripts/bench.sh branch-poll-2s ./target/rel
 XDG_CONFIG_HOME=/tmp/bench-cfg-be ./scripts/bench.sh branch-event   ./target/release/mprisence    120
 ```
 
-Configs in `/tmp/bench-cfg-{mp,bp,be}/mprisence/config.toml` differ only in `event_driven` / `discovery_interval`; everything else (including `[player.default].status_display_type`) is held constant.
+Configs in `/tmp/bench-cfg-{mp,bp,be}/mprisence/config.toml` differ only in `event_driven` / `fallback_poll_interval`; everything else (including `[player.default].status_display_type`) is held constant.

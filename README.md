@@ -304,10 +304,9 @@ Notes:
 # path is preserved as an escape hatch; restart mprisence to switch modes.
 event_driven = true
 
-# Event-driven mode only: how often to scan the D-Bus session bus for
-# newly-launched or quit players (milliseconds). Lower = faster recovery
-# from a player restart; higher = less idle D-Bus chatter.
-discovery_interval = 5000
+# Event-driven mode only: how often to do a fallback poll to catch any
+# missed changes and discover newly launched or quit players (milliseconds).
+fallback_poll_interval = 5000
 
 # Polling fallback only: how often to poll each player (milliseconds).
 # Ignored when event_driven = true except as a sanity timeout in code paths

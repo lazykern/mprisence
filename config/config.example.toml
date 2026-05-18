@@ -11,9 +11,9 @@
 # falls back to polling every `interval` ms. Restart mprisence to switch modes.
 event_driven = true
 
-# Event-driven mode only: how often to scan the D-Bus session bus for newly
-# launched or quit players (milliseconds).
-discovery_interval = 5000
+# Event-driven mode only: how often to do a fallback poll to catch any
+# missed changes and discover newly launched or quit players (milliseconds).
+fallback_poll_interval = 5000
 
 # Polling fallback only: how often to poll each player (milliseconds).
 interval = 2000
