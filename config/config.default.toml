@@ -244,6 +244,7 @@ allow_streaming = true
 
 [website.youtube_music]
 match_pattern = "music.youtube.com"
+name = "YouTube Music"
 app_id = "1125082278339559505" # shared with [player."*youtube_music*"]
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/youtube-music.png"
 allow_streaming = true
@@ -251,6 +252,7 @@ ignore = false
 
 [website.soundcloud]
 match_patterns = ["soundcloud.com", "snd.sc"]
+name = "SoundCloud"
 app_id = "1505610509406437446"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/soundcloud.png"
 allow_streaming = true
@@ -258,6 +260,7 @@ ignore = false
 
 [website.qobuz]
 match_patterns = ["qobuz.com", "play.qobuz.com", "open.qobuz.com"]
+name = "Qobuz"
 app_id = "1247655024637513778"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/qobuz.png"
 allow_streaming = true
@@ -265,6 +268,7 @@ ignore = false
 
 [website.apple_music]
 match_pattern = "music.apple.com"
+name = "Apple Music"
 app_id = "1505611096273457192"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/apple-music.png"
 allow_streaming = true
@@ -272,6 +276,7 @@ ignore = false
 
 [website.bandcamp]
 match_pattern = "bandcamp.com"
+name = "Bandcamp"
 app_id = "1505611276917669908"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/bandcamp.png"
 allow_streaming = true
@@ -279,6 +284,7 @@ ignore = false
 
 [website.tidal]
 match_patterns = ["tidal.com", "listen.tidal.com", "listen.stage.tidal.com"]
+name = "Tidal"
 app_id = "1505610940488486912"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/tidal.png"
 allow_streaming = true
@@ -311,6 +317,7 @@ match_patterns = [
   "music.amazon.se",
   "music.amazon.sg",
 ]
+name = "Amazon Music"
 app_id = "1247654006587789363"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/amazon-music.png"
 allow_streaming = true
@@ -318,6 +325,7 @@ ignore = false
 
 [website.deezer]
 match_pattern = "deezer.com"
+name = "Deezer"
 app_id = "1247654082215284847"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/deezer.png"
 allow_streaming = true
@@ -325,6 +333,7 @@ ignore = false
 
 [website.pocket_casts]
 match_pattern = "play.pocketcasts.com"
+name = "Pocket Casts"
 app_id = "1291170916952309782"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/pocket-casts.png"
 allow_streaming = true
@@ -332,6 +341,7 @@ ignore = false
 
 [website.yandex_music]
 match_patterns = ["music.yandex.com", "music.yandex.ru"]
+name = "Yandex Music"
 app_id = "1295649755535511592"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/yandex-music.png"
 allow_streaming = true
@@ -339,6 +349,7 @@ ignore = false
 
 [website.podurama]
 match_pattern = "podurama.com"
+name = "Podurama"
 app_id = "1300521928309735476"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/podurama.png"
 allow_streaming = true
@@ -346,6 +357,7 @@ ignore = false
 
 [website.youtube]
 match_patterns = ["youtube.com", "youtu.be"]
+name = "YouTube"
 app_id = "1301894190904639559"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/youtube.png"
 allow_streaming = true
@@ -353,6 +365,7 @@ ignore = false
 
 [website.apple_podcasts]
 match_pattern = "podcasts.apple.com"
+name = "Apple Podcasts"
 app_id = "1308949234829234228"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/apple-podcasts.png"
 allow_streaming = true
@@ -362,6 +375,7 @@ ignore = false
 # `ignore = false` in their own config to enable it.
 [website.spotify_web]
 match_pattern = "open.spotify.com"
+name = "Spotify"
 app_id = "1247651846936596540"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/spotify.png"
 ignore = true

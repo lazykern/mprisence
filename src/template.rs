@@ -26,7 +26,7 @@ pub struct RenderContext {
 }
 
 impl RenderContext {
-    pub fn new(player: &Player, metadata: MediaMetadata) -> Self {
+    pub fn new(player: &Player, metadata: MediaMetadata, name_override: Option<&str>) -> Self {
         let status = player
             .get_playback_status()
             .map(|s| format!("{:?}", s))
@@ -39,7 +39,9 @@ impl RenderContext {
             .ok();
 
         Self {
-            player: player.identity().to_string(),
+            player: name_override
+                .unwrap_or_else(|| player.identity())
+                .to_string(),
             player_bus_name: canonical_player_bus_name(player.bus_name()),
             status,
             status_icon,
@@ -148,11 +150,12 @@ impl TemplateManager {
         &self,
         player: &Player,
         metadata: MediaMetadata,
+        name_override: Option<&str>,
     ) -> Result<ActivityTexts, TemplateError> {
         trace!("Creating activity texts for player: {}", player.identity());
 
         debug!("Creating render context with player and metadata information");
-        let render_context = RenderContext::new(player, metadata);
+        let render_context = RenderContext::new(player, metadata, name_override);
 
         trace!("Rendering all activity text templates");
         let details = self.render("details", &render_context)?;

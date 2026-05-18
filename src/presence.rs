@@ -739,7 +739,7 @@ impl Presence {
 
         let activity_texts = self
             .template_manager
-            .render_activity_texts(&self.player, media_metadata)?;
+            .render_activity_texts(&self.player, media_metadata, player_config.name.as_deref())?;
 
         // Checkpoint 1: abort before the expensive cover art HTTP fetch if a newer
         // TrackChanged has already superseded this update.

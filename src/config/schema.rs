@@ -1175,6 +1175,9 @@ impl From<StatusDisplayType> for discord_rich_presence::activity::StatusDisplayT
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PlayerConfigLayer {
     #[serde(default)]
+    pub name: Option<String>,
+
+    #[serde(default)]
     pub ignore: Option<bool>,
 
     #[serde(default)]
@@ -1198,6 +1201,9 @@ pub struct PlayerConfigLayer {
 
 impl PlayerConfigLayer {
     pub fn apply_over(&self, mut base: PlayerConfig) -> PlayerConfig {
+        if let Some(value) = &self.name {
+            base.name = Some(value.clone());
+        }
         if let Some(value) = self.ignore {
             base.ignore = value;
         }
@@ -1224,6 +1230,9 @@ impl PlayerConfigLayer {
     }
 
     pub fn merge_from(&mut self, other: PlayerConfigLayer) {
+        if other.name.is_some() {
+            self.name = other.name;
+        }
         if other.ignore.is_some() {
             self.ignore = other.ignore;
         }
@@ -1250,6 +1259,9 @@ impl PlayerConfigLayer {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerConfig {
+    #[serde(default)]
+    pub name: Option<String>,
+
     #[serde(default = "default_player_ignore")]
     pub ignore: bool,
 
@@ -1299,6 +1311,7 @@ fn default_player_status_display_type() -> StatusDisplayType {
 impl Default for PlayerConfig {
     fn default() -> PlayerConfig {
         PlayerConfig {
+            name: None,
             ignore: default_player_ignore(),
             app_id: default_player_app_id(),
             icon: default_player_icon(),
@@ -1317,6 +1330,12 @@ impl Default for PlayerConfig {
 pub struct WebsiteConfigLayer {
     #[serde(default)]
     pub match_pattern: Option<String>,
+
+    #[serde(default)]
+    pub match_patterns: Option<Vec<String>>,
+
+    #[serde(default)]
+    pub name: Option<String>,
 
     #[serde(default)]
     pub ignore: Option<bool>,
@@ -1341,7 +1360,29 @@ pub struct WebsiteConfigLayer {
 }
 
 impl WebsiteConfigLayer {
+    /// Combined view of `match_pattern` (singular) and `match_patterns`
+    /// (plural) entries from the TOML, in declared order.
+    pub fn effective_patterns(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        if let Some(p) = self.match_pattern.as_deref() {
+            if !p.is_empty() {
+                out.push(p);
+            }
+        }
+        if let Some(ps) = self.match_patterns.as_deref() {
+            for p in ps {
+                if !p.is_empty() {
+                    out.push(p.as_str());
+                }
+            }
+        }
+        out
+    }
+
     pub fn apply_over(&self, mut base: PlayerConfig) -> PlayerConfig {
+        if let Some(value) = &self.name {
+            base.name = Some(value.clone());
+        }
         if let Some(value) = self.ignore {
             base.ignore = value;
         }
@@ -1370,6 +1411,12 @@ impl WebsiteConfigLayer {
         if other.match_pattern.is_some() {
             self.match_pattern = other.match_pattern;
         }
+        if other.match_patterns.is_some() {
+            self.match_patterns = other.match_patterns;
+        }
+        if other.name.is_some() {
+            self.name = other.name;
+        }
         if other.ignore.is_some() {
             self.ignore = other.ignore;
         }
@@ -1394,8 +1441,12 @@ impl WebsiteConfigLayer {
     }
 
     fn apply_into_website(&self, mut base: WebsiteConfig) -> WebsiteConfig {
-        if let Some(value) = &self.match_pattern {
-            base.match_pattern = value.clone();
+        let patterns = self.effective_patterns();
+        if !patterns.is_empty() {
+            base.match_patterns = patterns.into_iter().map(|s| s.to_string()).collect();
+        }
+        if let Some(value) = &self.name {
+            base.name = Some(value.clone());
         }
         if let Some(value) = self.ignore {
             base.ignore = value;
@@ -1428,7 +1479,9 @@ impl WebsiteConfigLayer {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WebsiteConfig {
     #[serde(default)]
-    pub match_pattern: String,
+    pub match_patterns: Vec<String>,
+    #[serde(default)]
+    pub name: Option<String>,
     #[serde(default)]
     pub ignore: bool,
     #[serde(default)]
@@ -1505,6 +1558,36 @@ mod website_tests {
         );
         assert_eq!(resolved.app_id, "YT");
         assert!(resolved.allow_streaming);
+    }
+
+    #[test]
+    fn website_match_patterns_plural_any_entry_matches() {
+        let mut cfg = Config::default();
+        cfg.bundled_website.insert(
+            "soundcloud".into(),
+            WebsiteConfigLayer {
+                match_patterns: Some(vec!["soundcloud.com".into(), "snd.sc".into()]),
+                app_id: Some("SC".into()),
+                allow_streaming: Some(true),
+                ..Default::default()
+            },
+        );
+
+        let resolved_long = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://soundcloud.com/discover/sets/x"),
+        );
+        assert_eq!(resolved_long.app_id, "SC");
+        assert!(resolved_long.allow_streaming);
+
+        let resolved_short = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://snd.sc/abc"),
+        );
+        assert_eq!(resolved_short.app_id, "SC");
+        assert!(resolved_short.allow_streaming);
     }
 
     #[test]
@@ -1614,30 +1697,30 @@ fn find_matching_website_layer(
     let mut best: Option<(WebsiteConfigLayer, (u8, usize))> = None;
 
     for layer in source.values() {
-        let Some(pattern) = layer.match_pattern.as_deref() else {
-            continue;
-        };
-        if pattern.is_empty() {
+        let patterns = layer.effective_patterns();
+        if patterns.is_empty() {
             continue;
         }
 
-        let score: Option<(u8, usize)> = if pattern == url_host {
-            Some((3, pattern.len()))
-        } else if let Some(re) = regex_from_pattern(pattern) {
-            re.is_match(url_host).then_some((2, pattern.len()))
-        } else if is_wildcard_pattern(pattern) {
-            wildcard_match(pattern, url_host).then(|| (1, pattern_specificity(pattern)))
-        } else if url_host.contains(pattern) {
-            Some((0, pattern.len()))
-        } else {
-            None
-        };
+        for pattern in patterns {
+            let score: Option<(u8, usize)> = if pattern == url_host {
+                Some((3, pattern.len()))
+            } else if let Some(re) = regex_from_pattern(pattern) {
+                re.is_match(url_host).then_some((2, pattern.len()))
+            } else if is_wildcard_pattern(pattern) {
+                wildcard_match(pattern, url_host).then(|| (1, pattern_specificity(pattern)))
+            } else if url_host.contains(pattern) {
+                Some((0, pattern.len()))
+            } else {
+                None
+            };
 
-        let Some(score) = score else { continue };
+            let Some(score) = score else { continue };
 
-        match &best {
-            Some((_, current)) if *current >= score => {}
-            _ => best = Some((layer.clone(), score)),
+            match &best {
+                Some((_, current)) if *current >= score => {}
+                _ => best = Some((layer.clone(), score)),
+            }
         }
     }
 

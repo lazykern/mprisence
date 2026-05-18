@@ -340,6 +340,9 @@ impl Command {
                     for (index, (identity, cfg)) in player_configs.iter().enumerate() {
                         let display = player_config_display_name(identity);
                         println!("{} {}", player_config_icon(cfg.ignore), display);
+                        if let Some(name) = cfg.name.as_deref() {
+                            print_nested_key_value("name", name, 4);
+                        }
                         print_nested_key_value("app_id", &cfg.app_id, 4);
                         print_nested_key_value(
                             "allow_streaming",
@@ -379,7 +382,18 @@ impl Command {
                 } else {
                     for (index, (key, cfg)) in website_configs.iter().enumerate() {
                         println!("{} {}", player_config_icon(cfg.ignore), key);
-                        print_nested_key_value("match_pattern", &cfg.match_pattern, 4);
+                        if cfg.match_patterns.len() == 1 {
+                            print_nested_key_value("match_pattern", &cfg.match_patterns[0], 4);
+                        } else if !cfg.match_patterns.is_empty() {
+                            print_nested_key_value(
+                                "match_patterns",
+                                &cfg.match_patterns.join(", "),
+                                4,
+                            );
+                        }
+                        if let Some(name) = cfg.name.as_deref() {
+                            print_nested_key_value("name", name, 4);
+                        }
                         if let Some(app_id) = cfg.app_id.as_deref() {
                             print_nested_key_value("app_id", app_id, 4);
                         } else {
