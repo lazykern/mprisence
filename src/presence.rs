@@ -785,8 +785,8 @@ impl Presence {
         // attaches to the very first push. Cache miss → push immediately with
         // the player icon, then fetch the real cover in the background.
         let cached_cover = self.cover_manager.try_cached_cover_art(&metadata_source);
-        if cached_cover.is_some() {
-            debug!("Serving cached cover art on fast path");
+        if let Some(cover_url) = cached_cover.as_deref() {
+            debug!("Serving cached cover art on fast path: {}", cover_url);
         } else {
             trace!("No cached cover; pushing placeholder and spawning background fetch");
         }
@@ -887,7 +887,7 @@ impl Presence {
                     return;
                 }
 
-                debug!("Found cover art URL for Discord presence");
+                debug!("Found cover art URL for Discord presence: {}", cover_url);
                 if let Err(err) = Self::build_and_push_activity(
                     &discord_client_for_task,
                     &texts_for_task,

@@ -1,10 +1,13 @@
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use catbox::{file, litter};
+use image::{imageops::FilterType, ImageFormat};
 use log::{debug, info, trace, warn};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::fs;
+use tokio::task::spawn_blocking;
 
 use crate::config::schema::CatboxConfig;
 use crate::cover::error::CoverArtError;
@@ -114,14 +117,15 @@ impl CatboxProvider {
     }
 
     async fn upload_from_bytes(&self, data: &[u8]) -> Result<String, CoverArtError> {
+        let prepared = self.prepare_upload_bytes(data.to_vec()).await?;
         let temp_path = Self::temp_file_path();
         trace!(
             "Writing {} bytes to temporary file for Catbox upload: {:?}",
-            data.len(),
+            prepared.len(),
             temp_path
         );
 
-        fs::write(&temp_path, data).await.map_err(|e| {
+        fs::write(&temp_path, &prepared).await.map_err(|e| {
             CoverArtError::provider_error(self.provider_label(), &format!("write failed: {e}"))
         })?;
 
@@ -133,6 +137,63 @@ impl CatboxProvider {
             );
         }
         result
+    }
+
+    /// Decode + resize if larger than `MAX_DIM` on either axis or oversized
+    /// in bytes. Skips work for small images. Re-encodes as JPEG q=85 because
+    /// album covers don't need alpha and JPEG shrinks far better than PNG.
+    /// CPU-bound; runs on a blocking task so the async runtime stays free.
+    async fn prepare_upload_bytes(&self, bytes: Vec<u8>) -> Result<Vec<u8>, CoverArtError> {
+        const MAX_DIM: u32 = 512;
+        const MAX_BYTES: usize = 256 * 1024;
+
+        if bytes.len() <= MAX_BYTES {
+            // Cheap path: trust small files — quick check would have to decode
+            // anyway, and album cover thumbnails are commonly already small.
+            return Ok(bytes);
+        }
+
+        let provider = self.provider_label();
+        let original_len = bytes.len();
+        spawn_blocking(move || -> Result<Vec<u8>, CoverArtError> {
+            let img = image::load_from_memory(&bytes).map_err(|e| {
+                CoverArtError::provider_error(provider, &format!("image decode failed: {e}"))
+            })?;
+            let (w, h) = (img.width(), img.height());
+
+            if w <= MAX_DIM && h <= MAX_DIM {
+                return Ok(bytes);
+            }
+
+            let resized = img.resize(MAX_DIM, MAX_DIM, FilterType::Lanczos3);
+            let (nw, nh) = (resized.width(), resized.height());
+            let mut out: Vec<u8> = Vec::with_capacity(64 * 1024);
+            let mut cursor = Cursor::new(&mut out);
+            resized
+                .into_rgb8()
+                .write_to(&mut cursor, ImageFormat::Jpeg)
+                .map_err(|e| {
+                    CoverArtError::provider_error(
+                        provider,
+                        &format!("image re-encode failed: {e}"),
+                    )
+                })?;
+            debug!(
+                "{} resized cover art {}x{} ({} B) -> {}x{} ({} B JPEG)",
+                provider,
+                w,
+                h,
+                original_len,
+                nw,
+                nh,
+                out.len()
+            );
+            Ok(out)
+        })
+        .await
+        .map_err(|e| {
+            CoverArtError::provider_error(self.provider_label(), &format!("resize task: {e}"))
+        })?
     }
 
     fn temp_file_path() -> PathBuf {
@@ -174,7 +235,18 @@ impl CoverArtProvider for CatboxProvider {
         debug!("Processing cover art with {} provider", self.name());
 
         let url = match source {
-            ArtSource::File(path) => Some(self.upload_from_path(&path).await?),
+            ArtSource::File(path) => {
+                // Route through the bytes path so resize/recompression applies
+                // uniformly regardless of whether the source was a file or
+                // inline bytes from MPRIS.
+                let bytes = fs::read(&path).await.map_err(|e| {
+                    CoverArtError::provider_error(
+                        self.provider_label(),
+                        &format!("read {:?}: {e}", path),
+                    )
+                })?;
+                Some(self.upload_from_bytes(&bytes).await?)
+            }
             ArtSource::Bytes(data) => Some(self.upload_from_bytes(&data).await?),
             ArtSource::Base64(data) => {
                 let bytes = self.base64_to_bytes(&data)?;
