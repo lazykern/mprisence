@@ -625,11 +625,14 @@ impl Mprisence {
                     warn!("Failed to destroy Discord client for {}: {}", norm_id, e);
                 }
             }
-            // Trigger a fresh discovery so a replacement (e.g. restarted player on a new
-            // unique_name) gets picked up quickly without waiting for the next tick.
-            if let Err(e) = self.update().await {
-                error!("Post-removal rediscovery failed: {}", e);
-            }
+            // Do NOT trigger immediate rediscovery here. The D-Bus name may
+            // linger briefly after the player signals shutdown, causing a
+            // spurious re-detection that opens a new Discord IPC connection.
+            // That second connection interferes with Discord's activity cleanup
+            // from the first connection, leaving a stale rich presence.
+            // Instead, let the normal discovery_interval tick (default 5s)
+            // handle re-detection — by then the name will be fully gone, or
+            // if the player genuinely restarted it will be picked up cleanly.
             self.ensure_listeners(tx);
         }
     }
