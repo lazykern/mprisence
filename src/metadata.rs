@@ -437,15 +437,22 @@ impl MetadataSource {
         };
 
         if let Some(artists) = self.artists() {
-            metadata.artists = artists.clone();
-            metadata.artist_display = Some(artists.join(", "));
+            let artists: Vec<String> = artists.into_iter().filter(|s| !s.is_empty()).collect();
+            if !artists.is_empty() {
+                metadata.artist_display = Some(artists.join(", "));
+                metadata.artists = artists;
+            }
         }
 
         metadata.album = self.album();
 
         if let Some(album_artists) = self.album_artists() {
-            metadata.album_artists = album_artists.clone();
-            metadata.album_artist_display = Some(album_artists.join(", "));
+            let album_artists: Vec<String> =
+                album_artists.into_iter().filter(|s| !s.is_empty()).collect();
+            if !album_artists.is_empty() {
+                metadata.album_artist_display = Some(album_artists.join(", "));
+                metadata.album_artists = album_artists;
+            }
         }
 
         metadata.track_number = self.track_number();
