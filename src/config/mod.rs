@@ -89,11 +89,11 @@ impl ConfigManager {
             .event_driven
     }
 
-    pub fn discovery_interval(&self) -> u64 {
+    pub fn fallback_poll_interval(&self) -> u64 {
         self.config
             .read()
             .expect("Failed to read config: RwLock poisoned")
-            .discovery_interval
+            .fallback_poll_interval
     }
 
     pub fn allowed_players(&self) -> Vec<String> {
@@ -138,6 +138,25 @@ impl ConfigManager {
             .read()
             .expect("Failed to read config: RwLock poisoned")
             .get_player_config_with_url(identity, player_bus_name, url)
+    }
+
+    /// Get player config using title-suffix inference when URL is unavailable.
+    /// Returns (effective_config, suffix_to_strip).
+    pub fn get_player_config_with_title_fallback(
+        &self,
+        identity: &str,
+        player_bus_name: &str,
+        url: Option<&str>,
+        title: Option<&str>,
+    ) -> (schema::PlayerConfig, Option<String>) {
+        let guard = self.config.read().expect("Failed to read config: RwLock poisoned");
+        // If URL is available, use it (normal path).
+        if url.is_some() {
+            return (guard.get_player_config_with_url(identity, player_bus_name, url), None);
+        }
+        // No URL — try title-suffix inference.
+        let base = guard.get_player_config(identity, player_bus_name);
+        guard.apply_website_overrides_by_title(base, title)
     }
 
     pub fn website_configs(&self) -> HashMap<String, schema::WebsiteConfig> {

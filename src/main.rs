@@ -112,9 +112,14 @@ impl Mprisence {
 
         for (_norm_id, presence) in self.media_players.iter_mut() {
             let pid = presence.player_id();
-            let player_config = self
-                .config
-                .get_player_config(&pid.identity, &pid.player_bus_name);
+            let url = presence.current_url();
+            let title = presence.current_title();
+            let (player_config, _) = self.config.get_player_config_with_title_fallback(
+                &pid.identity,
+                &pid.player_bus_name,
+                url.as_deref(),
+                title.as_deref(),
+            );
             let is_allowed = self
                 .config
                 .is_player_allowed(&pid.identity, &pid.player_bus_name);
@@ -141,10 +146,12 @@ impl Mprisence {
         self.media_players.retain(|_norm_id, presence| {
             let pid = presence.player_id();
             let url = presence.current_url();
-            let player_config = self.config.get_player_config_with_url(
+            let title = presence.current_title();
+            let (player_config, _) = self.config.get_player_config_with_title_fallback(
                 &pid.identity,
                 &pid.player_bus_name,
                 url.as_deref(),
+                title.as_deref(),
             );
             !player_config.ignore
                 && self
@@ -206,23 +213,28 @@ impl Mprisence {
             if player_config.ignore {
                 // Before skipping, check if a website override un-ignores this player
                 // (e.g. SoundCloud in a browser that is ignored by default).
-                let url = player
-                    .get_metadata()
-                    .ok()
+                let meta = player.get_metadata().ok();
+                let url = meta
+                    .as_ref()
                     .and_then(|m| m.url().map(|s| s.to_string()));
-                let effective_config = self.config.get_player_config_with_url(
+                let title = meta
+                    .as_ref()
+                    .and_then(|m| m.title().map(|s| s.to_string()));
+                let (effective_config, _suffix) = self.config.get_player_config_with_title_fallback(
                     &id.identity,
                     &id.player_bus_name,
                     url.as_deref(),
+                    title.as_deref(),
                 );
                 if effective_config.ignore {
                     trace!("Skipping ignored player: {}", id.identity);
                     continue;
                 }
                 trace!(
-                    "Player '{}' ignored at player level but un-ignored by website override (url: {:?})",
+                    "Player '{}' ignored at player level but un-ignored by website override (url: {:?}, title: {:?})",
                     id.identity,
-                    url
+                    url,
+                    title,
                 );
             }
 
@@ -394,11 +406,14 @@ impl Mprisence {
             let allowed = self.config.is_player_allowed(&identity, &player_bus_name);
             // Use URL-aware config to respect website overrides (e.g. SoundCloud
             // un-ignoring a browser that is ignored by default).
+            // Also try title-suffix inference for players without xesam:url.
             let url = presence.current_url();
-            let player_config = self.config.get_player_config_with_url(
+            let title = presence.current_title();
+            let (player_config, _suffix) = self.config.get_player_config_with_title_fallback(
                 &identity,
                 &player_bus_name,
                 url.as_deref(),
+                title.as_deref(),
             );
             let keep = current_norm_ids.contains(norm_id) && !player_config.ignore && allowed;
             if !keep {
@@ -430,7 +445,7 @@ impl Mprisence {
     pub async fn run(&mut self) -> Result<(), MprisenceError> {
         info!("Starting mprisence service");
         if self.config.event_driven() {
-            info!("Run mode: event-driven (D-Bus signal monitoring)");
+            info!("Run mode: event-driven (D-Bus signal monitoring, fallback poll={}ms)", self.config.fallback_poll_interval());
             self.run_event_driven().await
         } else {
             info!("Run mode: polling (interval={}ms)", self.config.interval());
@@ -526,12 +541,12 @@ impl Mprisence {
         }
         let (event_tx, mut event_rx) = mpsc::channel::<PlayerEvent>(64);
 
-        let mut discovery_interval =
-            tokio::time::interval(Duration::from_millis(self.config.discovery_interval()));
+        let mut fallback_poll_interval =
+            tokio::time::interval(Duration::from_millis(self.config.fallback_poll_interval()));
         let mut cache_cleanup_interval = tokio::time::interval(Duration::from_secs(6 * 60 * 60));
 
         // Prime once so listeners attach to whatever is already running.
-        debug!("discovery tick (initial)");
+        debug!("fallback poll (initial)");
         if let Err(e) = self.update().await {
             error!("Initial discovery failed: {}", e);
         }
@@ -546,8 +561,8 @@ impl Mprisence {
                     let evt = drain_latest_track_change(evt, &mut event_rx);
                     self.handle_player_event(evt, &event_tx).await;
                 },
-                _ = discovery_interval.tick() => {
-                    trace!("discovery tick");
+                _ = fallback_poll_interval.tick() => {
+                    trace!("fallback poll tick");
                     if let Err(e) = self.update().await {
                         error!("Failed to refresh players: {}", e);
                     }
@@ -567,8 +582,8 @@ impl Mprisence {
                             if !self.config.event_driven() {
                                 warn!("event_driven flag flipped to false at runtime; restart mprisence to switch back to polling mode");
                             }
-                            discovery_interval = tokio::time::interval(
-                                Duration::from_millis(self.config.discovery_interval()),
+                            fallback_poll_interval = tokio::time::interval(
+                                Duration::from_millis(self.config.fallback_poll_interval()),
                             );
                             if let Err(e) = self.handle_config_change().await {
                                 error!("Failed to handle configuration change: {}", e);
@@ -630,7 +645,7 @@ impl Mprisence {
             // spurious re-detection that opens a new Discord IPC connection.
             // That second connection interferes with Discord's activity cleanup
             // from the first connection, leaving a stale rich presence.
-            // Instead, let the normal discovery_interval tick (default 5s)
+            // Instead, let the normal fallback_poll_interval tick (default 5s)
             // handle re-detection — by then the name will be fully gone, or
             // if the player genuinely restarted it will be picked up cleanly.
             self.ensure_listeners(tx);

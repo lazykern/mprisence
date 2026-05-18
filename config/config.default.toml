@@ -1,6 +1,6 @@
 interval = 2000
 event_driven = true
-discovery_interval = 5000
+fallback_poll_interval = 5000
 allowed_players = []
 
 [template]
@@ -226,6 +226,7 @@ allow_streaming = true
 [website.youtube_music]
 match_pattern = "music.youtube.com"
 name = "YouTube Music"
+title_suffix = " | YouTube Music"
 app_id = "1125082278339559505" # shared with [player."*youtube_music*"]
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/youtube-music.png"
 allow_streaming = true
@@ -339,6 +340,7 @@ ignore = false
 [website.youtube]
 match_patterns = ["youtube.com", "youtu.be"]
 name = "YouTube"
+title_suffix = " - YouTube"
 app_id = "1301894190904639559"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/youtube.png"
 allow_streaming = true

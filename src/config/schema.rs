@@ -7,7 +7,7 @@ use crate::utils::normalize_player_identity;
 
 pub const DEFAULT_INTERVAL: u64 = 2000;
 pub const DEFAULT_EVENT_DRIVEN: bool = true;
-pub const DEFAULT_DISCOVERY_INTERVAL: u64 = 5000;
+pub const DEFAULT_FALLBACK_POLL_INTERVAL: u64 = 5000;
 pub const DEFAULT_USE_CONTENT_TYPE: bool = true;
 pub const DEFAULT_ACTIVITY_TYPE: ActivityType = ActivityType::Listening;
 pub const DEFAULT_TIME_SHOW: bool = true;
@@ -169,8 +169,8 @@ pub struct Config {
     #[serde(default = "default_event_driven")]
     pub event_driven: bool,
 
-    #[serde(default = "default_discovery_interval")]
-    pub discovery_interval: u64,
+    #[serde(default = "default_fallback_poll_interval", alias = "discovery_interval")]
+    pub fallback_poll_interval: u64,
 
     #[serde(default = "default_allowed_players")]
     pub allowed_players: Vec<String>,
@@ -215,8 +215,8 @@ fn default_event_driven() -> bool {
     DEFAULT_EVENT_DRIVEN
 }
 
-fn default_discovery_interval() -> u64 {
-    DEFAULT_DISCOVERY_INTERVAL
+fn default_fallback_poll_interval() -> u64 {
+    DEFAULT_FALLBACK_POLL_INTERVAL
 }
 
 fn default_allowed_players() -> Vec<String> {
@@ -228,7 +228,7 @@ impl Default for Config {
         Config {
             interval: default_interval(),
             event_driven: default_event_driven(),
-            discovery_interval: default_discovery_interval(),
+            fallback_poll_interval: default_fallback_poll_interval(),
             allowed_players: default_allowed_players(),
             template: TemplateConfig::default(),
             time: TimeConfig::default(),
@@ -331,6 +331,84 @@ impl Config {
             layers.push(layer);
         }
         layers
+    }
+
+    /// Try to match a website config by checking if the title ends with a
+    /// configured `title_suffix` (or ` | <name>` as fallback).  Returns the
+    /// matching layers and the suffix that matched (so it can be stripped).
+    pub fn match_website_by_title_suffix(
+        &self,
+        title: &str,
+    ) -> Option<(Vec<WebsiteConfigLayer>, String)> {
+        // Collect all website layers with their effective suffix.
+        let all_layers: Vec<(&str, &WebsiteConfigLayer)> = self
+            .bundled_website
+            .iter()
+            .chain(self.user_website.iter())
+            .map(|(_key, layer)| {
+                let _key_ref: &str = _key;
+                (_key_ref, layer)
+            })
+            .collect();
+
+        // First pass: explicit title_suffix field.
+        for (_key, layer) in &all_layers {
+            if let Some(suffix) = &layer.title_suffix {
+                if title.ends_with(suffix.as_str()) {
+                    let mut layers = Vec::new();
+                    // Collect all layers for this website (bundled + user)
+                    // by matching the same title_suffix or same key.
+                    if let Some(bl) = self.bundled_website.get(*_key) {
+                        layers.push(bl.clone());
+                    }
+                    if let Some(ul) = self.user_website.get(*_key) {
+                        layers.push(ul.clone());
+                    }
+                    return Some((layers, suffix.clone()));
+                }
+            }
+        }
+
+        // Second pass: fallback to " | <name>" pattern.
+        for (_key, layer) in &all_layers {
+            if let Some(name) = &layer.name {
+                let suffix = format!(" | {}", name);
+                if title.ends_with(&suffix) {
+                    let mut layers = Vec::new();
+                    if let Some(bl) = self.bundled_website.get(*_key) {
+                        layers.push(bl.clone());
+                    }
+                    if let Some(ul) = self.user_website.get(*_key) {
+                        layers.push(ul.clone());
+                    }
+                    return Some((layers, suffix));
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Apply website overrides using title-suffix inference when URL is absent.
+    /// Returns the effective config and the suffix to strip (if any).
+    pub fn apply_website_overrides_by_title(
+        &self,
+        base: PlayerConfig,
+        title: Option<&str>,
+    ) -> (PlayerConfig, Option<String>) {
+        let Some(title) = title else {
+            return (base, None);
+        };
+        match self.match_website_by_title_suffix(title) {
+            Some((layers, suffix)) => {
+                let mut config = base;
+                for layer in layers {
+                    config = layer.apply_over(config);
+                }
+                (config, Some(suffix))
+            }
+            None => (base, None),
+        }
     }
 
     /// Resolved (non-Layer) view of every configured website, used by
@@ -1344,6 +1422,12 @@ pub struct WebsiteConfigLayer {
     #[serde(default)]
     pub match_patterns: Option<Vec<String>>,
 
+    /// Optional title suffix used to infer this website when `xesam:url` is
+    /// absent (e.g. Chrome native MPRIS).  Example: `" | YouTube Music"`.
+    /// When matched, the suffix is stripped from the displayed title.
+    #[serde(default)]
+    pub title_suffix: Option<String>,
+
     #[serde(default)]
     pub name: Option<String>,
 
@@ -1424,6 +1508,9 @@ impl WebsiteConfigLayer {
         if other.match_patterns.is_some() {
             self.match_patterns = other.match_patterns;
         }
+        if other.title_suffix.is_some() {
+            self.title_suffix = other.title_suffix;
+        }
         if other.name.is_some() {
             self.name = other.name;
         }
@@ -1454,6 +1541,9 @@ impl WebsiteConfigLayer {
         let patterns = self.effective_patterns();
         if !patterns.is_empty() {
             base.match_patterns = patterns.into_iter().map(|s| s.to_string()).collect();
+        }
+        if let Some(value) = &self.title_suffix {
+            base.title_suffix = Some(value.clone());
         }
         if let Some(value) = &self.name {
             base.name = Some(value.clone());
@@ -1490,6 +1580,8 @@ impl WebsiteConfigLayer {
 pub struct WebsiteConfig {
     #[serde(default)]
     pub match_patterns: Vec<String>,
+    #[serde(default)]
+    pub title_suffix: Option<String>,
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]

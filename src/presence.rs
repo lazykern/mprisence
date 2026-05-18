@@ -212,6 +212,13 @@ impl Presence {
             .and_then(|m| m.url().map(|s| s.to_string()))
     }
 
+    pub fn current_title(&self) -> Option<String> {
+        self.player
+            .get_metadata()
+            .ok()
+            .and_then(|m| m.title().map(|s| s.to_string()))
+    }
+
     pub fn initialize_discord_client(&mut self) -> Result<(), DiscordError> {
         if self.discord_client.is_some() {
             return Ok(());
@@ -315,11 +322,11 @@ impl Presence {
         let dbus_delay = start_time.elapsed();
         trace!("D-Bus interaction took: {:?}", dbus_delay);
 
-        // In event-driven mode the discovery tick fires at `discovery_interval`
+        // In event-driven mode the fallback poll fires at `fallback_poll_interval`
         // (default 5 s), not `interval` (default 2 s). Using the wrong value
         // causes every tick to be detected as a position jump.
         let effective_interval = if self.config.event_driven() {
-            self.config.discovery_interval()
+            self.config.fallback_poll_interval()
         } else {
             self.config.interval()
         };
@@ -714,15 +721,26 @@ impl Presence {
         }
         debug!("--- Raw Metadata End ---");
 
-        let media_metadata = metadata_source.to_media_metadata();
+        let mut media_metadata = metadata_source.to_media_metadata();
         let track_url: Option<String> = metadata_source.url();
         let track_url_ref = track_url.as_deref();
 
-        let player_config = self.config.get_player_config_with_url(
+        let (player_config, title_suffix) = self.config.get_player_config_with_title_fallback(
             self.player.identity(),
             &player_bus_name,
             track_url_ref,
+            media_metadata.title.as_deref(),
         );
+
+        // Strip the matched title suffix (e.g. " | YouTube Music") from the
+        // displayed title so Discord shows only the track name.
+        if let Some(ref suffix) = title_suffix {
+            if let Some(ref mut title) = media_metadata.title {
+                if let Some(stripped) = title.strip_suffix(suffix.as_str()) {
+                    *title = stripped.trim_end().to_string();
+                }
+            }
+        }
 
         // Reconcile the Discord IPC client when the resolved app id changes
         // (e.g. the active [website.*] overlay matched a different service).
