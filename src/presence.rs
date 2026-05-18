@@ -134,11 +134,18 @@ pub struct Presence {
     needs_reconnection: AtomicBool,
     error_logged: AtomicBool,
     last_reconnect_attempt: Mutex<Instant>,
-    /// Monotonically increasing counter, incremented on every TrackChanged event.
-    /// update_activity checks this before and after the cover art fetch so that
-    /// rapid track skips don't push stale cover art for superseded tracks.
+    /// Monotonically increasing counter, incremented on every TrackChanged event
+    /// (event-driven mode) AND on every polling-mode track change detected inside
+    /// `update_activity`. Background cover-art tasks capture this value at spawn
+    /// time and abort if it has changed when their fetch completes — that's what
+    /// prevents a slow cover from overwriting a newer track's activity.
     update_generation: Arc<AtomicU64>,
     update_notify: Arc<Notify>,
+    /// Fingerprint of the last track for which `update_activity` ran its push
+    /// path. Used in polling mode to detect track changes (which then bumps
+    /// `update_generation` so in-flight cover fetches for the old track can
+    /// self-cancel).
+    last_pushed_track: Mutex<Option<TrackFingerprint>>,
     config: Arc<ConfigManager>,
     /// Cancellation flag for the per-player event listener thread (event-driven mode only).
     listener_cancel: Option<Arc<AtomicBool>>,
@@ -179,6 +186,7 @@ impl Presence {
             last_reconnect_attempt: Mutex::new(Instant::now()),
             update_generation: Arc::new(AtomicU64::new(0)),
             update_notify: Arc::new(Notify::new()),
+            last_pushed_track: Mutex::new(None),
             config,
             listener_cancel: None,
             listener_handle: None,
@@ -570,6 +578,24 @@ impl Presence {
         let update_snapshot = UpdateSnapshot::from_mpris(playback_status.clone(), &metadata);
         trace!("Metadata: {:?}", metadata);
 
+        // Detect a track change relative to the last push and bump the
+        // generation counter so any in-flight cover-art task spawned for the
+        // previous track aborts before re-pushing its (now stale) result.
+        // Event-driven mode already bumps from the listener thread; this path
+        // makes the same guarantee hold in polling mode.
+        let track_changed = {
+            let mut last = self.last_pushed_track.lock();
+            let changed = last.as_ref() != Some(&update_snapshot.track);
+            if changed {
+                *last = Some(update_snapshot.track.clone());
+            }
+            changed
+        };
+        if track_changed {
+            self.update_generation.fetch_add(1, Ordering::Relaxed);
+            self.update_notify.notify_waiters();
+        }
+
         let player_bus_name = canonical_player_bus_name(self.player.bus_name());
         let is_cmus =
             player_bus_name == "cmus" || self.player.identity().eq_ignore_ascii_case("cmus");
@@ -816,27 +842,26 @@ impl Presence {
             let player_config_for_task = player_config.clone();
             let identity_for_task = self.player.identity().to_string();
             let metadata_source_for_task = metadata_source;
-            let gen_value = generation;
+            // Always use the freshly-loaded generation (post-bump) so this task
+            // self-cancels on any subsequent track change in either run mode.
+            let spawn_gen = update_generation.load(Ordering::Relaxed);
 
             tokio::spawn(async move {
                 let art_source = metadata_source_for_task.art_source();
-                let cover_art_result = if let Some(gen) = gen_value {
-                    tokio::select! {
-                        result = cover_manager.get_cover_art(art_source.clone(), &metadata_source_for_task) => result,
-                        _ = update_notify.notified() => {
-                            if update_generation.load(Ordering::Relaxed) != gen {
-                                trace!("background cover fetch cancelled: newer track arrived");
-                                return;
-                            }
-                            cover_manager
-                                .get_cover_art(art_source.clone(), &metadata_source_for_task)
-                                .await
+                let cover_art_result = tokio::select! {
+                    result = cover_manager.get_cover_art(art_source.clone(), &metadata_source_for_task) => result,
+                    _ = update_notify.notified() => {
+                        if update_generation.load(Ordering::Relaxed) != spawn_gen {
+                            trace!(
+                                "background cover fetch cancelled: newer track arrived for {}",
+                                identity_for_task
+                            );
+                            return;
                         }
+                        cover_manager
+                            .get_cover_art(art_source.clone(), &metadata_source_for_task)
+                            .await
                     }
-                } else {
-                    cover_manager
-                        .get_cover_art(art_source.clone(), &metadata_source_for_task)
-                        .await
                 };
 
                 let cover_url = match cover_art_result {
@@ -854,14 +879,12 @@ impl Presence {
                     }
                 };
 
-                if let Some(gen) = gen_value {
-                    if update_generation.load(Ordering::Relaxed) != gen {
-                        trace!(
-                            "background cover result discarded: newer track for {}",
-                            identity_for_task
-                        );
-                        return;
-                    }
+                if update_generation.load(Ordering::Relaxed) != spawn_gen {
+                    trace!(
+                        "background cover result discarded: newer track for {}",
+                        identity_for_task
+                    );
+                    return;
                 }
 
                 debug!("Found cover art URL for Discord presence");
