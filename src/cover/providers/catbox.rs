@@ -54,16 +54,63 @@ impl CatboxProvider {
             path
         );
 
-        if self.config.use_litter {
+        let raw = if self.config.use_litter {
             litter::upload(&path_str, self.litter_time())
                 .await
-                .map_err(|e| CoverArtError::provider_error(self.provider_label(), &format!("{e}")))
+                .map_err(|e| {
+                    CoverArtError::provider_error(self.provider_label(), &format!("{e}"))
+                })?
         } else {
             let hash = self.config.user_hash.clone();
             file::from_file(path_str.clone(), hash)
                 .await
-                .map_err(|e| CoverArtError::provider_error("catbox", &format!("{e}")))
+                .map_err(|e| CoverArtError::provider_error("catbox", &format!("{e}")))?
+        };
+        Self::validate_upload_response(self.provider_label(), &raw)?;
+        Ok(raw)
+    }
+
+    /// The `catbox` crate returns the raw HTTP response body unchecked, so a
+    /// 504/5xx HTML error page or any other non-URL payload would be stored
+    /// as the cover-art URL and pushed to Discord. Reject anything that
+    /// doesn't look like a small HTTPS URL.
+    fn validate_upload_response(provider: &'static str, raw: &str) -> Result<(), CoverArtError> {
+        const MAX_URL_LEN: usize = 512;
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(CoverArtError::provider_error(
+                provider,
+                "upload returned empty body",
+            ));
         }
+        if trimmed.len() > MAX_URL_LEN {
+            return Err(CoverArtError::provider_error(
+                provider,
+                &format!(
+                    "upload returned non-URL payload ({} bytes); likely an HTML error page",
+                    trimmed.len()
+                ),
+            ));
+        }
+        if !(trimmed.starts_with("https://") || trimmed.starts_with("http://")) {
+            return Err(CoverArtError::provider_error(
+                provider,
+                &format!(
+                    "upload returned non-URL response: '{}'",
+                    trimmed.chars().take(80).collect::<String>()
+                ),
+            ));
+        }
+        if url::Url::parse(trimmed).is_err() {
+            return Err(CoverArtError::provider_error(
+                provider,
+                &format!(
+                    "upload returned unparseable URL: '{}'",
+                    trimmed.chars().take(80).collect::<String>()
+                ),
+            ));
+        }
+        Ok(())
     }
 
     async fn upload_from_bytes(&self, data: &[u8]) -> Result<String, CoverArtError> {

@@ -215,6 +215,20 @@ impl CoverManager {
         let cache_key = CoverCache::generate_key(metadata_source);
         let entry = self.cache.get_by_key(&cache_key).ok().flatten()?;
 
+        // Reject pathological cache entries (e.g. provider stored an HTML
+        // error page as the URL before validation was added). Stale-by-URL
+        // entries get purged by the async path on its next pass.
+        if entry.url.len() > 512
+            || !(entry.url.starts_with("https://") || entry.url.starts_with("http://"))
+        {
+            warn!(
+                "Discarding cached cover art entry with malformed URL (provider: {}, len: {})",
+                entry.provider,
+                entry.url.len()
+            );
+            return None;
+        }
+
         if entry.provider.eq_ignore_ascii_case("direct") {
             let policy = Self::direct_url_policy(&entry.url);
             if !policy.allow_direct {
