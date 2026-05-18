@@ -34,9 +34,23 @@ struct MusicBrainzResponse<T> {
 #[derive(Debug, Deserialize)]
 struct Recording {
     id: String,
+    title: Option<String>,
+    #[serde(rename = "artist-credit")]
+    artist_credit: Option<Vec<ArtistCredit>>,
     releases: Option<Vec<Release>>,
     #[serde(default)]
     score: u8,
+}
+
+#[derive(Debug, Deserialize)]
+struct ArtistCredit {
+    name: Option<String>,
+    artist: Option<ArtistInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ArtistInfo {
+    name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -360,16 +374,58 @@ impl MusicbrainzProvider {
                         data.count, self.config.min_score
                     );
 
+                    let search_title_normalized = track.as_ref().trim().to_lowercase();
+
                     for recording in data
                         .entities
                         .iter()
                         .filter(|r| r.score >= self.config.min_score)
                     {
                         trace!(
-                            "Processing recording: {} (score: {})",
+                            "Processing recording: {} (score: {}, title: {:?})",
                             recording.id,
-                            recording.score
+                            recording.score,
+                            recording.title
                         );
+
+                        // Verify title matches to avoid false positives
+                        if let Some(ref rec_title) = recording.title {
+                            if !rec_title.trim().to_lowercase().eq(&search_title_normalized) {
+                                debug!(
+                                    "Skipping recording {} because title '{}' != '{}'",
+                                    recording.id, rec_title, track.as_ref()
+                                );
+                                continue;
+                            }
+                        }
+
+                        // Verify at least one artist matches if we searched with artists
+                        if !artists.is_empty() {
+                            if let Some(ref credits) = recording.artist_credit {
+                                let has_artist_match = credits.iter().any(|credit| {
+                                    let credit_name = credit
+                                        .name
+                                        .as_deref()
+                                        .or_else(|| {
+                                            credit.artist.as_ref().and_then(|a| a.name.as_deref())
+                                        })
+                                        .unwrap_or_default()
+                                        .trim()
+                                        .to_lowercase();
+                                    artists.iter().any(|a| {
+                                        a.as_ref().trim().to_lowercase() == credit_name
+                                    })
+                                });
+                                if !has_artist_match {
+                                    debug!(
+                                        "Skipping recording {} because no artist match",
+                                        recording.id
+                                    );
+                                    continue;
+                                }
+                            }
+                        }
+
                         if let Some(releases) = &recording.releases {
                             for release in releases.iter().take(2) {
                                 trace!(
