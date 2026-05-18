@@ -175,63 +175,6 @@ impl CoverManager {
         None
     }
 
-    /// Returns `true` if the URL belongs to a trusted public image CDN that
-    /// Discord can always reach, allowing us to skip the HEAD/GET validation
-    /// round-trip. Currently recognises YouTube / Google image hosts.
-    fn is_trusted_image_cdn(url_str: &str) -> bool {
-        if let Ok(parsed) = Url::parse(url_str) {
-            if let Some(Host::Domain(domain)) = parsed.host() {
-                let d = domain.to_ascii_lowercase();
-                return d == "i.ytimg.com"
-                    || d == "i1.ytimg.com"
-                    || d == "i2.ytimg.com"
-                    || d == "i3.ytimg.com"
-                    || d == "i4.ytimg.com"
-                    || d == "i9.ytimg.com"
-                    || d == "img.youtube.com"
-                    || d == "lh3.googleusercontent.com"
-                    || d == "yt3.ggpht.com"
-                    || d == "yt3.googleusercontent.com"
-                    || d == "i1.sndcdn.com"
-                    || d == "i2.sndcdn.com"
-                    || d == "i3.sndcdn.com"
-                    || d == "i4.sndcdn.com";
-            }
-        }
-        false
-    }
-
-    /// Attempt to extract a YouTube video ID from a YouTube / YouTube Music
-    /// track URL and return the public thumbnail URL.
-    fn youtube_thumbnail_from_track_url(track_url: &str) -> Option<String> {
-        let parsed = Url::parse(track_url).ok()?;
-        let host = parsed.host_str()?.to_ascii_lowercase();
-
-        let is_youtube = host == "www.youtube.com"
-            || host == "youtube.com"
-            || host == "music.youtube.com"
-            || host == "m.youtube.com";
-
-        if !is_youtube {
-            return None;
-        }
-
-        // Extract video ID from ?v=VIDEO_ID
-        let video_id = parsed
-            .query_pairs()
-            .find(|(k, _)| k == "v")
-            .map(|(_, v)| v.into_owned())?;
-
-        if video_id.is_empty() || video_id.len() > 20 {
-            return None;
-        }
-
-        Some(format!(
-            "https://i.ytimg.com/vi/{}/hqdefault.jpg",
-            video_id
-        ))
-    }
-
     fn direct_url_policy(url_str: &str) -> DirectUrlPolicy {
         let parsed = match Url::parse(url_str) {
             Ok(url) => url,
@@ -393,11 +336,6 @@ impl CoverManager {
                         warn!("Failed to fetch source URL: {}", e);
                     }
                 }
-            } else if Self::is_trusted_image_cdn(url) {
-                debug!("Using trusted CDN URL directly (skipping validation): {}", url);
-                self.cache_store_entry(&cache_key, "direct", url, None, None)
-                    .await?;
-                return Ok(Some(url.clone()));
             } else if Self::validate_cover_url(url).await {
                 debug!("Using direct URL from source: {}", url);
                 let cache_payload = match source.as_ref() {
@@ -581,21 +519,6 @@ impl CoverManager {
                     Err(e) => warn!("Provider {} failed: {}", provider.name(), e),
                 }
             }
-        }
-
-        // 5. Last resort: if the track URL is from YouTube, construct a thumbnail URL
-        if let Some(thumbnail_url) = metadata_source
-            .url()
-            .as_deref()
-            .and_then(Self::youtube_thumbnail_from_track_url)
-        {
-            debug!(
-                "Constructing YouTube thumbnail URL from track URL: {}",
-                thumbnail_url
-            );
-            self.cache_store_entry(&cache_key, "youtube_thumbnail", &thumbnail_url, None, None)
-                .await?;
-            return Ok(Some(thumbnail_url));
         }
 
         debug!("No cover art found from any source");
@@ -829,62 +752,4 @@ mod tests {
         assert_eq!(policy.reason, "public_url");
     }
 
-    #[test]
-    fn recognizes_youtube_cdn_as_trusted() {
-        assert!(CoverManager::is_trusted_image_cdn(
-            "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
-        ));
-        assert!(CoverManager::is_trusted_image_cdn(
-            "https://lh3.googleusercontent.com/some_hash=w120-h120-l90-rj"
-        ));
-        assert!(CoverManager::is_trusted_image_cdn(
-            "https://yt3.ggpht.com/ytc/some_channel_art"
-        ));
-        assert!(!CoverManager::is_trusted_image_cdn(
-            "https://cdn.example.com/cover.jpg"
-        ));
-    }
-
-    #[test]
-    fn recognizes_soundcloud_cdn_as_trusted() {
-        assert!(CoverManager::is_trusted_image_cdn(
-            "https://i1.sndcdn.com/artworks-KqUQSGnuoGbJhaDT-YC0V5g-t500x500.png"
-        ));
-        assert!(CoverManager::is_trusted_image_cdn(
-            "https://i2.sndcdn.com/artworks-abc123-t500x500.jpg"
-        ));
-        assert!(!CoverManager::is_trusted_image_cdn(
-            "https://sndcdn.com/something.png"
-        ));
-    }
-
-    #[test]
-    fn extracts_youtube_thumbnail_from_track_url() {
-        assert_eq!(
-            CoverManager::youtube_thumbnail_from_track_url(
-                "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-            ),
-            Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg".to_string())
-        );
-        assert_eq!(
-            CoverManager::youtube_thumbnail_from_track_url(
-                "https://music.youtube.com/watch?v=abc123XYZ&list=RDAMVMabc123XYZ"
-            ),
-            Some("https://i.ytimg.com/vi/abc123XYZ/hqdefault.jpg".to_string())
-        );
-        // Non-YouTube URL returns None
-        assert_eq!(
-            CoverManager::youtube_thumbnail_from_track_url(
-                "https://open.spotify.com/track/123"
-            ),
-            None
-        );
-        // No video ID returns None
-        assert_eq!(
-            CoverManager::youtube_thumbnail_from_track_url(
-                "https://www.youtube.com/feed/subscriptions"
-            ),
-            None
-        );
-    }
 }
