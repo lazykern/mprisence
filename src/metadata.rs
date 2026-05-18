@@ -381,6 +381,12 @@ impl MetadataSource {
                     .and_then(|tag| tag.pictures().first())
                     .map(|picture| ArtSource::Bytes(picture.data().to_vec()))
             })
+            .or_else(|| {
+                self.url()
+                    .as_deref()
+                    .and_then(infer_art_url_from_url)
+                    .map(ArtSource::Url)
+            })
     }
 
     #[allow(dead_code)]
@@ -530,5 +536,141 @@ impl MetadataSource {
         }
 
         metadata
+    }
+}
+
+/// Derive a public cover-art URL from a known web service URL.
+///
+/// Web players (YouTube in a browser, Plasma browser integration, etc.)
+/// often expose `xesam:url` but no `mpris:artUrl`. For services whose
+/// thumbnails are addressable from the page URL alone, return a direct
+/// image URL so Discord gets a real cover instead of falling back to the
+/// site's static icon.
+pub fn infer_art_url_from_url(url: &str) -> Option<String> {
+    let parsed = Url::parse(url).ok()?;
+    let scheme = parsed.scheme();
+    if scheme != "http" && scheme != "https" {
+        return None;
+    }
+    let host = parsed.host_str()?.to_ascii_lowercase();
+
+    let id = if host == "youtu.be" {
+        parsed
+            .path_segments()
+            .and_then(|mut s| s.next())
+            .map(str::to_string)
+    } else if host == "youtube.com"
+        || host.ends_with(".youtube.com")
+        || host == "youtube-nocookie.com"
+        || host.ends_with(".youtube-nocookie.com")
+    {
+        if let Some((_, v)) = parsed.query_pairs().find(|(k, _)| k == "v") {
+            Some(v.into_owned())
+        } else {
+            let mut segments = parsed.path_segments()?;
+            let first = segments.next()?;
+            match first {
+                "shorts" | "embed" | "live" | "v" => segments.next().map(str::to_string),
+                _ => None,
+            }
+        }
+    } else {
+        None
+    }?;
+
+    let id: String = id
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+        .collect();
+    if id.is_empty() || id.len() > 32 {
+        return None;
+    }
+    Some(format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::infer_art_url_from_url;
+
+    #[test]
+    fn youtube_watch_url_yields_thumbnail() {
+        let got = infer_art_url_from_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+        assert_eq!(
+            got.as_deref(),
+            Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
+        );
+    }
+
+    #[test]
+    fn youtube_music_watch_url_yields_thumbnail() {
+        let got = infer_art_url_from_url("https://music.youtube.com/watch?v=abcDEF12345&list=foo");
+        assert_eq!(
+            got.as_deref(),
+            Some("https://i.ytimg.com/vi/abcDEF12345/hqdefault.jpg")
+        );
+    }
+
+    #[test]
+    fn youtu_be_short_url_yields_thumbnail() {
+        let got = infer_art_url_from_url("https://youtu.be/dQw4w9WgXcQ?t=42");
+        assert_eq!(
+            got.as_deref(),
+            Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
+        );
+    }
+
+    #[test]
+    fn youtube_shorts_url_yields_thumbnail() {
+        let got = infer_art_url_from_url("https://www.youtube.com/shorts/abc_def-123");
+        assert_eq!(
+            got.as_deref(),
+            Some("https://i.ytimg.com/vi/abc_def-123/hqdefault.jpg")
+        );
+    }
+
+    #[test]
+    fn youtube_embed_and_live_urls_yield_thumbnail() {
+        assert_eq!(
+            infer_art_url_from_url("https://www.youtube.com/embed/dQw4w9WgXcQ").as_deref(),
+            Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
+        );
+        assert_eq!(
+            infer_art_url_from_url("https://www.youtube.com/live/dQw4w9WgXcQ").as_deref(),
+            Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
+        );
+    }
+
+    #[test]
+    fn youtube_nocookie_embed_url_yields_thumbnail() {
+        let got =
+            infer_art_url_from_url("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0");
+        assert_eq!(
+            got.as_deref(),
+            Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
+        );
+    }
+
+    #[test]
+    fn unrecognized_host_returns_none() {
+        assert!(infer_art_url_from_url("https://soundcloud.com/foo/bar").is_none());
+        assert!(infer_art_url_from_url("https://example.com/watch?v=dQw4w9WgXcQ").is_none());
+    }
+
+    #[test]
+    fn youtube_homepage_returns_none() {
+        assert!(infer_art_url_from_url("https://www.youtube.com/").is_none());
+        assert!(infer_art_url_from_url("https://www.youtube.com/feed/subscriptions").is_none());
+    }
+
+    #[test]
+    fn non_http_scheme_returns_none() {
+        assert!(infer_art_url_from_url("file:///tmp/song.mp3").is_none());
+        assert!(infer_art_url_from_url("spotify:track:xyz").is_none());
+    }
+
+    #[test]
+    fn malformed_video_id_returns_none() {
+        assert!(infer_art_url_from_url("https://www.youtube.com/watch?v=").is_none());
+        assert!(infer_art_url_from_url("https://youtu.be/").is_none());
     }
 }
