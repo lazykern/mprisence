@@ -306,9 +306,19 @@ impl Config {
             return base;
         }
         let host_or_url = url_host_for_match(raw_url);
-        for layer in self.collect_matching_website_layers(&host_or_url) {
+        let matches = self.collect_matching_website_layers(&host_or_url);
+        let had_match = !matches.is_empty();
+        for layer in matches {
             base = layer.apply_over(base);
         }
+
+        // Unknown web URL (http/https with no matching website override):
+        // ignore by default so random browser audio doesn't leak into Discord.
+        // Users opt-in by adding a `[website.*]` entry that matches the host.
+        if !had_match && is_http_url(raw_url) {
+            base.ignore = true;
+        }
+
         base
     }
 
@@ -1507,6 +1517,12 @@ fn url_host_for_match(url: &str) -> String {
     url.to_string()
 }
 
+fn is_http_url(url: &str) -> bool {
+    Url::parse(url)
+        .map(|p| matches!(p.scheme(), "http" | "https"))
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod website_tests {
     use super::*;
@@ -1607,20 +1623,51 @@ mod website_tests {
     }
 
     #[test]
-    fn website_no_match_returns_base_player_config() {
+    fn website_unknown_http_url_forces_ignore() {
         let mut cfg = Config::default();
         cfg.bundled_website
             .insert("youtube_music".into(), website("music.youtube.com", Some("YT")));
-        // Player default supplies the base app id.
-        let baseline = cfg.get_player_config("Firefox", "firefox");
 
         let resolved = cfg.get_player_config_with_url(
             "Firefox",
             "firefox",
             Some("https://github.com/lazykern/mprisence"),
         );
+        assert!(
+            resolved.ignore,
+            "unknown http URL should auto-ignore so random browser audio stays hidden"
+        );
+    }
+
+    #[test]
+    fn website_non_http_scheme_falls_through_to_base() {
+        let mut cfg = Config::default();
+        cfg.bundled_website
+            .insert("youtube_music".into(), website("music.youtube.com", Some("YT")));
+        let baseline = cfg.get_player_config("Spotify", "spotify");
+
+        let resolved = cfg.get_player_config_with_url(
+            "Spotify",
+            "spotify",
+            Some("spotify:track:abc123"),
+        );
         assert_eq!(resolved.app_id, baseline.app_id);
-        assert_eq!(resolved.allow_streaming, baseline.allow_streaming);
+        assert_eq!(resolved.ignore, baseline.ignore);
+    }
+
+    #[test]
+    fn website_file_url_falls_through_to_base() {
+        let mut cfg = Config::default();
+        cfg.bundled_website
+            .insert("youtube_music".into(), website("music.youtube.com", Some("YT")));
+        let baseline = cfg.get_player_config("VLC", "vlc");
+
+        let resolved = cfg.get_player_config_with_url(
+            "VLC",
+            "vlc",
+            Some("file:///home/user/track.flac"),
+        );
+        assert_eq!(resolved.ignore, baseline.ignore);
     }
 
     #[test]
