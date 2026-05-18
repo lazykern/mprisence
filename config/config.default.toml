@@ -251,28 +251,28 @@ ignore = false
 
 [website.soundcloud]
 match_pattern = "soundcloud.com"
-# TODO(app_id): register a SoundCloud Discord application id
+app_id = "1505610509406437446"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Antu_soundcloud.svg/1200px-Antu_soundcloud.svg.png"
 allow_streaming = true
 ignore = false
 
 [website.apple_music]
 match_pattern = "music.apple.com"
-# TODO(app_id): register an Apple Music Discord application id
+app_id = "1505611096273457192"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/Apple_Music_icon.svg/1200px-Apple_Music_icon.svg.png"
 allow_streaming = true
 ignore = false
 
 [website.bandcamp]
 match_pattern = "bandcamp.com"
-# TODO(app_id): register a Bandcamp Discord application id
+app_id = "1505611276917669908"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Bandcamp-button-bc-circle.svg/1200px-Bandcamp-button-bc-circle.svg.png"
 allow_streaming = true
 ignore = false
 
 [website.tidal]
 match_pattern = "tidal.com"
-# TODO(app_id): register a TIDAL Discord application id
+app_id = "1505610940488486912"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Tidal_%28service%29_logo.svg/1200px-Tidal_%28service%29_logo.svg.png"
 allow_streaming = true
 ignore = false
