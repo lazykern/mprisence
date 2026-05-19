@@ -1,5 +1,4 @@
 use std::{
-    path::PathBuf,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
@@ -112,9 +111,7 @@ pub struct Presence {
     template_manager: Arc<TemplateManager>,
     cover_manager: Arc<CoverManager>,
     last_player_state: Option<PlaybackState>,
-    last_cmus_track_id: Mutex<Option<Box<str>>>,
-    last_cmus_path: Mutex<Option<PathBuf>>,
-    cmus_error_logged: AtomicBool,
+    cmus: cmus::CmusState,
     discord_client: Option<Arc<Mutex<DiscordIpcClient>>>,
     /// The Discord application id the current `discord_client` was opened with.
     /// Each cycle re-resolves the effective app id (player + website overlay).
@@ -182,9 +179,7 @@ impl Presence {
             template_manager,
             cover_manager,
             last_player_state: None,
-            last_cmus_track_id: Mutex::new(None),
-            last_cmus_path: Mutex::new(None),
-            cmus_error_logged: AtomicBool::new(false),
+            cmus: cmus::CmusState::new(),
             discord_client: None,
             last_effective_app_id: Mutex::new(None),
             needs_initial_connection: AtomicBool::new(true),
@@ -330,11 +325,9 @@ impl Presence {
             self.player_id = new_id;
             self.player = player;
             self.last_player_state = None;
-            *self.last_cmus_track_id.lock() = None;
-            *self.last_cmus_path.lock() = None;
+            self.cmus.reset();
             *self.last_pushed_track_url.lock() = None;
             *self.last_resolved_cover_art.lock() = None;
-            self.cmus_error_logged.store(false, Ordering::Relaxed);
             // Reset health on connection handoff (new underlying player).
             let is_browser = Self::is_browser_source(
                 self.player.bus_name(),
@@ -747,39 +740,39 @@ impl Presence {
                 .or_else(|| metadata.url().map(|url| url.to_string()))
                 .or_else(|| metadata.title().map(|title| title.to_string()));
             let track_changed = {
-                let guard = self.last_cmus_track_id.lock();
+                let guard = self.cmus.track_id.lock();
                 track_token.as_deref() != guard.as_deref()
             };
 
             if track_changed {
-                *self.last_cmus_track_id.lock() = track_token.map(|token| token.into_boxed_str());
-                *self.last_cmus_path.lock() = None;
-                self.cmus_error_logged.store(false, Ordering::Relaxed);
+                *self.cmus.track_id.lock() = track_token.map(|token| token.into_boxed_str());
+                *self.cmus.path.lock() = None;
+                self.cmus.error_logged.store(false, Ordering::Relaxed);
             }
 
-            if self.last_cmus_path.lock().is_none() {
+            if self.cmus.path.lock().is_none() {
                 match cmus::get_current_track_path().await {
                     Ok(Some(path)) => {
-                        *self.last_cmus_path.lock() = Some(path);
+                        *self.cmus.path.lock() = Some(path);
                     }
                     Ok(None) => {}
                     Err(err) => {
-                        if !self.cmus_error_logged.load(Ordering::Relaxed) {
+                        if !self.cmus.error_logged.load(Ordering::Relaxed) {
                             warn!("cmus-remote failed: {}", err);
-                            self.cmus_error_logged.store(true, Ordering::Relaxed);
+                            self.cmus.error_logged.store(true, Ordering::Relaxed);
                         }
                     }
                 }
             }
 
-            let cmus_path = self.last_cmus_path.lock().clone();
+            let cmus_path = self.cmus.path.lock().clone();
             if let Some(path) = cmus_path {
                 match Url::from_file_path(&path) {
                     Ok(url) => Some(url.to_string()),
                     Err(_) => {
-                        if !self.cmus_error_logged.load(Ordering::Relaxed) {
+                        if !self.cmus.error_logged.load(Ordering::Relaxed) {
                             warn!("cmus-remote returned non-file path: {:?}", path);
-                            self.cmus_error_logged.store(true, Ordering::Relaxed);
+                            self.cmus.error_logged.store(true, Ordering::Relaxed);
                         }
                         None
                     }
@@ -956,12 +949,9 @@ impl Presence {
         // the player icon, then fetch the real cover in the background.
         let current_generation =
             generation.unwrap_or_else(|| self.update_generation.load(Ordering::Relaxed));
-        let cached_cover = if art_decision.read_cache {
-            self.cover_manager.try_cached_cover_art(&metadata_source)
-        } else {
-            self.cover_manager
-                .try_cached_cover_art_with_options(&metadata_source, false)
-        };
+        let cached_cover = self
+            .cover_manager
+            .try_cached_cover_art(&metadata_source, art_decision.read_cache);
         if let Some(cover_url) = cached_cover.as_deref() {
             debug!("Serving cached cover art on fast path: {}", cover_url);
             *self.last_resolved_cover_art.lock() =
@@ -1105,21 +1095,11 @@ impl Presence {
                         metadata_source_for_task.art_source_with_options(art_source_options_for_task)
                     };
                 let cover_art_result = tokio::select! {
-                    result = async {
-                        if read_cache_for_task {
-                            cover_manager
-                                .get_cover_art(art_source.clone(), &metadata_source_for_task)
-                                .await
-                        } else {
-                            cover_manager
-                                .get_cover_art_with_options(
-                                    art_source.clone(),
-                                    &metadata_source_for_task,
-                                    false,
-                                )
-                                .await
-                        }
-                    } => result,
+                    result = cover_manager.get_cover_art(
+                        art_source.clone(),
+                        &metadata_source_for_task,
+                        read_cache_for_task,
+                    ) => result,
                     _ = update_notify.notified() => {
                         if update_generation.load(Ordering::Relaxed) != spawn_gen {
                             trace!(
@@ -1128,19 +1108,13 @@ impl Presence {
                             );
                             return;
                         }
-                        if read_cache_for_task {
-                            cover_manager
-                                .get_cover_art(art_source.clone(), &metadata_source_for_task)
-                                .await
-                        } else {
-                            cover_manager
-                                .get_cover_art_with_options(
-                                    art_source.clone(),
-                                    &metadata_source_for_task,
-                                    false,
-                                )
-                                .await
-                        }
+                        cover_manager
+                            .get_cover_art(
+                                art_source.clone(),
+                                &metadata_source_for_task,
+                                read_cache_for_task,
+                            )
+                            .await
                     }
                 };
 
@@ -1276,11 +1250,9 @@ impl Presence {
         trace!("Presence managers updated successfully");
 
         self.last_player_state = None;
-        *self.last_cmus_track_id.lock() = None;
-        *self.last_cmus_path.lock() = None;
+        self.cmus.reset();
         *self.last_pushed_track_url.lock() = None;
         *self.last_resolved_cover_art.lock() = None;
-        self.cmus_error_logged.store(false, Ordering::Relaxed);
     }
 
     /// Event-driven mode entry point. Returns `ShouldRemove` when the listener has terminated

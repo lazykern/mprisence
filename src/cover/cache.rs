@@ -358,7 +358,10 @@ impl CoverCache {
                 return Err(e);
             }
         };
-        self.update_usage_after_write(existed_before, previous_metadata_len, metadata_len);
+        self.adjust_usage(
+            if existed_before { 0 } else { 1 },
+            metadata_len as i64 - previous_metadata_len as i64,
+        );
         if self.usage_exceeds_limits() {
             self.enforce_limits()?;
         }
@@ -389,7 +392,10 @@ impl CoverCache {
             0
         };
         let metadata_len = self.persist_entry(&path, entry)?;
-        self.update_usage_after_write(existed_before, previous_metadata_len, metadata_len);
+        self.adjust_usage(
+            if existed_before { 0 } else { 1 },
+            metadata_len as i64 - previous_metadata_len as i64,
+        );
         Ok(())
     }
 
@@ -496,17 +502,6 @@ impl CoverCache {
         })?;
 
         Ok(data.len() as u64)
-    }
-
-    fn update_usage_after_write(
-        &self,
-        existed_before: bool,
-        previous_metadata_len: u64,
-        new_metadata_len: u64,
-    ) {
-        let entry_delta = if existed_before { 0 } else { 1 };
-        let bytes_delta = new_metadata_len as i64 - previous_metadata_len as i64;
-        self.adjust_usage(entry_delta, bytes_delta);
     }
 
     fn enforce_limits(&self) -> Result<(), CoverArtError> {

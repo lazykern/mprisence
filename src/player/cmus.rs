@@ -1,9 +1,33 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use parking_lot::Mutex;
 use thiserror::Error;
 use tokio::process::Command;
 use tokio::time::timeout;
+
+pub struct CmusState {
+    pub track_id: Mutex<Option<Box<str>>>,
+    pub path: Mutex<Option<PathBuf>>,
+    pub error_logged: AtomicBool,
+}
+
+impl CmusState {
+    pub fn new() -> Self {
+        Self {
+            track_id: Mutex::new(None),
+            path: Mutex::new(None),
+            error_logged: AtomicBool::new(false),
+        }
+    }
+
+    pub fn reset(&self) {
+        *self.track_id.lock() = None;
+        *self.path.lock() = None;
+        self.error_logged.store(false, Ordering::Relaxed);
+    }
+}
 
 const CMUS_REMOTE_TIMEOUT: Duration = Duration::from_secs(2);
 
