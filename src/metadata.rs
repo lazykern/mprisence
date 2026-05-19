@@ -389,15 +389,13 @@ impl MetadataSource {
             .and_then(|tag| tag.pictures().first())
             .map(|picture| picture.data().to_vec());
 
-        select_art_source(art_url.as_deref(), inferred, embedded)
+        select_art_source(art_url, inferred, embedded)
     }
 
-    #[allow(dead_code)]
     pub fn mpris_metadata(&self) -> Option<&Metadata> {
         self.mpris_metadata.as_ref()
     }
 
-    #[allow(dead_code)]
     pub fn lofty_tag(&self) -> Option<&TaggedFile> {
         self.tagged_file.as_ref()
     }

@@ -4,7 +4,6 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
-    thread::JoinHandle,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -142,9 +141,6 @@ pub struct Presence {
     config: Arc<ConfigManager>,
     /// Cancellation flag for the per-player event listener thread (event-driven mode only).
     listener_cancel: Option<Arc<AtomicBool>>,
-    /// Handle to the listener thread; kept so future code can join, but currently detached on drop.
-    #[allow(dead_code)]
-    listener_handle: Option<JoinHandle<()>>,
     /// The MPRIS bus name the active listener is bound to (used to detect winner-bus handoff).
     listener_bus: Option<SmolStr>,
 }
@@ -192,7 +188,6 @@ impl Presence {
             last_pushed_track_url: parking_lot::Mutex::new(None),
             config,
             listener_cancel: None,
-            listener_handle: None,
             listener_bus: None,
         }
     }
@@ -427,10 +422,7 @@ impl Presence {
         };
 
         match outcome {
-            health::TransitionOutcome::Push {
-                generation: _,
-                art_decision,
-            } => {
+            health::TransitionOutcome::Push { art_decision } => {
                 self.last_player_state = Some(new_state);
                 let art_gen = Some(generation);
                 self.update_activity(art_gen, art_decision).await.map_err(|err| {
@@ -528,16 +520,6 @@ impl Presence {
             self.last_player_state = None;
         }
         Ok(())
-    }
-
-    #[allow(dead_code)]
-    pub fn force_reconnect(&mut self) {
-        debug!(
-            "Forcing Discord reconnection for player: {}",
-            self.player.identity()
-        );
-        self.needs_reconnection.store(true, Ordering::Relaxed);
-        self.last_player_state = None;
     }
 
     fn determine_activity_type(
@@ -712,7 +694,7 @@ impl Presence {
                 return Ok(());
             }
         };
-        let update_snapshot = UpdateSnapshot::from_mpris(playback_status.clone(), &metadata);
+        let update_snapshot = UpdateSnapshot::from_mpris(playback_status, &metadata);
         trace!("Metadata: {:?}", metadata);
 
         // Detect a track change relative to the last push and bump the
@@ -1456,7 +1438,10 @@ impl Presence {
             self.stop_listener();
         }
         let cancel = Arc::new(AtomicBool::new(false));
-        let handle = events::spawn_listener(
+        // The JoinHandle is intentionally dropped — the listener thread blocks
+        // on a D-Bus call we can't interrupt, so it's detached and exits on its
+        // own once `cancel` flips or the player disappears.
+        let _ = events::spawn_listener(
             current_bus.clone(),
             norm_id,
             tx,
@@ -1465,7 +1450,6 @@ impl Presence {
             self.update_notify.clone(),
         );
         self.listener_cancel = Some(cancel);
-        self.listener_handle = Some(handle);
         self.listener_bus = Some(current_bus);
     }
 
@@ -1478,10 +1462,6 @@ impl Presence {
         if let Some(cancel) = self.listener_cancel.take() {
             cancel.store(true, Ordering::Relaxed);
         }
-        // Drop the JoinHandle without joining — the blocking D-Bus call cannot be interrupted
-        // synchronously, so the thread is left to exit on its own when the next event arrives
-        // or the player disappears.
-        self.listener_handle.take();
         self.listener_bus = None;
     }
 }

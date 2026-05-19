@@ -308,7 +308,7 @@ fn origin_of(url_str: &str) -> Option<String> {
 /// These are reported by plasma-browser-integration when it lacks a specific
 /// track URL, and should be treated as wildcards for same-origin merging.
 fn is_origin_only(url_str: &str) -> bool {
-    Url::parse(url_str).ok().map_or(false, |u| {
+    Url::parse(url_str).ok().is_some_and(|u| {
         let path = u.path();
         (path.is_empty() || path == "/") && u.query().is_none()
     })

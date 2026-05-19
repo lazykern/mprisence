@@ -148,17 +148,3 @@ pub fn search_local_cover_art(
     );
     Ok(None)
 }
-
-#[allow(dead_code)]
-pub async fn load_file(path: PathBuf) -> Result<Option<ArtSource>, CoverArtError> {
-    match tokio::fs::read(&path).await {
-        Ok(data) => {
-            info!("Successfully read file: {:?} ({} bytes)", path, data.len());
-            Ok(Some(ArtSource::Bytes(data)))
-        }
-        Err(e) => {
-            warn!("Failed to read file: {:?} ({})", path, e);
-            Ok(None)
-        }
-    }
-}

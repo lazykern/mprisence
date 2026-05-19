@@ -409,7 +409,7 @@ impl Command {
                         } else if !cfg.match_patterns.is_empty() {
                             print_nested_key_value(
                                 "match_patterns",
-                                &cfg.match_patterns.join(", "),
+                                cfg.match_patterns.join(", "),
                                 4,
                             );
                         }

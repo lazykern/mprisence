@@ -85,13 +85,6 @@ pub enum VersionError {
 }
 
 pub fn validate_version(version: &str) -> Result<String, VersionError> {
-    // Parse version to validate it
-    let version = Version::parse(version)?;
-    Ok(version.to_string())
-}
-
-#[allow(dead_code)]
-pub fn to_package_version(version: &str) -> Result<String, VersionError> {
     let version = Version::parse(version)?;
     Ok(version.to_string())
 }
@@ -113,12 +106,6 @@ mod tests {
         assert!(validate_version("1.0").is_err());
         assert!(validate_version("1.0.0.beta1").is_err());
         assert!(validate_version("v1.0.0").is_err());
-    }
-
-    #[test]
-    fn test_to_package_version() {
-        assert_eq!(to_package_version("1.0.0-beta.1").unwrap(), "1.0.0-beta.1");
-        assert_eq!(to_package_version("1.0.0").unwrap(), "1.0.0");
     }
 
     #[test]

@@ -198,13 +198,6 @@ impl ConfigManager {
         self.path.clone()
     }
 
-    #[allow(dead_code)]
-    pub fn read(&self) -> Result<impl std::ops::Deref<Target = Config> + '_, ConfigError> {
-        self.config
-            .read()
-            .map_err(|e| ConfigError::Lock(e.to_string()))
-    }
-
     pub fn write(&self) -> Result<impl std::ops::DerefMut<Target = Config> + '_, ConfigError> {
         self.config
             .write()
@@ -213,14 +206,6 @@ impl ConfigManager {
 
     pub fn subscribe(&self) -> ConfigChangeReceiver {
         self.change_tx.subscribe()
-    }
-
-    #[allow(dead_code)]
-    pub fn save(&self) -> Result<(), ConfigError> {
-        let config = self.read()?;
-        let config_str = toml::to_string_pretty(&*config).map_err(ConfigError::Serialize)?;
-        std::fs::write(&self.path, config_str).map_err(ConfigError::IO)?;
-        Ok(())
     }
 
     pub fn reload(&self) -> Result<(), ConfigError> {
