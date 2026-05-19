@@ -362,7 +362,7 @@ default = "listening"
 # Show progress bar/time in Discord
 show = true
 # true = show elapsed time, false = show remaining time
-as_elapsed = true
+as_elapsed = false
 ```
 
 </details>

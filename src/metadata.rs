@@ -368,25 +368,28 @@ impl MetadataSource {
     }
 
     pub fn art_source(&self) -> Option<ArtSource> {
+        self.art_source_with_options(ArtSourceOptions::default())
+    }
+
+    pub fn art_source_with_options(&self, options: ArtSourceOptions) -> Option<ArtSource> {
         trace!("Getting art source from metadata");
 
-        self.mpris_metadata
+        let art_url = options
+            .allow_mpris_art_url
+            .then(|| self.mpris_metadata.as_ref().and_then(|m| m.art_url()))
+            .flatten();
+        let inferred = options
+            .allow_inferred_url
+            .then(|| self.url().as_deref().and_then(infer_art_url_from_url))
+            .flatten();
+        let embedded = self
+            .tagged_file
             .as_ref()
-            .and_then(|m| m.art_url())
-            .and_then(ArtSource::from_art_url)
-            .or_else(|| {
-                self.tagged_file
-                    .as_ref()
-                    .and_then(|t| t.primary_tag())
-                    .and_then(|tag| tag.pictures().first())
-                    .map(|picture| ArtSource::Bytes(picture.data().to_vec()))
-            })
-            .or_else(|| {
-                self.url()
-                    .as_deref()
-                    .and_then(infer_art_url_from_url)
-                    .map(ArtSource::Url)
-            })
+            .and_then(|t| t.primary_tag())
+            .and_then(|tag| tag.pictures().first())
+            .map(|picture| picture.data().to_vec());
+
+        select_art_source(art_url.as_deref(), inferred, embedded)
     }
 
     #[allow(dead_code)]
@@ -539,6 +542,61 @@ impl MetadataSource {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ArtSourceOptions {
+    pub allow_inferred_url: bool,
+    pub allow_mpris_art_url: bool,
+}
+
+impl Default for ArtSourceOptions {
+    fn default() -> Self {
+        Self {
+            allow_inferred_url: true,
+            allow_mpris_art_url: true,
+        }
+    }
+}
+
+pub fn is_directly_usable_art_url(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
+}
+
+/// Pick the best art source from the available inputs.
+///
+/// Priority:
+/// 1. `mpris:artUrl` if it is an `http(s)://` URL — Discord can consume it
+///    directly without a provider upload.
+/// 2. A URL inferred from `xesam:url` (e.g. YouTube thumbnail) — also
+///    directly usable and avoids touching plasma's temp artwork dump.
+/// 3. `mpris:artUrl` for any other scheme (`data:image/...;base64,...`,
+///    `file://`, bare path) — needs upload via the provider chain.
+/// 4. Embedded picture from the local file's tag.
+fn select_art_source(
+    art_url: Option<&str>,
+    inferred_url: Option<String>,
+    embedded_bytes: Option<Vec<u8>>,
+) -> Option<ArtSource> {
+    if let Some(url) = art_url {
+        if is_directly_usable_art_url(url) {
+            if let Some(src) = ArtSource::from_art_url(url) {
+                return Some(src);
+            }
+        }
+    }
+
+    if let Some(url) = inferred_url {
+        return Some(ArtSource::Url(url));
+    }
+
+    if let Some(url) = art_url {
+        if let Some(src) = ArtSource::from_art_url(url) {
+            return Some(src);
+        }
+    }
+
+    embedded_bytes.map(ArtSource::Bytes)
+}
+
 /// Derive a public cover-art URL from a known web service URL.
 ///
 /// Web players (YouTube in a browser, Plasma browser integration, etc.)
@@ -590,7 +648,92 @@ pub fn infer_art_url_from_url(url: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::infer_art_url_from_url;
+    use super::{infer_art_url_from_url, select_art_source};
+    use crate::cover::sources::ArtSource;
+    use std::path::PathBuf;
+
+    const YT_URL: &str = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+    const YT_THUMB: &str = "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg";
+    const PLASMA_FILE: &str = "file:///tmp/plasma-browser-integration_artwork_zmXyTR.jpg";
+
+    fn youtube_inferred() -> Option<String> {
+        infer_art_url_from_url(YT_URL)
+    }
+
+    #[test]
+    fn file_art_url_with_youtube_xesam_prefers_inferred_thumbnail() {
+        let got = select_art_source(Some(PLASMA_FILE), youtube_inferred(), None);
+        match got {
+            Some(ArtSource::Url(url)) => assert_eq!(url, YT_THUMB),
+            other => panic!("expected inferred YouTube URL, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn remote_http_art_url_beats_inferred_thumbnail() {
+        let curated = "https://cdn.example.com/cover.png";
+        let got = select_art_source(Some(curated), youtube_inferred(), None);
+        match got {
+            Some(ArtSource::Url(url)) => assert_eq!(url, curated),
+            other => panic!("expected curated http URL, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn data_art_url_with_youtube_xesam_prefers_inferred_thumbnail() {
+        let data_uri = "data:image/png;base64,iVBORw0KGgo=";
+        let got = select_art_source(Some(data_uri), youtube_inferred(), None);
+        match got {
+            Some(ArtSource::Url(url)) => assert_eq!(url, YT_THUMB),
+            other => panic!("expected inferred YouTube URL, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn file_art_url_with_non_youtube_xesam_keeps_file() {
+        let got = select_art_source(Some(PLASMA_FILE), None, None);
+        match got {
+            Some(ArtSource::File(path)) => assert_eq!(
+                path,
+                PathBuf::from("/tmp/plasma-browser-integration_artwork_zmXyTR.jpg")
+            ),
+            other => panic!("expected file source, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn no_art_url_with_youtube_xesam_returns_inferred() {
+        let got = select_art_source(None, youtube_inferred(), None);
+        match got {
+            Some(ArtSource::Url(url)) => assert_eq!(url, YT_THUMB),
+            other => panic!("expected inferred YouTube URL, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn no_art_url_no_xesam_with_embedded_returns_bytes() {
+        let bytes = vec![1u8, 2, 3, 4];
+        let got = select_art_source(None, None, Some(bytes.clone()));
+        match got {
+            Some(ArtSource::Bytes(b)) => assert_eq!(b, bytes),
+            other => panic!("expected embedded bytes, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn data_art_url_without_inference_falls_back_to_base64() {
+        let data_uri = "data:image/png;base64,iVBORw0KGgo=";
+        let got = select_art_source(Some(data_uri), None, None);
+        match got {
+            Some(ArtSource::Base64(payload)) => assert_eq!(payload, "iVBORw0KGgo="),
+            other => panic!("expected base64 source, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn all_inputs_empty_returns_none() {
+        assert!(select_art_source(None, None, None).is_none());
+    }
 
     #[test]
     fn youtube_watch_url_yields_thumbnail() {

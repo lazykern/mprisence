@@ -136,11 +136,9 @@ impl ConfigManager {
         title: Option<&str>,
     ) -> (schema::PlayerConfig, Option<String>) {
         let guard = self.config.read().expect("Failed to read config: RwLock poisoned");
-        // If URL is available, use it (normal path).
         if url.is_some() {
             return (guard.get_player_config_with_url(identity, player_bus_name, url), None);
         }
-        // No URL — try title-suffix inference.
         let base = guard.get_player_config(identity, player_bus_name);
         guard.apply_website_overrides_by_title(base, title)
     }
@@ -213,12 +211,10 @@ impl ConfigManager {
             .map_err(|e| ConfigError::Lock(e.to_string()))
     }
 
-    // Subscribe to config changes
     pub fn subscribe(&self) -> ConfigChangeReceiver {
         self.change_tx.subscribe()
     }
 
-    // Save config to file
     #[allow(dead_code)]
     pub fn save(&self) -> Result<(), ConfigError> {
         let config = self.read()?;
@@ -227,13 +223,11 @@ impl ConfigManager {
         Ok(())
     }
 
-    // Reload config from file
     pub fn reload(&self) -> Result<(), ConfigError> {
         log::info!("Reloading configuration from {}", self.path.display());
 
         wait_for_config_ready(&self.path);
 
-        // Use the same loading logic as initial load
         let new_config = load_config_from_file(&self.path)?;
 
         let mut config = self.write()?;
@@ -281,19 +275,17 @@ fn setup_file_watcher(config_path: PathBuf, config: Arc<ConfigManager>) -> Resul
             "Could not extract filename from config path: {}",
             config_path.display()
         );
-        // Handle error appropriately, maybe return Err or panic depending on requirements
         return Err(ConfigError::IO(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "Invalid config path",
         )));
     }
-    let config_filename = config_filename.unwrap(); // Safe due to check above
+    let config_filename = config_filename.unwrap();
 
     let mut last_reload = Instant::now();
     const DEBOUNCE_DURATION: Duration = Duration::from_millis(250);
 
     std::thread::spawn(move || {
-        // Need to clone necessary items for the move closure
         let config_manager_clone = config.clone();
         let change_tx_clone = config.change_tx.clone();
 
@@ -327,7 +319,6 @@ fn setup_file_watcher(config_path: PathBuf, config: Arc<ConfigManager>) -> Resul
                             );
                             let now = Instant::now();
                             if now.duration_since(last_reload) >= DEBOUNCE_DURATION {
-                                // Use the cloned Arc for reload
                                 match config_manager_clone.reload() {
                                     Ok(_) => {
                                         last_reload = now; // Update timestamp on success
@@ -363,7 +354,6 @@ fn setup_file_watcher(config_path: PathBuf, config: Arc<ConfigManager>) -> Resul
                     }
                     Err(e) => {
                         log::error!("File watch error: {}", e);
-                        // Use the cloned sender
                         let _ = change_tx_clone.send(ConfigChange::Error(e.to_string()));
                     }
                 }

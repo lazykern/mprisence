@@ -1,12 +1,13 @@
 use std::{collections::HashMap, fmt::Display, time::Duration};
 
-use log::{debug, info};
+use log::{debug, info, trace};
 use mpris::{DBusError, PlaybackStatus, Player};
 use smol_str::SmolStr;
 use url::Url;
 
 pub mod cmus;
 pub mod events;
+pub mod health;
 
 const MPRIS_BUS_PREFIX: &str = "org.mpris.MediaPlayer2.";
 const PLAYERCTLD_NO_ACTIVE_PLAYER_ERROR: &str = "com.github.altdesktop.playerctld.NoActivePlayer";
@@ -48,6 +49,7 @@ pub struct PlaybackState {
     pub title: Option<Box<str>>,
     pub position: Option<u32>,
     pub volume: Option<u8>,
+    pub url: Option<Box<str>>,
 }
 
 impl Display for PlaybackState {
@@ -90,6 +92,9 @@ impl From<&Player> for PlaybackState {
                 .and_then(|m| m.title().map(|s| s.to_string().into_boxed_str())),
             position: player.get_position().map(|d| d.as_secs() as u32).ok(),
             volume: player.get_volume().map(|v| (v * 100.0) as u8).ok(),
+            url: metadata
+                .as_ref()
+                .and_then(|m| m.url().map(|s| s.to_string().into_boxed_str())),
         }
     }
 }
@@ -219,6 +224,15 @@ impl PlaybackState {
     pub fn has_significant_changes(&self, previous: &Self) -> bool {
         if self.track_identifier != previous.track_identifier {
             debug!("Track identity changed");
+            return true;
+        }
+
+        // URL change is significant even when track_id is static (e.g. plasma-
+        // browser-integration reuses the same mpris:trackid across tracks).
+        // This allows the stale-URL quarantine to exit when plasma finally
+        // updates xesam:url to the correct value.
+        if self.url != previous.url {
+            debug!("URL changed: {:?} -> {:?}", previous.url, self.url);
             return true;
         }
 
@@ -426,7 +440,7 @@ pub fn merge_url_duplicates(
             continue;
         }
         if let Some(players) = candidates.remove(&from) {
-            debug!(
+            trace!(
                 "Merging duplicate player group '{}' into '{}' (same URL or origin)",
                 from, into
             );
@@ -437,10 +451,95 @@ pub fn merge_url_duplicates(
     candidates
 }
 
+/// Post-merge bucket summary used to decide presence-key migrations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BucketSummary {
+    pub norm_id: SmolStr,
+    pub bus_names: Vec<SmolStr>,
+    pub winner_bus: SmolStr,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PresenceMigration {
+    pub from_key: SmolStr,
+    pub to_key: SmolStr,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PresenceDrop {
+    pub key: SmolStr,
+    pub superseded_by: SmolStr,
+}
+
+/// Decide which existing `Presence` entries (keyed by their current
+/// `media_players` key, mapped to the canonical bus they are bound to)
+/// need to be re-keyed to match a post-merge bucket norm_id, and which
+/// need to be dropped because two presences contend for the same bucket.
+///
+/// Caller applies drops first (`destroy_discord_client` + `stop_listener`),
+/// then migrations (`HashMap::remove` + `HashMap::insert` under the new
+/// key, preserving Discord IPC client + listener thread + cached state).
+///
+/// Tiebreak for multi-match: prefer the entry already keyed under the
+/// bucket norm_id (avoids any rekey), else prefer the entry whose bus
+/// equals the bucket's `winner_bus`, else alphabetical by existing key.
+pub fn compute_presence_migrations(
+    existing: &HashMap<SmolStr, SmolStr>,
+    buckets: &[BucketSummary],
+) -> (Vec<PresenceMigration>, Vec<PresenceDrop>) {
+    let mut migrations = Vec::new();
+    let mut drops = Vec::new();
+
+    for bucket in buckets {
+        let mut matches: Vec<(&SmolStr, &SmolStr)> = existing
+            .iter()
+            .filter(|(_, bus)| bucket.bus_names.contains(bus))
+            .collect();
+
+        if matches.is_empty() {
+            continue;
+        }
+
+        matches.sort_by(|a, b| {
+            let a_correct = a.0 == &bucket.norm_id;
+            let b_correct = b.0 == &bucket.norm_id;
+            if a_correct != b_correct {
+                return b_correct.cmp(&a_correct);
+            }
+            let a_winner = a.1 == &bucket.winner_bus;
+            let b_winner = b.1 == &bucket.winner_bus;
+            if a_winner != b_winner {
+                return b_winner.cmp(&a_winner);
+            }
+            a.0.cmp(b.0)
+        });
+
+        let (winner_key, _) = matches[0];
+        if winner_key != &bucket.norm_id {
+            migrations.push(PresenceMigration {
+                from_key: winner_key.clone(),
+                to_key: bucket.norm_id.clone(),
+            });
+        }
+        for (loser_key, _) in &matches[1..] {
+            drops.push(PresenceDrop {
+                key: (*loser_key).clone(),
+                superseded_by: winner_key.clone(),
+            });
+        }
+    }
+
+    (migrations, drops)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{canonical_player_bus_name, compute_url_merges, GroupSnapshot};
+    use super::{
+        canonical_player_bus_name, compute_presence_migrations, compute_url_merges,
+        BucketSummary, GroupSnapshot, PresenceDrop, PresenceMigration,
+    };
     use smol_str::SmolStr;
+    use std::collections::HashMap;
 
     #[test]
     fn keeps_reverse_dns_player_names() {
@@ -562,5 +661,160 @@ mod tests {
         let a = snap("a", 5, &["https://www.youtube.com/watch?v=aaa"]);
         let b = snap("b", 5, &["https://www.youtube.com/watch?v=bbb"]);
         assert!(compute_url_merges(&[a, b]).is_empty());
+    }
+
+    fn bucket(norm_id: &str, buses: &[&str], winner: &str) -> BucketSummary {
+        BucketSummary {
+            norm_id: SmolStr::new(norm_id),
+            bus_names: buses.iter().map(|b| SmolStr::new(*b)).collect(),
+            winner_bus: SmolStr::new(winner),
+        }
+    }
+
+    fn existing_from(pairs: &[(&str, &str)]) -> HashMap<SmolStr, SmolStr> {
+        pairs
+            .iter()
+            .map(|(k, v)| (SmolStr::new(*k), SmolStr::new(*v)))
+            .collect()
+    }
+
+    #[test]
+    fn migration_coalesce_renames_old_key() {
+        // Existing presence keyed `mozilla_zen` bound to Firefox native bus.
+        // Post-merge bucket `zen_browser` contains both Firefox bus + plasma bus.
+        let existing = existing_from(&[("mozilla_zen", "firefox")]);
+        let buckets = vec![bucket(
+            "zen_browser",
+            &["firefox", "plasma-browser-integration"],
+            "plasma-browser-integration",
+        )];
+
+        let (migrations, drops) = compute_presence_migrations(&existing, &buckets);
+
+        assert_eq!(
+            migrations,
+            vec![PresenceMigration {
+                from_key: SmolStr::new("mozilla_zen"),
+                to_key: SmolStr::new("zen_browser"),
+            }]
+        );
+        assert!(drops.is_empty());
+    }
+
+    #[test]
+    fn migration_split_renames_old_key() {
+        // Plasma vanished; existing presence keyed `zen_browser` bound to
+        // Firefox bus must be re-keyed to `mozilla_zen`.
+        let existing = existing_from(&[("zen_browser", "firefox")]);
+        let buckets = vec![bucket("mozilla_zen", &["firefox"], "firefox")];
+
+        let (migrations, drops) = compute_presence_migrations(&existing, &buckets);
+
+        assert_eq!(
+            migrations,
+            vec![PresenceMigration {
+                from_key: SmolStr::new("zen_browser"),
+                to_key: SmolStr::new("mozilla_zen"),
+            }]
+        );
+        assert!(drops.is_empty());
+    }
+
+    #[test]
+    fn migration_no_change_when_key_already_correct() {
+        let existing = existing_from(&[("zen_browser", "plasma-browser-integration")]);
+        let buckets = vec![bucket(
+            "zen_browser",
+            &["firefox", "plasma-browser-integration"],
+            "plasma-browser-integration",
+        )];
+
+        let (migrations, drops) = compute_presence_migrations(&existing, &buckets);
+
+        assert!(migrations.is_empty());
+        assert!(drops.is_empty());
+    }
+
+    #[test]
+    fn migration_double_match_prefers_winner_bus() {
+        // Both presences pre-exist independently; bucket coalesces them.
+        // Winner bus is plasma, so the plasma-bound presence wins.
+        let existing = existing_from(&[
+            ("mozilla_zen", "firefox"),
+            ("zen_browser", "plasma-browser-integration"),
+        ]);
+        let buckets = vec![bucket(
+            "zen_browser",
+            &["firefox", "plasma-browser-integration"],
+            "plasma-browser-integration",
+        )];
+
+        let (migrations, drops) = compute_presence_migrations(&existing, &buckets);
+
+        // zen_browser already correctly keyed → no migration emitted.
+        assert!(migrations.is_empty());
+        assert_eq!(
+            drops,
+            vec![PresenceDrop {
+                key: SmolStr::new("mozilla_zen"),
+                superseded_by: SmolStr::new("zen_browser"),
+            }]
+        );
+    }
+
+    #[test]
+    fn migration_double_match_alphabetical_when_neither_is_winner() {
+        // Both presences pre-exist; winner bus matches neither's bound bus.
+        // Neither is correctly keyed (bucket norm_id is "youtube_app"), and
+        // neither bus equals winner_bus ("c") → alphabetical wins.
+        let existing = existing_from(&[
+            ("zoo", "a"),
+            ("abc", "b"),
+        ]);
+        let buckets = vec![bucket("youtube_app", &["a", "b"], "c")];
+
+        let (migrations, drops) = compute_presence_migrations(&existing, &buckets);
+
+        assert_eq!(
+            migrations,
+            vec![PresenceMigration {
+                from_key: SmolStr::new("abc"),
+                to_key: SmolStr::new("youtube_app"),
+            }]
+        );
+        assert_eq!(
+            drops,
+            vec![PresenceDrop {
+                key: SmolStr::new("zoo"),
+                superseded_by: SmolStr::new("abc"),
+            }]
+        );
+    }
+
+    #[test]
+    fn migration_unrelated_presence_not_migrated() {
+        // Two browsers playing different videos: each presence is bound to
+        // its own bus, buckets are disjoint, no migration emitted.
+        let existing = existing_from(&[
+            ("zen_browser", "plasma-browser-integration"),
+            ("firefox", "plasma-browser-integration-1285737"),
+        ]);
+        let buckets = vec![
+            bucket(
+                "zen_browser",
+                &["firefox", "plasma-browser-integration"],
+                "plasma-browser-integration",
+            ),
+            bucket(
+                "firefox",
+                &["firefox", "plasma-browser-integration-1285737"],
+                "plasma-browser-integration-1285737",
+            ),
+        ];
+
+        let (migrations, drops) = compute_presence_migrations(&existing, &buckets);
+
+        assert!(migrations.is_empty());
+        assert!(drops.is_empty());
     }
 }

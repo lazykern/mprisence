@@ -212,6 +212,19 @@ impl CoverManager {
     /// Returns `None` on miss, deserialize error, or expired entry — the
     /// async `get_cover_art` path will revalidate / re-fetch as needed.
     pub fn try_cached_cover_art(&self, metadata_source: &MetadataSource) -> Option<String> {
+        self.try_cached_cover_art_with_options(metadata_source, true)
+    }
+
+    pub fn try_cached_cover_art_with_options(
+        &self,
+        metadata_source: &MetadataSource,
+        read_cache: bool,
+    ) -> Option<String> {
+        if !read_cache {
+            trace!("Skipping cached cover art lookup for quarantined metadata");
+            return None;
+        }
+
         let cache_key = CoverCache::generate_key(metadata_source);
         let entry = self.cache.get_by_key(&cache_key).ok().flatten()?;
 
@@ -244,48 +257,64 @@ impl CoverManager {
         source: Option<ArtSource>,
         metadata_source: &MetadataSource,
     ) -> Result<Option<String>, CoverArtError> {
+        self.get_cover_art_with_options(source, metadata_source, true)
+            .await
+    }
+
+    pub async fn get_cover_art_with_options(
+        &self,
+        source: Option<ArtSource>,
+        metadata_source: &MetadataSource,
+        read_cache: bool,
+    ) -> Result<Option<String>, CoverArtError> {
         let cache_key = CoverCache::generate_key(metadata_source);
         let recovered_cache_bytes: Option<Vec<u8>>;
 
         // 1. Check Cache
-        if let Some(mut entry) = self.cache_get_entry(&cache_key).await? {
-            let url = entry.url.clone();
-            let mut drop_reason: Option<&'static str> = None;
+        if read_cache {
+            if let Some(mut entry) = self.cache_get_entry(&cache_key).await? {
+                let url = entry.url.clone();
+                let mut drop_reason: Option<&'static str> = None;
 
-            if entry.provider.eq_ignore_ascii_case("direct") {
-                let policy = Self::direct_url_policy(&url);
-                if !policy.allow_direct {
-                    drop_reason = Some(policy.reason);
+                if entry.provider.eq_ignore_ascii_case("direct") {
+                    let policy = Self::direct_url_policy(&url);
+                    if !policy.allow_direct {
+                        drop_reason = Some(policy.reason);
+                    }
                 }
-            }
 
-            let needs_validation = entry
-                .last_validated
-                .elapsed()
-                .map(|elapsed| elapsed >= CACHE_VALIDATION_INTERVAL)
-                .unwrap_or(true);
+                let needs_validation = entry
+                    .last_validated
+                    .elapsed()
+                    .map(|elapsed| elapsed >= CACHE_VALIDATION_INTERVAL)
+                    .unwrap_or(true);
 
-            if drop_reason.is_none() && (!needs_validation || Self::validate_cover_url(&url).await)
-            {
-                if needs_validation {
-                    entry.last_validated = SystemTime::now();
-                    self.cache_update_entry(&cache_key, &entry).await?;
+                if drop_reason.is_none()
+                    && (!needs_validation || Self::validate_cover_url(&url).await)
+                {
+                    if needs_validation {
+                        entry.last_validated = SystemTime::now();
+                        self.cache_update_entry(&cache_key, &entry).await?;
+                    }
+                    debug!(
+                        "Serving cached cover art (provider: {}, validated: {})",
+                        entry.provider, !needs_validation
+                    );
+                    return Ok(Some(url));
                 }
-                debug!(
-                    "Serving cached cover art (provider: {}, validated: {})",
-                    entry.provider, !needs_validation
+
+                let reason = drop_reason.unwrap_or("validation_failed");
+                warn!(
+                    "Cached cover art URL {} is no longer eligible (provider: {}, reason: {}); removing entry",
+                    url, entry.provider, reason
                 );
-                return Ok(Some(url));
+                recovered_cache_bytes = self.cache_load_bytes(entry).await?;
+                self.cache_remove_entry(&cache_key).await?;
+            } else {
+                recovered_cache_bytes = None;
             }
-
-            let reason = drop_reason.unwrap_or("validation_failed");
-            warn!(
-                "Cached cover art URL {} is no longer eligible (provider: {}, reason: {}); removing entry",
-                url, entry.provider, reason
-            );
-            recovered_cache_bytes = self.cache_load_bytes(entry).await?;
-            self.cache_remove_entry(&cache_key).await?;
         } else {
+            trace!("Skipping cover cache lookup for quarantined metadata");
             recovered_cache_bytes = None;
         }
         trace!("No valid cache entry found.");

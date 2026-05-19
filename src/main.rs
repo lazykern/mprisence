@@ -1,6 +1,3 @@
-// #[cfg(not(target_os = "linux"))]
-// compile_error!("mprisence only supports Linux systems as it relies on MPRIS (Media Player Remote Interfacing Specification)");
-
 use clap::Parser;
 use config::{get_config, ConfigManager};
 use cover::CoverManager;
@@ -9,8 +6,10 @@ use log::{debug, error, info, trace, warn};
 use mpris::Event as MprisEvent;
 use mpris::PlayerFinder;
 use player::{
+    compute_presence_migrations,
     events::{EventOutcome, PlayerEvent, PlayerEventKind},
-    is_playerctld_no_active_error, select_richest_player, select_winner_idx, PlayerIdentifier,
+    is_playerctld_no_active_error, merge_url_duplicates, select_richest_player, select_winner_idx,
+    BucketSummary, PlayerIdentifier,
 };
 use presence::Presence;
 use smol_str::SmolStr;
@@ -242,47 +241,69 @@ impl Mprisence {
             candidates.entry(norm_id).or_default().push(player);
         }
 
-        // Phase 1.5: merge identity groups that share the same xesam:url.
-        // This handles cases like plasma-browser-integration and the native
-        // browser MPRIS endpoint both exposing the same track from the same tab.
-        {
-            // Build a map from URL → first norm_id that owns it.
-            let mut url_to_norm: HashMap<String, SmolStr> = HashMap::new();
-            let mut merge_targets: Vec<(SmolStr, SmolStr)> = Vec::new(); // (from, into)
+        // Phase 1.5: merge identity groups that share the same xesam:url, so
+        // that e.g. plasma-browser-integration and the native browser MPRIS
+        // endpoint exposing the same tab are tracked as one logical player.
+        let candidates = merge_url_duplicates(candidates);
 
-            for (norm_id, players) in &candidates {
-                for player in players {
-                    if let Ok(meta) = player.get_metadata() {
-                        if let Some(url) = meta.url() {
-                            if url.is_empty() {
-                                continue;
-                            }
-                            match url_to_norm.get(url) {
-                                Some(existing) if existing != norm_id => {
-                                    // This group shares a URL with another group — merge
-                                    merge_targets.push((norm_id.clone(), existing.clone()));
-                                    break;
-                                }
-                                None => {
-                                    url_to_norm.insert(url.to_string(), norm_id.clone());
-                                }
-                                _ => {}
-                            }
-                        }
+        // Phase 1.6: presence-key migration. When URL-merge changes the
+        // post-merge norm_id of an existing logical player (e.g. plasma
+        // begins or ceases to expose a tab the native bus also reports),
+        // re-key the existing Presence so its Discord IPC client, listener
+        // thread, and cached playback state survive instead of being torn
+        // down and reconstructed.
+        {
+            let existing: HashMap<SmolStr, SmolStr> = self
+                .media_players
+                .iter()
+                .map(|(k, p)| (k.clone(), p.player_id().player_bus_name.clone()))
+                .collect();
+
+            let buckets: Vec<BucketSummary> = candidates
+                .iter()
+                .map(|(norm_id, players)| {
+                    let ids: Vec<PlayerIdentifier> =
+                        players.iter().map(PlayerIdentifier::from).collect();
+                    let mut bus_names: Vec<SmolStr> = ids
+                        .iter()
+                        .map(|id| id.player_bus_name.clone())
+                        .collect();
+                    bus_names.sort_unstable();
+                    let winner_idx = select_richest_player(players, None);
+                    BucketSummary {
+                        norm_id: norm_id.clone(),
+                        bus_names,
+                        winner_bus: ids[winner_idx].player_bus_name.clone(),
                     }
+                })
+                .collect();
+
+            let (migrations, drops) = compute_presence_migrations(&existing, &buckets);
+
+            for d in drops {
+                if let Some(mut p) = self.media_players.remove(&d.key) {
+                    warn!(
+                        "Dropping duplicate presence '{}' (superseded by '{}')",
+                        d.key, d.superseded_by
+                    );
+                    if let Err(e) = p.destroy_discord_client() {
+                        warn!("Failed to destroy Discord client for {}: {}", d.key, e);
+                    }
+                    p.stop_listener();
                 }
+                self.dedup_selection.remove(&d.key);
             }
 
-            for (from, into) in merge_targets {
-                if from == into {
-                    continue;
-                }
-                if let Some(players) = candidates.remove(&from) {
+            for m in migrations {
+                if let Some(presence) = self.media_players.remove(&m.from_key) {
                     debug!(
-                        "Merging duplicate player group '{}' into '{}' (same xesam:url)",
-                        from, into
+                        "Migrating presence '{}' -> '{}' (URL-merge bucket rename)",
+                        m.from_key, m.to_key
                     );
-                    candidates.entry(into).or_default().extend(players);
+                    self.media_players.insert(m.to_key.clone(), presence);
+                }
+                if let Some(sel) = self.dedup_selection.remove(&m.from_key) {
+                    self.dedup_selection.insert(m.to_key, sel);
                 }
             }
         }

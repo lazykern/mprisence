@@ -698,6 +698,18 @@ impl CoverCache {
             }
         }
 
+        // 7. mpris:artUrl — differentiates tracks that share title/artist/url
+        //    (e.g. browser integrations that expose only the site's base URL
+        //    while writing a unique `/tmp/.../artwork_XXXXX.jpg` per video).
+        if let Some(art_url) = metadata_source
+            .mpris_metadata()
+            .and_then(|m| m.art_url().map(|s| s.to_string()))
+        {
+            if !art_url.is_empty() {
+                key_components.push(format!("art_url:{}", art_url));
+            }
+        }
+
         // If somehow still empty, use a default
         if key_components.is_empty() {
             warn!("Could not generate meaningful cache key components, using default key");
