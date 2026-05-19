@@ -342,6 +342,10 @@ impl Command {
                 print_key_value("mb_min_score", cover_config.provider.musicbrainz.min_score);
                 print_key_value("local_search_depth", cover_config.local_search_depth);
                 print_key_value("file_names", format_vector(&cover_config.file_names));
+                print_key_value(
+                    "infer_youtube_thumbnail",
+                    format_bool(cover_config.infer_youtube_thumbnail),
+                );
 
                 let template_config = config.template_config();
                 println!("\nTemplates");

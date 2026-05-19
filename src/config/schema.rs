@@ -51,6 +51,7 @@ const DEFAULT_TEMPLATE_SMALL_TEXT: &str = "{{{player}}}";
 const DEFAULT_COVER_FILE_NAMES: [&str; 5] = ["cover", "folder", "front", "album", "art"];
 const DEFAULT_COVER_PROVIDERS: [&str; 2] = ["catbox", "musicbrainz"];
 const DEFAULT_COVER_LOCAL_SEARCH_DEPTH: usize = 2;
+const DEFAULT_INFER_YOUTUBE_THUMBNAIL: bool = true;
 const DEFAULT_MUSICBRAINZ_MIN_SCORE: u8 = 95;
 const DEFAULT_CATBOX_USE_LITTER: bool = true;
 const DEFAULT_CATBOX_LITTER_HOURS: u8 = 24;
@@ -935,6 +936,10 @@ mod wildcard_tests {
         );
         assert!(cfg.cover.provider.catbox.use_litter);
         assert_eq!(cfg.cover.provider.catbox.litter_hours, 24);
+        assert!(
+            cfg.cover.infer_youtube_thumbnail,
+            "YouTube thumbnail inference should be enabled by default"
+        );
     }
 
     #[test]
@@ -1256,6 +1261,13 @@ pub struct CoverConfig {
 
     #[serde(default = "default_cover_local_search_depth")]
     pub local_search_depth: usize,
+
+    /// When `true` (the default), infer YouTube thumbnail URLs from
+    /// `xesam:url` metadata (e.g. `https://i.ytimg.com/vi/{id}/hqdefault.jpg`)
+    /// and use them as cover art. Set to `false` to disable this inference
+    /// and rely solely on configured cover providers.
+    #[serde(default = "default_infer_youtube_thumbnail")]
+    pub infer_youtube_thumbnail: bool,
 }
 
 fn default_cover_file_names() -> Vec<String> {
@@ -1269,12 +1281,17 @@ fn default_cover_local_search_depth() -> usize {
     DEFAULT_COVER_LOCAL_SEARCH_DEPTH
 }
 
+fn default_infer_youtube_thumbnail() -> bool {
+    DEFAULT_INFER_YOUTUBE_THUMBNAIL
+}
+
 impl Default for CoverConfig {
     fn default() -> Self {
         CoverConfig {
             file_names: default_cover_file_names(),
             provider: CoverProviderConfig::default(),
             local_search_depth: default_cover_local_search_depth(),
+            infer_youtube_thumbnail: default_infer_youtube_thumbnail(),
         }
     }
 }

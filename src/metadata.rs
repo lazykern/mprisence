@@ -387,6 +387,8 @@ impl MetadataSource {
         self.mpris_metadata.as_ref()
     }
 
+    /// Exposed for the integration test crate and potential external consumers.
+    #[allow(dead_code)]
     pub fn lofty_tag(&self) -> Option<&TaggedFile> {
         self.tagged_file.as_ref()
     }

@@ -17,8 +17,6 @@ use parking_lot::Mutex;
 use smol_str::SmolStr;
 use tokio::sync::{mpsc, Notify};
 
-use lofty::file::AudioFile as _;
-use lofty::prelude::TaggedFileExt as _;
 
 use crate::{
     config::{
@@ -677,7 +675,7 @@ impl Presence {
     async fn update_activity(
         &mut self,
         generation: Option<u64>,
-        art_decision: health::ArtDecision,
+        mut art_decision: health::ArtDecision,
     ) -> Result<(), DiscordError> {
         if self.discord_client.is_none() {
             return Ok(());
@@ -713,7 +711,7 @@ impl Presence {
             }
         };
         let update_snapshot = UpdateSnapshot::from_mpris(playback_status, &metadata);
-        trace!("Metadata: {:?}", metadata);
+        debug!("Raw MPRIS metadata from player: {:?}", metadata);
 
         // Detect a track change relative to the last push and bump the
         // generation counter so any in-flight cover-art task spawned for the
@@ -777,35 +775,20 @@ impl Presence {
             );
         }
 
-        trace!("--- Raw Metadata Start ---");
+        debug!("--- Raw MPRIS Metadata Start ---");
         if let Some(mpris_meta) = metadata_source.mpris_metadata() {
-            trace!("MPRIS Metadata Map:");
+            debug!("MPRIS Metadata Map ({} entries):", mpris_meta.iter().count());
             for (key, value) in mpris_meta.iter() {
-                trace!(
+                debug!(
                     "  MPRIS Key: '{}', Value: {}",
                     key,
                     summarize_log_value(key, value)
                 );
             }
         } else {
-            trace!("No MPRIS Metadata available in source.");
+            debug!("No MPRIS Metadata available in source.");
         }
-        if let Some(lofty_tag) = metadata_source.lofty_tag() {
-            trace!("Lofty Primary Tag ({:?}):", lofty_tag.file_type());
-            if let Some(tag) = lofty_tag.primary_tag() {
-                for item in tag.items() {
-                    trace!("  Lofty Key: {:?}, Value: {:?}", item.key(), item.value());
-                }
-            } else {
-                trace!("  No primary tag found by Lofty.");
-            }
-            trace!("Lofty Properties: {:?}", lofty_tag.properties());
-        } else {
-            trace!(
-                "No Lofty TaggedFile available in source (likely not a local file or read failed)."
-            );
-        }
-        trace!("--- Raw Metadata End ---");
+        debug!("--- Raw MPRIS Metadata End ---");
 
         // --- Snapshot check: skip template rendering if nothing relevant changed ---
         // The snapshot captures playback_status + TrackFingerprint.  Volume is
@@ -838,6 +821,8 @@ impl Presence {
             .last_rendered_snapshot
             .as_ref()
             .is_some_and(|cached| *cached == update_snapshot);
+
+        debug!("Resolved MediaMetadata: {:?}", media_metadata);
 
         let activity_texts = if snapshot_matches && volume == self.last_rendered_volume {
             // Fast path: nothing that affects template output has changed.
@@ -1039,6 +1024,14 @@ impl Presence {
             );
         }
         self.error_logged.store(false, Ordering::Relaxed);
+
+        // Apply the cover config: when `infer_youtube_thumbnail` is disabled,
+        // disallow inferred art URLs (YouTube thumbnails derived from the
+        // track's `xesam:url`). The health state machine normally enables
+        // inference, so this override lets the user opt out.
+        if !self.config.cover_config().infer_youtube_thumbnail {
+            art_decision.source_options.allow_inferred_url = false;
+        }
 
         // Slow path: cache miss → background cover fetch + second push when ready.
         // Guard: skip if a background task is already in flight for a newer or
