@@ -51,7 +51,7 @@ fn create_extended_mpris_metadata() -> Metadata {
 
 #[test]
 fn test_string_fields() {
-    let metadata = MetadataSource::from_mpris(create_extended_mpris_metadata());
+    let metadata = MetadataSource::from_mpris_with_override(create_extended_mpris_metadata(), None);
     let media = metadata.to_media_metadata();
 
     assert_eq!(media.title, Some("Test Title".to_string()));
@@ -64,7 +64,7 @@ fn test_string_fields() {
 
 #[test]
 fn test_array_fields() {
-    let metadata = MetadataSource::from_mpris(create_extended_mpris_metadata());
+    let metadata = MetadataSource::from_mpris_with_override(create_extended_mpris_metadata(), None);
     let media = metadata.to_media_metadata();
 
     assert_eq!(media.genres, vec!["Rock".to_string(), "Metal".to_string()]);
@@ -79,7 +79,7 @@ fn test_array_fields() {
 
 #[test]
 fn test_numeric_fields() {
-    let metadata = MetadataSource::from_mpris(create_extended_mpris_metadata());
+    let metadata = MetadataSource::from_mpris_with_override(create_extended_mpris_metadata(), None);
     let media = metadata.to_media_metadata();
 
     assert_eq!(media.track_number, Some(1));
@@ -95,7 +95,7 @@ fn test_numeric_fields() {
 
 #[test]
 fn test_mpris_only_fields() {
-    let metadata = MetadataSource::from_mpris(create_extended_mpris_metadata());
+    let metadata = MetadataSource::from_mpris_with_override(create_extended_mpris_metadata(), None);
     let media = metadata.to_media_metadata();
 
     assert_eq!(media.copyright, Some("Test Copyright".to_string()));
@@ -111,7 +111,7 @@ fn test_mpris_only_fields() {
 #[test]
 fn test_missing_fields() {
     let metadata = Metadata::new("/test/1");
-    let metadata = MetadataSource::from_mpris(metadata);
+    let metadata = MetadataSource::from_mpris_with_override(metadata, None);
     let media = metadata.to_media_metadata();
 
     assert_eq!(media.title, None);
@@ -129,7 +129,7 @@ fn test_invalid_numeric_fields() {
     data.insert("xesam:movementNumber".to_string(), "not_a_number".into());
 
     let metadata = Metadata::from(data);
-    let metadata = MetadataSource::from_mpris(metadata);
+    let metadata = MetadataSource::from_mpris_with_override(metadata, None);
     let media = metadata.to_media_metadata();
 
     assert_eq!(media.track_number, None);
@@ -140,7 +140,7 @@ fn test_invalid_numeric_fields() {
 #[test]
 fn test_metadata_extraction() {
     let mpris_metadata = create_extended_mpris_metadata();
-    let metadata_source = MetadataSource::from_mpris(mpris_metadata);
+    let metadata_source = MetadataSource::from_mpris_with_override(mpris_metadata, None);
 
     assert_eq!(metadata_source.title(), Some("Test Title".to_string()));
     assert_eq!(metadata_source.album(), Some("Test Album".to_string()));
@@ -161,7 +161,7 @@ fn test_metadata_extraction() {
 #[test]
 fn test_to_media_metadata_conversion() {
     let mpris_metadata = create_extended_mpris_metadata();
-    let metadata_source = MetadataSource::from_mpris(mpris_metadata);
+    let metadata_source = MetadataSource::from_mpris_with_override(mpris_metadata, None);
     let media_metadata = metadata_source.to_media_metadata();
 
     assert_eq!(media_metadata.title, Some("Test Title".to_string()));
@@ -236,7 +236,7 @@ fn test_metadata_from_json() {
 #[test]
 fn test_extended_metadata_fields() {
     let mpris_metadata = create_extended_mpris_metadata();
-    let metadata_source = MetadataSource::from_mpris(mpris_metadata);
+    let metadata_source = MetadataSource::from_mpris_with_override(mpris_metadata, None);
     let media_metadata = metadata_source.to_media_metadata();
 
     assert_eq!(media_metadata.composer, Some("Test Composer".to_string()));

@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::time::Duration;
 
 use crate::cover::sources::ArtSource;
@@ -198,10 +197,6 @@ impl MetadataSource {
         }
     }
 
-    pub fn from_mpris(metadata: Metadata) -> Self {
-        Self::from_mpris_with_override(metadata, None)
-    }
-
     pub fn from_mpris_with_override(metadata: Metadata, override_url: Option<String>) -> Self {
         let override_tagged_file = override_url
             .as_ref()
@@ -222,24 +217,19 @@ impl MetadataSource {
             match urlencoding::decode(encoded_path) {
                 Ok(decoded_cow) => {
                     let decoded_path = decoded_cow.into_owned();
-                    Self::lofty_tag_from_path(&decoded_path)
+                    lofty::read_from_path(&decoded_path).map_err(|e| e.to_string())
                 }
                 Err(e) => {
                     warn!(
                         "Failed to URL-decode path '{}': {}. Lofty might fail.",
                         encoded_path, e
                     );
-                    Self::lofty_tag_from_path(encoded_path)
+                    lofty::read_from_path(encoded_path).map_err(|e| e.to_string())
                 }
             }
         } else {
             Err(format!("Unsupported URL scheme: {}", url.scheme()))
         }
-    }
-
-    fn lofty_tag_from_path<P: AsRef<Path>>(path: P) -> Result<TaggedFile, String> {
-        let tagged_file = lofty::read_from_path(path).map_err(|e| e.to_string())?;
-        Ok(tagged_file)
     }
 
     impl_metadata_getter!(title, "xesam:title", ItemKey::TrackTitle);
@@ -365,10 +355,6 @@ impl MetadataSource {
 
     pub fn audio_properties(&self) -> Option<&FileProperties> {
         self.tagged_file.as_ref().map(|t| t.properties())
-    }
-
-    pub fn art_source(&self) -> Option<ArtSource> {
-        self.art_source_with_options(ArtSourceOptions::default())
     }
 
     pub fn art_source_with_options(&self, options: ArtSourceOptions) -> Option<ArtSource> {

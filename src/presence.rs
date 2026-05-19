@@ -249,7 +249,7 @@ impl Presence {
         // reopen it, racing the first `set_activity` write.
         let url = self.current_url();
         let title = self.current_title();
-        let (player_config, _suffix) = self.config.get_player_config_with_title_fallback(
+        let (player_config, _) = self.config.get_player_config_with_title_fallback(
             self.player.identity(),
             &canonical_player_bus_name(self.player.bus_name()),
             url.as_deref(),
@@ -788,7 +788,7 @@ impl Presence {
             Some(url) => {
                 metadata::MetadataSource::from_mpris_with_override(metadata.clone(), Some(url))
             }
-            None => metadata::MetadataSource::from_mpris(metadata.clone()),
+            None => metadata::MetadataSource::from_mpris_with_override(metadata.clone(), None),
         };
 
         if art_decision.newly_quarantined {
@@ -979,13 +979,10 @@ impl Presence {
             );
         }
         let cover_for_push = cached_cover.as_deref().or(remembered_cover.as_deref());
-        if cover_for_push.is_none() {
-            debug!("Artwork source for push: none (placeholder)");
-        } else if cached_cover.is_some() {
-            debug!("Artwork source for push: cached_cover");
-        } else if remembered_cover.is_some() {
-            debug!("Artwork source for push: remembered_cover");
-        }
+        debug!(
+            "Artwork source for push: {}",
+            if cover_for_push.is_none() { "none (placeholder)" } else if cached_cover.is_some() { "cached_cover" } else { "remembered_cover" }
+        );
 
         // Final checkpoint right before the Discord write so a stale push
         // cannot overwrite a newer song/status.
@@ -1089,11 +1086,7 @@ impl Presence {
                     expected: fetch_gen,
                 };
                 let art_source =
-                    if art_source_options_for_task == metadata::ArtSourceOptions::default() {
-                        metadata_source_for_task.art_source()
-                    } else {
-                        metadata_source_for_task.art_source_with_options(art_source_options_for_task)
-                    };
+                    metadata_source_for_task.art_source_with_options(art_source_options_for_task);
                 let cover_art_result = tokio::select! {
                     result = cover_manager.get_cover_art(
                         art_source.clone(),
