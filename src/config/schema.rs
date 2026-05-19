@@ -35,105 +35,60 @@ const DEFAULT_MUSICBRAINZ_MIN_SCORE: u8 = 95;
 const DEFAULT_CATBOX_USE_LITTER: bool = true;
 const DEFAULT_CATBOX_LITTER_HOURS: u8 = 24;
 
-pub(crate) mod normalized_string {
-    use crate::utils::normalize_player_identity;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-    use std::collections::HashMap;
+macro_rules! normalized_map_serde {
+    ($mod_name:ident, $value_type:ident, $entity:literal) => {
+        pub(crate) mod $mod_name {
+            use crate::utils::normalize_player_identity;
+            use serde::{Deserialize, Deserializer, Serialize, Serializer};
+            use std::collections::HashMap;
 
-    pub fn serialize<S>(
-        map: &HashMap<String, super::PlayerConfigLayer>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        map.serialize(serializer)
-    }
+            pub fn serialize<S>(
+                map: &HashMap<String, super::$value_type>,
+                serializer: S,
+            ) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                map.serialize(serializer)
+            }
 
-    pub fn deserialize<'de, D>(
-        deserializer: D,
-    ) -> Result<HashMap<String, super::PlayerConfigLayer>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let temp_map = HashMap::<String, super::PlayerConfigLayer>::deserialize(deserializer)?;
-
-        let mut final_map: HashMap<String, super::PlayerConfigLayer> = HashMap::new();
-
-        for (key, value) in temp_map {
-            let normalized_key = normalize_player_identity(&key);
-
-            if let Some(existing) = final_map.get_mut(&normalized_key) {
-                // If we have a duplicate key after normalization, merge the configs
-                log::debug!(
-                    "Merging duplicate player config for '{}' (from '{}')",
-                    normalized_key,
-                    key
-                );
-
-                existing.merge_from(value);
-            } else {
-                log::debug!(
-                    "Normalizing player config key from '{}' to '{}'",
-                    key,
-                    normalized_key
-                );
-                final_map.insert(normalized_key, value);
+            pub fn deserialize<'de, D>(
+                deserializer: D,
+            ) -> Result<HashMap<String, super::$value_type>, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                let temp_map =
+                    HashMap::<String, super::$value_type>::deserialize(deserializer)?;
+                let mut final_map: HashMap<String, super::$value_type> = HashMap::new();
+                for (key, value) in temp_map {
+                    let normalized_key = normalize_player_identity(&key);
+                    if let Some(existing) = final_map.get_mut(&normalized_key) {
+                        log::debug!(
+                            "Merging duplicate {} config for '{}' (from '{}')",
+                            $entity,
+                            normalized_key,
+                            key
+                        );
+                        existing.merge_from(value);
+                    } else {
+                        log::debug!(
+                            "Normalizing {} config key from '{}' to '{}'",
+                            $entity,
+                            key,
+                            normalized_key
+                        );
+                        final_map.insert(normalized_key, value);
+                    }
+                }
+                Ok(final_map)
             }
         }
-
-        Ok(final_map)
-    }
+    };
 }
 
-pub(crate) mod normalized_website_string {
-    use crate::utils::normalize_player_identity;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-    use std::collections::HashMap;
-
-    pub fn serialize<S>(
-        map: &HashMap<String, super::WebsiteConfigLayer>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        map.serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(
-        deserializer: D,
-    ) -> Result<HashMap<String, super::WebsiteConfigLayer>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let temp_map = HashMap::<String, super::WebsiteConfigLayer>::deserialize(deserializer)?;
-
-        let mut final_map: HashMap<String, super::WebsiteConfigLayer> = HashMap::new();
-
-        for (key, value) in temp_map {
-            let normalized_key = normalize_player_identity(&key);
-
-            if let Some(existing) = final_map.get_mut(&normalized_key) {
-                log::debug!(
-                    "Merging duplicate website config for '{}' (from '{}')",
-                    normalized_key,
-                    key
-                );
-                existing.merge_from(value);
-            } else {
-                log::debug!(
-                    "Normalizing website config key from '{}' to '{}'",
-                    key,
-                    normalized_key
-                );
-                final_map.insert(normalized_key, value);
-            }
-        }
-
-        Ok(final_map)
-    }
-}
+normalized_map_serde!(normalized_string, PlayerConfigLayer, "player");
+normalized_map_serde!(normalized_website_string, WebsiteConfigLayer, "website");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivityTypesConfig {
@@ -321,7 +276,9 @@ impl Config {
             return base;
         }
         let host_or_url = url_host_for_match(raw_url);
-        if let Some(layer) = find_matching_website_layer(&self.merged_website, &host_or_url) {
+        if let Some(layer) = find_matching_website_entry(&self.merged_website, &host_or_url)
+            .map(|(_, layer)| layer)
+        {
             return layer
                 .apply_into_website(WebsiteConfig::default())
                 .into_player_config();
@@ -2066,18 +2023,9 @@ mod website_tests {
     }
 }
 
-/// Picks the most specific matching website layer from a single source map.
+/// Returns the key and most specific matching website layer from a single source map.
 /// Priority: exact host > regex > wildcard > plain substring fallback.
-fn find_matching_website_layer(
-    source: &HashMap<String, WebsiteConfigLayer>,
-    url_host: &str,
-) -> Option<WebsiteConfigLayer> {
-    find_matching_website_entry(source, url_host).map(|(_, layer)| layer)
-}
-
-/// Like `find_matching_website_layer`, but also returns the key of the
-/// matched entry so callers (CLI display) can show which `[website.*]`
-/// applied.
+/// Use `.map(|(_, layer)| layer)` to discard the key when not needed.
 fn find_matching_website_entry(
     source: &HashMap<String, WebsiteConfigLayer>,
     url_host: &str,

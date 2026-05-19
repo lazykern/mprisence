@@ -44,12 +44,6 @@ impl ArtSource {
         })
     }
 
-    #[allow(dead_code)]
-    pub fn from_bytes(data: Vec<u8>) -> Self {
-        trace!("Creating art source from {} bytes", data.len());
-        Self::Bytes(data)
-    }
-
     pub async fn materialize_bytes(&self) -> Result<Option<Vec<u8>>, CoverArtError> {
         match self {
             Self::Bytes(data) => Ok(Some(data.clone())),
@@ -71,17 +65,6 @@ impl ArtSource {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn to_base64(&self) -> Option<String> {
-        match self {
-            Self::Base64(data) => Some(data.clone()),
-            Self::Bytes(data) => {
-                trace!("Converting bytes to base64");
-                Some(STANDARD.encode(data))
-            }
-            _ => None,
-        }
-    }
 }
 
 pub fn search_local_cover_art(

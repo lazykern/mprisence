@@ -231,7 +231,7 @@ impl Command {
                             ),
                             format_cell(&identity_display, NAME_COLUMN_WIDTH),
                             format_cell(&summary_title, TITLE_COLUMN_WIDTH),
-                            summary_status_text(
+                            detail_status_text(
                                 entry.status.as_ref(),
                                 entry.config.ignore,
                                 entry.allowed,
@@ -535,15 +535,6 @@ fn playback_status_word(status: Option<&PlaybackStatus>) -> Option<&'static str>
         Some(PlaybackStatus::Stopped) => Some("stopped"),
         None => None,
     }
-}
-
-fn summary_status_text(
-    status: Option<&PlaybackStatus>,
-    ignored: bool,
-    allowed: bool,
-    is_duplicate: bool,
-) -> String {
-    detail_status_text(status, ignored, allowed, is_duplicate)
 }
 
 fn detail_status_text(

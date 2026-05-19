@@ -3,7 +3,7 @@ use reqwest::StatusCode;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tokio::task::{spawn_blocking, JoinError};
+use tokio::task::spawn_blocking;
 use url::{Host, Url};
 
 use crate::config;
@@ -605,23 +605,28 @@ impl CoverManager {
         }
     }
 
+    async fn run_blocking<F, T>(&self, context: &'static str, f: F) -> Result<T, CoverArtError>
+    where
+        F: FnOnce() -> Result<T, CoverArtError> + Send + 'static,
+        T: Send + 'static,
+    {
+        spawn_blocking(f)
+            .await
+            .map_err(|e| CoverArtError::other(format!("Cache {context} task failed: {e}")))?
+    }
+
     async fn cache_get_entry(&self, key: &str) -> Result<Option<CacheEntry>, CoverArtError> {
         let cache = self.cache.clone();
         let key = key.to_string();
-        let result = spawn_blocking(move || cache.get_by_key(&key))
-            .await
-            .map_err(|e| Self::cache_task_error("lookup", e))?;
-        result
+        self.run_blocking("lookup", move || cache.get_by_key(&key)).await
     }
 
     async fn cache_update_entry(&self, key: &str, entry: &CacheEntry) -> Result<(), CoverArtError> {
         let cache = self.cache.clone();
         let key = key.to_string();
-        let entry_clone = entry.clone();
-        let result = spawn_blocking(move || cache.update_entry_with_key(&key, &entry_clone))
+        let entry = entry.clone();
+        self.run_blocking("update", move || cache.update_entry_with_key(&key, &entry))
             .await
-            .map_err(|e| Self::cache_task_error("update", e))?;
-        result
     }
 
     async fn cache_store_entry(
@@ -633,37 +638,22 @@ impl CoverManager {
         cached_bytes: Option<Vec<u8>>,
     ) -> Result<(), CoverArtError> {
         let cache = self.cache.clone();
-        let key = key.to_string();
-        let provider = provider.to_string();
-        let url = url.to_string();
-        let result = spawn_blocking(move || {
-            let bytes = cached_bytes.as_deref();
-            cache.store_with_key(&key, &provider, &url, expiration, bytes)
+        let (key, provider, url) = (key.to_string(), provider.to_string(), url.to_string());
+        self.run_blocking("store", move || {
+            cache.store_with_key(&key, &provider, &url, expiration, cached_bytes.as_deref())
         })
         .await
-        .map_err(|e| Self::cache_task_error("store", e))?;
-        result
     }
 
     async fn cache_remove_entry(&self, key: &str) -> Result<(), CoverArtError> {
         let cache = self.cache.clone();
         let key = key.to_string();
-        let result = spawn_blocking(move || cache.remove_by_key(&key))
-            .await
-            .map_err(|e| Self::cache_task_error("remove", e))?;
-        result
+        self.run_blocking("remove", move || cache.remove_by_key(&key)).await
     }
 
     async fn cache_load_bytes(&self, entry: CacheEntry) -> Result<Option<Vec<u8>>, CoverArtError> {
         let cache = self.cache.clone();
-        let result = spawn_blocking(move || cache.load_bytes(&entry))
-            .await
-            .map_err(|e| Self::cache_task_error("load-bytes", e))?;
-        result
-    }
-
-    fn cache_task_error(context: &str, err: JoinError) -> CoverArtError {
-        CoverArtError::other(format!("Cache {context} task failed: {err}"))
+        self.run_blocking("load-bytes", move || cache.load_bytes(&entry)).await
     }
 
     async fn prepare_cache_payload(
