@@ -15,5 +15,8 @@ flamegraph*
 
 AGENTS.md
 
+/PLAN.md
+/plans/
+
 # Benchmark raw run data (keep only bench/RESULTS.md)
 /bench/*/
