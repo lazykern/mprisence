@@ -2,10 +2,12 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use mpris::Metadata;
 use parking_lot::Mutex;
 use thiserror::Error;
 use tokio::process::Command;
 use tokio::time::timeout;
+use url::Url;
 
 pub struct CmusState {
     pub track_id: Mutex<Option<Box<str>>>,
@@ -26,6 +28,58 @@ impl CmusState {
         *self.track_id.lock() = None;
         *self.path.lock() = None;
         self.error_logged.store(false, Ordering::Relaxed);
+    }
+
+    /// Resolve a `file://` URL for the currently playing cmus track.
+    /// Caches the path between ticks; resets on track change.
+    pub async fn resolve_url(&self, metadata: &Metadata) -> Option<String> {
+        let track_token = metadata
+            .track_id()
+            .map(|id| id.to_string())
+            .or_else(|| metadata.url().map(|url| url.to_string()))
+            .or_else(|| metadata.title().map(|title| title.to_string()));
+
+        let track_changed = {
+            let guard = self.track_id.lock();
+            track_token.as_deref() != guard.as_deref()
+        };
+
+        if track_changed {
+            *self.track_id.lock() = track_token.map(|token| token.into_boxed_str());
+            *self.path.lock() = None;
+            self.error_logged.store(false, Ordering::Relaxed);
+        }
+
+        if self.path.lock().is_none() {
+            match get_current_track_path().await {
+                Ok(Some(path)) => {
+                    *self.path.lock() = Some(path);
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    if !self.error_logged.load(Ordering::Relaxed) {
+                        log::warn!("cmus-remote failed: {}", err);
+                        self.error_logged.store(true, Ordering::Relaxed);
+                    }
+                }
+            }
+        }
+
+        let cmus_path = self.path.lock().clone();
+        if let Some(path) = cmus_path {
+            match Url::from_file_path(&path) {
+                Ok(url) => Some(url.to_string()),
+                Err(_) => {
+                    if !self.error_logged.load(Ordering::Relaxed) {
+                        log::warn!("cmus-remote returned non-file path: {:?}", path);
+                        self.error_logged.store(true, Ordering::Relaxed);
+                    }
+                    None
+                }
+            }
+        } else {
+            None
+        }
     }
 }
 

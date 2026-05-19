@@ -444,21 +444,8 @@ impl PlayerHealth {
                         "position_frozen",
                     )
                 } else if input.same_url_as_prev && Self::should_quarantine(input) {
-                    let stale_art_url = input.track.art_url.clone();
-                    let art_decision =
-                        Self::make_quarantine_decision(true, &stale_art_url, input);
-                    (
-                        Self::ArtQuarantined {
-                            tracked_url: SmolStr::new(
-                                input.track.url.clone().unwrap_or_default(),
-                            ),
-                            blocked_art_url: stale_art_url,
-                            generation,
-                            last_position: input.position,
-                        },
-                        TransitionOutcome::Push { art_decision },
-                        "quarantine_enter_same_url",
-                    )
+                    let (new_state, outcome) = Self::build_quarantine_entry(input, generation);
+                    (new_state, outcome, "quarantine_enter_same_url")
                 } else {
                     (
                         Self::Healthy {
@@ -555,21 +542,8 @@ impl PlayerHealth {
             } => {
                 if input.position > Duration::ZERO && input.position != last_position {
                     if input.same_url_as_prev && Self::should_quarantine(input) {
-                        let stale_art_url = input.track.art_url.clone();
-                        let art_decision =
-                            Self::make_quarantine_decision(true, &stale_art_url, input);
-                        (
-                            Self::ArtQuarantined {
-                                tracked_url: SmolStr::new(
-                                    input.track.url.clone().unwrap_or_default(),
-                                ),
-                                blocked_art_url: stale_art_url,
-                                generation,
-                                last_position: input.position,
-                            },
-                            TransitionOutcome::Push { art_decision },
-                            "stalled_recover_to_quarantine",
-                        )
+                        let (new_state, outcome) = Self::build_quarantine_entry(input, generation);
+                        (new_state, outcome, "stalled_recover_to_quarantine")
                     } else {
                         (
                             Self::Healthy {
@@ -690,7 +664,7 @@ impl PlayerHealth {
         // temp artwork), the content is updated in-place by the browser
         // integration, so we should always allow it through.
         let allow_mpris = stale_art_url.as_deref().is_none_or(|blocked| {
-            if crate::metadata::is_directly_usable_art_url(blocked) {
+            if crate::metadata::is_http_art_url(blocked) {
                 // HTTP(S) art URL — suppress if it hasn't changed.
                 input.track.art_url.as_deref() != Some(blocked)
             } else {
@@ -706,6 +680,23 @@ impl PlayerHealth {
             read_cache: false,
             newly_quarantined,
         }
+    }
+
+    fn build_quarantine_entry(
+        input: &HealthCheckInput,
+        generation: u64,
+    ) -> (Self, TransitionOutcome) {
+        let stale_art_url = input.track.art_url.clone();
+        let art_decision = Self::make_quarantine_decision(true, &stale_art_url, input);
+        (
+            Self::ArtQuarantined {
+                tracked_url: SmolStr::new(input.track.url.clone().unwrap_or_default()),
+                blocked_art_url: stale_art_url,
+                generation,
+                last_position: input.position,
+            },
+            TransitionOutcome::Push { art_decision },
+        )
     }
 }
 

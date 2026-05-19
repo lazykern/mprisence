@@ -1373,30 +1373,14 @@ impl PlayerConfigLayer {
     }
 
     pub fn merge_from(&mut self, other: PlayerConfigLayer) {
-        if other.name.is_some() {
-            self.name = other.name;
-        }
-        if other.ignore.is_some() {
-            self.ignore = other.ignore;
-        }
-        if other.app_id.is_some() {
-            self.app_id = other.app_id;
-        }
-        if other.icon.is_some() {
-            self.icon = other.icon;
-        }
-        if other.show_icon.is_some() {
-            self.show_icon = other.show_icon;
-        }
-        if other.allow_streaming.is_some() {
-            self.allow_streaming = other.allow_streaming;
-        }
-        if other.status_display_type.is_some() {
-            self.status_display_type = other.status_display_type;
-        }
-        if other.override_activity_type.is_some() {
-            self.override_activity_type = other.override_activity_type;
-        }
+        self.name = other.name.or(self.name.take());
+        self.ignore = other.ignore.or(self.ignore);
+        self.app_id = other.app_id.or(self.app_id.take());
+        self.icon = other.icon.or(self.icon.take());
+        self.show_icon = other.show_icon.or(self.show_icon);
+        self.allow_streaming = other.allow_streaming.or(self.allow_streaming);
+        self.status_display_type = other.status_display_type.or(self.status_display_type);
+        self.override_activity_type = other.override_activity_type.or(self.override_activity_type);
     }
 }
 
@@ -1529,39 +1513,17 @@ impl WebsiteConfigLayer {
     }
 
     pub fn merge_from(&mut self, other: WebsiteConfigLayer) {
-        if other.match_pattern.is_some() {
-            self.match_pattern = other.match_pattern;
-        }
-        if other.match_patterns.is_some() {
-            self.match_patterns = other.match_patterns;
-        }
-        if other.title_suffix.is_some() {
-            self.title_suffix = other.title_suffix;
-        }
-        if other.name.is_some() {
-            self.name = other.name;
-        }
-        if other.ignore.is_some() {
-            self.ignore = other.ignore;
-        }
-        if other.app_id.is_some() {
-            self.app_id = other.app_id;
-        }
-        if other.icon.is_some() {
-            self.icon = other.icon;
-        }
-        if other.show_icon.is_some() {
-            self.show_icon = other.show_icon;
-        }
-        if other.allow_streaming.is_some() {
-            self.allow_streaming = other.allow_streaming;
-        }
-        if other.status_display_type.is_some() {
-            self.status_display_type = other.status_display_type;
-        }
-        if other.override_activity_type.is_some() {
-            self.override_activity_type = other.override_activity_type;
-        }
+        self.match_pattern = other.match_pattern.or(self.match_pattern.take());
+        self.match_patterns = other.match_patterns.or(self.match_patterns.take());
+        self.title_suffix = other.title_suffix.or(self.title_suffix.take());
+        self.name = other.name.or(self.name.take());
+        self.ignore = other.ignore.or(self.ignore);
+        self.app_id = other.app_id.or(self.app_id.take());
+        self.icon = other.icon.or(self.icon.take());
+        self.show_icon = other.show_icon.or(self.show_icon);
+        self.allow_streaming = other.allow_streaming.or(self.allow_streaming);
+        self.status_display_type = other.status_display_type.or(self.status_display_type);
+        self.override_activity_type = other.override_activity_type.or(self.override_activity_type);
     }
 
     fn apply_into_website(&self, mut base: WebsiteConfig) -> WebsiteConfig {

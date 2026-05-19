@@ -541,7 +541,7 @@ impl Default for ArtSourceOptions {
     }
 }
 
-pub fn is_directly_usable_art_url(url: &str) -> bool {
+pub fn is_http_art_url(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://")
 }
 
@@ -561,7 +561,7 @@ fn select_art_source(
     embedded_bytes: Option<Vec<u8>>,
 ) -> Option<ArtSource> {
     if let Some(url) = art_url {
-        if is_directly_usable_art_url(url) {
+        if is_http_art_url(url) {
             if let Some(src) = ArtSource::from_art_url(url) {
                 return Some(src);
             }
