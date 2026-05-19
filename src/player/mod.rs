@@ -1,8 +1,9 @@
-use std::{fmt::Display, time::Duration};
+use std::{collections::HashMap, fmt::Display, time::Duration};
 
 use log::{debug, info};
 use mpris::{DBusError, PlaybackStatus, Player};
 use smol_str::SmolStr;
+use url::Url;
 
 pub mod cmus;
 pub mod events;
@@ -116,7 +117,7 @@ pub fn is_proxy_bus_name(canonical_bus_name: &str) -> bool {
 
 /// Score a player's metadata richness (higher = richer).
 /// Used to break ties when multiple bus names expose the same content.
-fn metadata_richness(player: &Player) -> u8 {
+pub(crate) fn metadata_richness(player: &Player) -> u8 {
     let mut score: u8 = 0;
     if let Ok(meta) = player.get_metadata() {
         if meta.title().is_some() {
@@ -271,9 +272,175 @@ impl PlaybackState {
     }
 }
 
+/// Per-group snapshot used to compute URL-based merges deterministically,
+/// decoupled from D-Bus I/O so the merge contract is unit-testable.
+#[derive(Debug, Clone)]
+struct GroupSnapshot {
+    norm_id: SmolStr,
+    max_richness: u8,
+    urls: Vec<String>,
+}
+
+/// Returns the scheme+host origin of a URL, e.g. `"https://www.youtube.com"`.
+fn origin_of(url_str: &str) -> Option<String> {
+    Url::parse(url_str).ok().and_then(|u| {
+        let host = u.host_str()?;
+        Some(format!("{}://{}", u.scheme(), host))
+    })
+}
+
+/// Returns true if the URL has no meaningful path/query beyond the origin
+/// (e.g. `"https://www.youtube.com/"` or `"https://www.youtube.com"`).
+/// These are reported by plasma-browser-integration when it lacks a specific
+/// track URL, and should be treated as wildcards for same-origin merging.
+fn is_origin_only(url_str: &str) -> bool {
+    Url::parse(url_str).ok().map_or(false, |u| {
+        let path = u.path();
+        (path.is_empty() || path == "/") && u.query().is_none()
+    })
+}
+
+/// Pure: given a per-group snapshot, return the (from, into) merges to apply.
+/// Iteration order is deterministic — groups sorted by richness desc, then
+/// norm_id asc — so the merge target is stable across ticks regardless of the
+/// caller's `HashMap` iteration order.
+///
+/// In addition to exact URL matches, this also merges groups where one reports
+/// only an origin-level URL (e.g. `https://www.youtube.com/`) and another
+/// reports a specific URL on the same origin. This handles plasma-browser-
+/// integration, which reports the site root URL instead of the track URL.
+fn compute_url_merges(groups: &[GroupSnapshot]) -> Vec<(SmolStr, SmolStr)> {
+    let mut sorted: Vec<&GroupSnapshot> = groups.iter().collect();
+    sorted.sort_by(|a, b| {
+        b.max_richness
+            .cmp(&a.max_richness)
+            .then_with(|| a.norm_id.cmp(&b.norm_id))
+    });
+
+    let mut url_to_norm: HashMap<String, SmolStr> = HashMap::new();
+    // Maps `"https://example.com"` → norm_id for groups registered via an
+    // origin-only URL. Only populated by origin-only entries.
+    let mut origin_to_norm: HashMap<String, SmolStr> = HashMap::new();
+    let mut merges: Vec<(SmolStr, SmolStr)> = Vec::new();
+
+    'group: for group in sorted {
+        for url in &group.urls {
+            if url.is_empty() {
+                continue;
+            }
+
+            // Exact URL match.
+            if let Some(existing) = url_to_norm.get(url.as_str()) {
+                if existing != &group.norm_id {
+                    merges.push((group.norm_id.clone(), existing.clone()));
+                    break 'group;
+                }
+                continue;
+            }
+
+            let origin = origin_of(url);
+
+            if is_origin_only(url) {
+                if let Some(ref origin_str) = origin {
+                    // Another origin-only group already claimed this origin.
+                    if let Some(existing) = origin_to_norm.get(origin_str.as_str()) {
+                        if existing != &group.norm_id {
+                            merges.push((group.norm_id.clone(), existing.clone()));
+                            break 'group;
+                        }
+                    }
+                    // A richer group with a specific URL on this origin was
+                    // registered before us — merge into it.
+                    if let Some(existing) = url_to_norm
+                        .iter()
+                        .find(|(k, v)| *v != &group.norm_id && origin_of(k).as_deref() == Some(origin_str))
+                        .map(|(_, v)| v.clone())
+                    {
+                        merges.push((group.norm_id.clone(), existing));
+                        break 'group;
+                    }
+                }
+                // No match: register in both maps.
+                url_to_norm.insert(url.clone(), group.norm_id.clone());
+                if let Some(origin_str) = origin {
+                    origin_to_norm.insert(origin_str, group.norm_id.clone());
+                }
+            } else {
+                // Specific URL: check if an origin-only group already claimed this origin.
+                if let Some(ref origin_str) = origin {
+                    if let Some(existing) = origin_to_norm.get(origin_str.as_str()) {
+                        if existing != &group.norm_id {
+                            merges.push((group.norm_id.clone(), existing.clone()));
+                            break 'group;
+                        }
+                    }
+                }
+                url_to_norm.insert(url.clone(), group.norm_id.clone());
+            }
+        }
+    }
+
+    merges
+}
+
+/// Merge identity groups that share the same xesam:url.
+///
+/// Handles cases like plasma-browser-integration and the native browser MPRIS
+/// endpoint both exposing the same tab. The merge target is the richest group
+/// (with norm_id alphabetical as final tiebreaker), so the choice is stable
+/// across discovery ticks even though `HashMap` iteration order is not.
+pub fn merge_url_duplicates(
+    mut candidates: HashMap<SmolStr, Vec<Player>>,
+) -> HashMap<SmolStr, Vec<Player>> {
+    if candidates.len() < 2 {
+        return candidates;
+    }
+
+    let snapshots: Vec<GroupSnapshot> = candidates
+        .iter()
+        .map(|(norm_id, players)| {
+            let max_richness = players
+                .iter()
+                .map(metadata_richness)
+                .max()
+                .unwrap_or(0);
+            let urls = players
+                .iter()
+                .map(|p| {
+                    p.get_metadata()
+                        .ok()
+                        .and_then(|m| m.url().map(|s| s.to_string()))
+                        .unwrap_or_default()
+                })
+                .collect();
+            GroupSnapshot {
+                norm_id: norm_id.clone(),
+                max_richness,
+                urls,
+            }
+        })
+        .collect();
+
+    for (from, into) in compute_url_merges(&snapshots) {
+        if from == into {
+            continue;
+        }
+        if let Some(players) = candidates.remove(&from) {
+            debug!(
+                "Merging duplicate player group '{}' into '{}' (same URL or origin)",
+                from, into
+            );
+            candidates.entry(into).or_default().extend(players);
+        }
+    }
+
+    candidates
+}
+
 #[cfg(test)]
 mod tests {
-    use super::canonical_player_bus_name;
+    use super::{canonical_player_bus_name, compute_url_merges, GroupSnapshot};
+    use smol_str::SmolStr;
 
     #[test]
     fn keeps_reverse_dns_player_names() {
@@ -294,5 +461,106 @@ mod tests {
     fn trims_prefix_for_simple_names() {
         let bus_name = "org.mpris.MediaPlayer2.spotify";
         assert_eq!(canonical_player_bus_name(bus_name), "spotify");
+    }
+
+    fn snap(norm_id: &str, richness: u8, urls: &[&str]) -> GroupSnapshot {
+        GroupSnapshot {
+            norm_id: SmolStr::new(norm_id),
+            max_richness: richness,
+            urls: urls.iter().map(|s| (*s).to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn merge_target_is_richer_group_regardless_of_input_order() {
+        // mozilla_zen (firefox, no art_url): lower richness.
+        // zen_browser (plasma-browser-integration, with art_url): higher richness.
+        // Both expose the same YouTube URL.
+        let firefox = snap("mozilla_zen", 3, &["https://youtube.com/watch?v=x"]);
+        let plasma = snap("zen_browser", 6, &["https://youtube.com/watch?v=x"]);
+
+        let order1 = compute_url_merges(&[firefox.clone(), plasma.clone()]);
+        let order2 = compute_url_merges(&[plasma, firefox]);
+
+        assert_eq!(order1, order2);
+        assert_eq!(order1.len(), 1);
+        let (from, into) = &order1[0];
+        assert_eq!(into.as_str(), "zen_browser");
+        assert_eq!(from.as_str(), "mozilla_zen");
+    }
+
+    #[test]
+    fn merge_target_breaks_ties_alphabetically() {
+        let a = snap("mozilla_zen", 5, &["https://example.com/"]);
+        let b = snap("zen_browser", 5, &["https://example.com/"]);
+
+        let merges = compute_url_merges(&[a.clone(), b.clone()]);
+        assert_eq!(merges.len(), 1);
+        assert_eq!(merges[0].1.as_str(), "mozilla_zen");
+        assert_eq!(merges[0].0.as_str(), "zen_browser");
+
+        let merges_rev = compute_url_merges(&[b, a]);
+        assert_eq!(merges, merges_rev);
+    }
+
+    #[test]
+    fn no_merge_when_urls_differ() {
+        let a = snap("a", 5, &["https://example.com/one"]);
+        let b = snap("b", 5, &["https://example.com/two"]);
+        assert!(compute_url_merges(&[a, b]).is_empty());
+    }
+
+    #[test]
+    fn empty_url_is_ignored() {
+        let a = snap("a", 5, &["", "https://shared/"]);
+        let b = snap("b", 5, &["https://shared/"]);
+        let merges = compute_url_merges(&[a, b]);
+        assert_eq!(merges.len(), 1);
+        assert_eq!(merges[0].1.as_str(), "a");
+    }
+
+    #[test]
+    fn single_group_produces_no_merge() {
+        let a = snap("a", 5, &["https://example.com/"]);
+        assert!(compute_url_merges(&[a]).is_empty());
+    }
+
+    // Origin-level matching: plasma reports "https://www.youtube.com/" (origin-only),
+    // firefox reports the full video URL. Should merge into the richer group.
+    #[test]
+    fn origin_only_merges_with_specific_url_rich_origin_first() {
+        let plasma = snap("zen_browser", 6, &["https://www.youtube.com/"]);
+        let firefox = snap("mozilla_zen", 3, &["https://www.youtube.com/watch?v=abc"]);
+
+        let order1 = compute_url_merges(&[plasma.clone(), firefox.clone()]);
+        let order2 = compute_url_merges(&[firefox, plasma]);
+
+        assert_eq!(order1, order2);
+        assert_eq!(order1.len(), 1);
+        assert_eq!(order1[0].1.as_str(), "zen_browser");
+        assert_eq!(order1[0].0.as_str(), "mozilla_zen");
+    }
+
+    #[test]
+    fn origin_only_merges_with_specific_url_rich_specific_first() {
+        let firefox = snap("mozilla_zen", 6, &["https://www.youtube.com/watch?v=abc"]);
+        let plasma = snap("zen_browser", 3, &["https://www.youtube.com/"]);
+
+        let order1 = compute_url_merges(&[firefox.clone(), plasma.clone()]);
+        let order2 = compute_url_merges(&[plasma, firefox]);
+
+        assert_eq!(order1, order2);
+        assert_eq!(order1.len(), 1);
+        assert_eq!(order1[0].1.as_str(), "mozilla_zen");
+        assert_eq!(order1[0].0.as_str(), "zen_browser");
+    }
+
+    // Two different specific URLs on the same origin must NOT merge — they are
+    // different tabs/tracks on the same site.
+    #[test]
+    fn two_specific_urls_same_origin_no_merge() {
+        let a = snap("a", 5, &["https://www.youtube.com/watch?v=aaa"]);
+        let b = snap("b", 5, &["https://www.youtube.com/watch?v=bbb"]);
+        assert!(compute_url_merges(&[a, b]).is_empty());
     }
 }
