@@ -114,7 +114,7 @@ impl TemplateManager {
     }
 
     /// Create a TemplateManager with specified templates for testing
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn new_raw(
         details: &str,
         state: &str,

@@ -47,6 +47,9 @@ impl ConfigManager {
         })
     }
 
+    /// Construct from an in-memory `Config`. Used by the integration test crate;
+    /// `#[allow(dead_code)]` because integration tests are compiled separately
+    /// and the production binary build sees no caller.
     #[allow(dead_code)]
     pub fn new_with_config(config: Config) -> Self {
         let (tx, _) = broadcast::channel(16);
@@ -58,6 +61,8 @@ impl ConfigManager {
         }
     }
 
+    /// Used by the integration test crate (`tests/integration_tests.rs`);
+    /// see `new_with_config` above for the `#[allow(dead_code)]` rationale.
     #[allow(dead_code)]
     pub fn create_with_templates(
         detail_template: &str,
