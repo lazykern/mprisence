@@ -608,10 +608,6 @@ impl Default for ArtSourceOptions {
     }
 }
 
-pub fn is_http_art_url(url: &str) -> bool {
-    url.starts_with("http://") || url.starts_with("https://")
-}
-
 /// Pick the best art source from the available inputs.
 ///
 /// Priority:

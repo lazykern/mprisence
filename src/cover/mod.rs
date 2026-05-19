@@ -211,14 +211,14 @@ impl CoverManager {
     /// without waiting for slow providers when a usable cached URL exists.
     /// Returns `None` on miss, deserialize error, or expired entry — the
     /// async `get_cover_art` path will revalidate / re-fetch as needed.
-    /// Pass `read_cache: false` to skip lookup (quarantine path).
+    /// Pass `read_cache: false` to skip lookup.
     pub fn try_cached_cover_art(
         &self,
         metadata_source: &MetadataSource,
         read_cache: bool,
     ) -> Option<String> {
         if !read_cache {
-            trace!("Skipping cached cover art lookup for quarantined metadata");
+            trace!("Skipping cached cover art lookup (read_cache=false)");
             return None;
         }
 
@@ -302,7 +302,7 @@ impl CoverManager {
                 recovered_cache_bytes = None;
             }
         } else {
-            trace!("Skipping cover cache lookup for quarantined metadata");
+            trace!("Skipping cover cache lookup (read_cache=false)");
             recovered_cache_bytes = None;
         }
         trace!("No valid cache entry found.");

@@ -135,15 +135,13 @@ pub struct Presence {
     /// Used to allow newer tracks to preempt older in-flight cover fetches.
     cover_fetch_generation: Arc<AtomicU64>,
     /// Last cover URL successfully resolved for the current update generation.
-    /// Used so later same-track activity refreshes don't clear artwork while
-    /// quarantine disables normal cache reads.
+    /// Used so later same-track activity refreshes don't clear artwork.
     last_resolved_cover_art: Arc<Mutex<Option<(u64, String)>>>,
     /// Track identifier of the last pushed track (used in polling mode to detect
     /// track changes and bump `update_generation`).
     last_pushed_track_id: Mutex<Option<String>>,
     /// URL of the last pushed track. Used alongside `last_pushed_track_id` to
-    /// detect track changes (plasma-browser-integration reuses the same track_id)
-    /// and to compute `same_url_as_prev` for the health state machine.
+    /// detect track changes (plasma-browser-integration reuses the same track_id).
     last_pushed_track_url: Mutex<Option<String>>,
     /// Snapshot of the last rendered activity (playback_status + fingerprint).
     /// Used to skip template rendering when nothing changed between events
@@ -155,6 +153,10 @@ pub struct Presence {
     /// Cached activity texts from the last template render. Reused when
     /// `last_rendered_snapshot` matches the current state.
     last_activity_texts: Option<crate::template::ActivityTexts>,
+    /// Tracks whether a Discord activity (push) is currently displayed.
+    /// Set `true` after a successful push, `false` after a clear.
+    /// Prevents redundant Clear→Clear log spam from duplicate players.
+    discord_activity_is_set: Arc<AtomicBool>,
     config: Arc<ConfigManager>,
     /// Cancellation flag for the per-player event listener thread (event-driven mode only).
     listener_cancel: Option<Arc<AtomicBool>>,
@@ -204,6 +206,7 @@ impl Presence {
             last_rendered_snapshot: None,
             last_rendered_volume: None,
             last_activity_texts: None,
+            discord_activity_is_set: Arc::new(AtomicBool::new(false)),
             config,
             listener_cancel: None,
             listener_bus: None,
@@ -371,6 +374,7 @@ impl Presence {
             }
         };
         let track = health::TrackFingerprint::from_mpris(&metadata);
+        trace!("Raw MPRIS metadata: {:?}", metadata);
         let position = self.player.get_position().unwrap_or_default();
         let now = Instant::now();
         let generation = self.update_generation.load(Ordering::Relaxed);
@@ -378,16 +382,6 @@ impl Presence {
             self.player.bus_name(),
             self.player.identity(),
         );
-
-        // Detect if this track has the same URL as the previous push.
-        // Used by the health state machine to decide whether to enter
-        // ArtQuarantined (stale YouTube art suppression).
-        let same_url = {
-            let prev_url = self.last_pushed_track_url.lock();
-            prev_url.as_deref().is_some_and(|prev| {
-                prev == track.url.as_deref().unwrap_or("")
-            })
-        };
 
         let input = health::HealthCheckInput {
             playback_status,
@@ -398,7 +392,6 @@ impl Presence {
             generation,
             now,
             last_event: now, // latest event is right now
-            same_url_as_prev: same_url,
         };
 
         // --- Early-exit: skip Discord pushes if nothing changed since last
@@ -657,6 +650,13 @@ impl Presence {
     }
 
     fn clear_discord_activity_with_reason(&self, reason: &str) -> Result<(), DiscordError> {
+        // Skip redundant clears — prevents log spam from duplicate MPRIS
+        // players (e.g. firefox + plasma-browser-integration) both emitting
+        // frozen-position events for the same stopped track.
+        if !self.discord_activity_is_set.load(Ordering::Relaxed) {
+            trace!("Skipping redundant clear: {}", reason);
+            return Ok(());
+        }
         if !self.error_logged.load(Ordering::Relaxed) {
             info!("{}", reason);
         }
@@ -668,6 +668,7 @@ impl Presence {
                 }
                 DiscordError::ActivityError(err.to_string())
             })?;
+            self.discord_activity_is_set.store(false, Ordering::Relaxed);
         }
         Ok(())
     }
@@ -757,24 +758,6 @@ impl Presence {
             None => metadata::MetadataSource::from_mpris_with_override(metadata.clone(), None),
         };
 
-        if art_decision.newly_quarantined {
-            warn!(
-                "Suppressing stale MPRIS artwork for {}: url={:?}, art_url={:?}, allow_mpris_art_url={}",
-                self.player.identity(),
-                update_snapshot.track.url,
-                update_snapshot.track.art_url,
-                art_decision.source_options.allow_mpris_art_url
-            );
-        } else if art_decision.source_options != metadata::ArtSourceOptions::default() {
-            trace!(
-                "Continuing stale MPRIS artwork quarantine for {}: url={:?}, art_url={:?}, allow_mpris_art_url={}",
-                self.player.identity(),
-                update_snapshot.track.url,
-                update_snapshot.track.art_url,
-                art_decision.source_options.allow_mpris_art_url
-            );
-        }
-
         debug!("--- Raw MPRIS Metadata Start ---");
         if let Some(mpris_meta) = metadata_source.mpris_metadata() {
             debug!("MPRIS Metadata Map ({} entries):", mpris_meta.iter().count());
@@ -854,6 +837,8 @@ impl Presence {
             )?
         };
 
+        trace!("Template rendering complete, proceeding to activity push");
+
         // Reconcile the Discord IPC client when the resolved app id changes
         // (e.g. the active [website.*] overlay matched a different service).
         let new_app_id = player_config.app_id.clone();
@@ -872,6 +857,7 @@ impl Presence {
         }
 
         let Some(discord_client) = self.discord_client.clone() else {
+            trace!("No Discord client available, skipping activity push");
             return Ok(());
         };
 
@@ -948,10 +934,9 @@ impl Presence {
                 Some((current_generation, cover_url.to_string()));
         }
 
-        // When quarantine disables normal cache reads, later same-generation
-        // activity refreshes must keep the cover that the background task
-        // already resolved. Otherwise a position/timestamp refresh pushes
-        // cover_art=None and clears Discord's artwork.
+        // Later same-generation activity refreshes must keep the cover that
+        // the background task already resolved. Otherwise a position/timestamp
+        // refresh pushes cover_art=None and clears Discord's artwork.
         let remembered_cover = if cached_cover.is_none() {
             self.last_resolved_cover_art
                 .lock()
@@ -1015,6 +1000,8 @@ impl Presence {
             }
             err
         })?;
+        self.discord_activity_is_set
+            .store(true, Ordering::Relaxed);
         if !self.error_logged.load(Ordering::Relaxed) {
             info!(
                 "Updated Discord activity for {} - {} ({:?})",
@@ -1065,6 +1052,7 @@ impl Presence {
             let art_source_options_for_task = art_decision.source_options;
             let read_cache_for_task = art_decision.read_cache;
             let cover_fetch_gen = Arc::clone(&self.cover_fetch_generation);
+            let discord_activity_is_set_for_task = Arc::clone(&self.discord_activity_is_set);
             // Always use the freshly-loaded generation (post-bump) so this task
             // self-cancels on any subsequent track change in either run mode.
             let fetch_gen = spawn_gen;
@@ -1171,6 +1159,7 @@ impl Presence {
                         "Updated Discord cover art for {} - {}",
                         identity_for_task, texts_for_task.details
                     );
+                    discord_activity_is_set_for_task.store(true, Ordering::Relaxed);
                 }
             });
         }
@@ -1343,8 +1332,8 @@ impl Presence {
         self.ensure_connection()?;
 
         // Get current track's art decision from the health state machine.
-        // For TrackChanged events, run a full health transition so quarantine
-        // can be entered when the URL hasn't changed (stale YouTube art).
+        // For TrackChanged events, run a full health transition so the state
+        // machine can react to the new track.
         // Other events keep the existing snapshot behaviour.
         let art_decision;
         if is_track_change {
@@ -1364,12 +1353,6 @@ impl Presence {
                 self.player.identity(),
             );
             let gen = generation.unwrap_or(0);
-            let same_url = {
-                let prev_url = self.last_pushed_track_url.lock();
-                prev_url.as_deref().is_some_and(|prev| {
-                    prev == track.url.as_deref().unwrap_or("")
-                })
-            };
             let input = health::HealthCheckInput {
                 playback_status,
                 position,
@@ -1379,7 +1362,6 @@ impl Presence {
                 generation: gen,
                 now,
                 last_event: now,
-                same_url_as_prev: same_url,
             };
             let outcome = {
                 let mut h = self.health.lock();

@@ -2,25 +2,8 @@ use std::time::{Duration, Instant};
 
 use log::{debug, info, trace};
 use mpris::{Metadata as MprisMetadata, PlaybackStatus};
-use smol_str::SmolStr;
-use url::Url;
 
 use crate::metadata;
-
-/// Returns `true` when the URL belongs to a YouTube domain (youtube.com,
-/// music.youtube.com, youtu.be, youtube-nocookie.com).
-fn is_youtube_url(url: &str) -> bool {
-    Url::parse(url)
-        .ok()
-        .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
-        .is_some_and(|host| {
-            host == "youtube.com"
-                || host.ends_with(".youtube.com")
-                || host == "youtube-nocookie.com"
-                || host.ends_with(".youtube-nocookie.com")
-                || host == "youtu.be"
-        })
-}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -74,8 +57,6 @@ impl TrackFingerprint {
 pub struct ArtDecision {
     pub source_options: metadata::ArtSourceOptions,
     pub read_cache: bool,
-    /// True on the very first tick where art quarantine is entered (for logging).
-    pub newly_quarantined: bool,
 }
 
 impl Default for ArtDecision {
@@ -83,7 +64,6 @@ impl Default for ArtDecision {
         Self {
             source_options: metadata::ArtSourceOptions::default(),
             read_cache: true,
-            newly_quarantined: false,
         }
     }
 }
@@ -112,6 +92,8 @@ pub enum TransitionOutcome {
 pub struct HealthCheckInput<'a> {
     pub playback_status: PlaybackStatus,
     pub position: Duration,
+    /// Track metadata (used by tests; track_length is the derived field for runtime checks).
+    #[allow(dead_code)]
     pub track: &'a TrackFingerprint,
     pub track_length: Option<Duration>,
     pub is_browser_source: bool,
@@ -121,9 +103,6 @@ pub struct HealthCheckInput<'a> {
     pub now: Instant,
     /// When the last MPRIS event was received (for silence detection).
     pub last_event: Instant,
-    /// True if this track's xesam:url is the same as the previous track's URL.
-    /// Set by the caller when it detects a track change within the same URL.
-    pub same_url_as_prev: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -150,16 +129,6 @@ pub enum PlayerHealth {
         /// Last known position, used to detect genuine position freeze
         /// (not just time-since-last-transition which can falsely fire
         /// when the poll interval exceeds the stall threshold).
-        last_position: Duration,
-    },
-
-    /// Same URL, track display changed, but art_url is the same as the
-    /// previous track — the browser is likely recycling temp artwork.
-    /// Suppresses stale art sources until proven fresh.
-    ArtQuarantined {
-        tracked_url: SmolStr,
-        blocked_art_url: Option<String>,
-        generation: u64,
         last_position: Duration,
     },
 
@@ -199,7 +168,6 @@ impl PlayerHealth {
     fn last_position(&self) -> Duration {
         match self {
             Self::Healthy { last_position, .. }
-            | Self::ArtQuarantined { last_position, .. }
             | Self::Stalled { last_position, .. } => *last_position,
             Self::Confirming { .. } => Duration::ZERO,
         }
@@ -243,20 +211,6 @@ impl PlayerHealth {
                     }
                 }
             }
-            Self::ArtQuarantined { last_position, .. } => {
-                if input.position != *last_position {
-                    let previous_position = *last_position;
-                    // ArtQuarantined uses the caller-supplied last_event for
-                    // silence detection; only the position needs refreshing.
-                    *last_position = input.position;
-                    trace!(
-                        "health observe_progress: state=ArtQuarantined pos={:?}->{:?} refreshed_liveness=false generation={}",
-                        previous_position,
-                        input.position,
-                        input.generation,
-                    );
-                }
-            }
             Self::Confirming { .. } | Self::Stalled { .. } => {}
         }
     }
@@ -265,7 +219,6 @@ impl PlayerHealth {
         match self {
             Self::Confirming { .. } => "Confirming",
             Self::Healthy { .. } => "Healthy",
-            Self::ArtQuarantined { .. } => "ArtQuarantined",
             Self::Stalled { .. } => "Stalled",
         }
     }
@@ -280,11 +233,11 @@ impl PlayerHealth {
         stall_threshold: Duration,
     ) {
         let last_event_age = input.now.saturating_duration_since(input.last_event);
-        let level_is_info = matches!(outcome, TransitionOutcome::Clear)
-            || matches!(old, Self::ArtQuarantined { .. }) != matches!(new, Self::ArtQuarantined { .. });
+        let state_changed = old.state_name() != new.state_name();
+        let level_is_info = matches!(outcome, TransitionOutcome::Clear) && state_changed;
 
         let msg = format!(
-            "health transition: {} -> {} outcome={:?} reason={} pos={:?} prev_pos={:?} last_event_age_ms={} stall_threshold_ms={} browser_silence_timeout_ms={} same_url_as_prev={} generation={}",
+            "health transition: {} -> {} outcome={:?} reason={} pos={:?} prev_pos={:?} last_event_age_ms={} stall_threshold_ms={} browser_silence_timeout_ms={} generation={}",
             old.state_name(),
             new.state_name(),
             outcome,
@@ -294,7 +247,6 @@ impl PlayerHealth {
             last_event_age.as_millis(),
             stall_threshold.as_millis(),
             BROWSER_SILENCE_TIMEOUT.as_millis(),
-            input.same_url_as_prev,
             input.generation,
         );
 
@@ -302,7 +254,6 @@ impl PlayerHealth {
             info!("{}", msg);
         } else if matches!(outcome, TransitionOutcome::Noop)
             || reason == "healthy_progress"
-            || reason == "quarantine_continue"
             || reason == "confirming_wait"
             || reason == "stalled_wait"
         {
@@ -314,22 +265,8 @@ impl PlayerHealth {
 
     /// Returns the `ArtDecision` for the current state (used when re-pushing
     /// without transitioning, e.g. on a background cover-fetch completion).
-    pub fn art_decision(&self, track: &TrackFingerprint) -> ArtDecision {
-        match self {
-            Self::ArtQuarantined { blocked_art_url, .. } => {
-                let allow_mpris = blocked_art_url.as_deref().is_none_or(|blocked| {
-                    track.art_url.as_deref() != Some(blocked)
-                });
-                ArtDecision {
-                    source_options: metadata::ArtSourceOptions {
-                        allow_mpris_art_url: allow_mpris,
-                    },
-                    read_cache: false,
-                    newly_quarantined: false,
-                }
-            }
-            _ => ArtDecision::default(),
-        }
+    pub fn art_decision(&self, _track: &TrackFingerprint) -> ArtDecision {
+        ArtDecision::default()
     }
 
     // ------------------------------------------------------------------
@@ -458,9 +395,6 @@ impl PlayerHealth {
                         TransitionOutcome::Clear,
                         "position_frozen",
                     )
-                } else if input.same_url_as_prev && Self::should_quarantine(input) {
-                    let (new_state, outcome) = Self::build_quarantine_entry(input, generation);
-                    (new_state, outcome, "quarantine_enter_same_url")
                 } else {
                     (
                         Self::Healthy {
@@ -476,102 +410,23 @@ impl PlayerHealth {
                 }
             }
 
-            Self::ArtQuarantined {
-                tracked_url,
-                blocked_art_url,
-                generation,
-                last_position,
-            } => {
-                let current_url = input.track.url.as_deref().unwrap_or("");
-                let ended = Self::is_ended(input);
-                let frozen = Self::is_frozen(
-                    last_position,
-                    input.position,
-                    input.last_event,
-                    now,
-                    stall_threshold,
-                );
-                let silent = input.is_browser_source && Self::is_silent(input.last_event, now);
-
-                if current_url != tracked_url.as_str() {
-                    (
-                        Self::Healthy {
-                            generation,
-                            last_event: now,
-                            last_position: input.position,
-                        },
-                        TransitionOutcome::Push {
-                            art_decision: ArtDecision::default(),
-                        },
-                        "quarantine_exit_url_changed",
-                    )
-                } else if ended || frozen || silent {
-                    let reason = if ended {
-                        "quarantine_track_ended"
-                    } else if frozen {
-                        "quarantine_position_frozen"
-                    } else {
-                        "quarantine_silent_timeout"
-                    };
-                    (
-                        Self::Stalled {
-                            generation,
-                            since: now,
-                            last_position: input.position,
-                        },
-                        TransitionOutcome::Clear,
-                        reason,
-                    )
-                } else if Self::quarantine_continues(&blocked_art_url, input) {
-                    let art_decision =
-                        Self::make_quarantine_decision(false, &blocked_art_url, input);
-                    (
-                        Self::ArtQuarantined {
-                            tracked_url,
-                            blocked_art_url,
-                            generation,
-                            last_position: input.position,
-                        },
-                        TransitionOutcome::Push { art_decision },
-                        "quarantine_continue",
-                    )
-                } else {
-                    (
-                        Self::Healthy {
-                            generation,
-                            last_event: now,
-                            last_position: input.position,
-                        },
-                        TransitionOutcome::Push {
-                            art_decision: ArtDecision::default(),
-                        },
-                        "quarantine_exit_art_changed",
-                    )
-                }
-            }
-
             Self::Stalled {
                 generation,
                 since,
                 last_position,
             } => {
                 if input.position > Duration::ZERO && input.position != last_position {
-                    if input.same_url_as_prev && Self::should_quarantine(input) {
-                        let (new_state, outcome) = Self::build_quarantine_entry(input, generation);
-                        (new_state, outcome, "stalled_recover_to_quarantine")
-                    } else {
-                        (
-                            Self::Healthy {
-                                generation,
-                                last_event: now,
-                                last_position: input.position,
-                            },
-                            TransitionOutcome::Push {
-                                art_decision: ArtDecision::default(),
-                            },
-                            "stalled_recover_position_moved",
-                        )
-                    }
+                    (
+                        Self::Healthy {
+                            generation,
+                            last_event: now,
+                            last_position: input.position,
+                        },
+                        TransitionOutcome::Push {
+                            art_decision: ArtDecision::default(),
+                        },
+                        "stalled_recover_position_moved",
+                    )
                 } else {
                     (
                         Self::Stalled {
@@ -630,88 +485,6 @@ impl PlayerHealth {
         let time_exceeded = now.saturating_duration_since(last_event) >= threshold;
         position_stuck && time_exceeded
     }
-
-    /// Should we enter or stay in art quarantine?
-    fn should_quarantine(input: &HealthCheckInput) -> bool {
-        let url = match input.track.url.as_deref() {
-            Some(u) if !u.is_empty() => u,
-            _ => return false,
-        };
-
-        // Only for services where we can infer artwork from URL (YouTube etc.)
-        is_youtube_url(url)
-    }
-
-    /// Should quarantine continue on the next tick?  Called from the
-    /// `ArtQuarantined` branch.
-    fn quarantine_continues(
-        blocked_art_url: &Option<String>,
-        input: &HealthCheckInput,
-    ) -> bool {
-        let url = match input.track.url.as_deref() {
-            Some(u) if !u.is_empty() => u,
-            _ => return false,
-        };
-
-        // Not a YouTube-like URL → lift.
-        if !is_youtube_url(url) {
-            return false;
-        }
-
-        // Art URL finally changed → lift quarantine.
-        if let Some(blocked) = blocked_art_url {
-            if input.track.art_url.as_deref() != Some(blocked.as_str()) {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    /// Build an `ArtDecision` with quarantine-safe options.
-    fn make_quarantine_decision(
-        newly_quarantined: bool,
-        stale_art_url: &Option<String>,
-        input: &HealthCheckInput,
-    ) -> ArtDecision {
-        // Only suppress mpris:artUrl when it's a directly-usable HTTP URL
-        // that might be stale. For file:// and data: URLs (e.g. plasma's
-        // temp artwork), the content is updated in-place by the browser
-        // integration, so we should always allow it through.
-        let allow_mpris = stale_art_url.as_deref().is_none_or(|blocked| {
-            if crate::metadata::is_http_art_url(blocked) {
-                // HTTP(S) art URL — suppress if it hasn't changed.
-                input.track.art_url.as_deref() != Some(blocked)
-            } else {
-                // file:// or data: — content is refreshed in-place; allow.
-                true
-            }
-        });
-        ArtDecision {
-            source_options: metadata::ArtSourceOptions {
-                allow_mpris_art_url: allow_mpris,
-            },
-            read_cache: false,
-            newly_quarantined,
-        }
-    }
-
-    fn build_quarantine_entry(
-        input: &HealthCheckInput,
-        generation: u64,
-    ) -> (Self, TransitionOutcome) {
-        let stale_art_url = input.track.art_url.clone();
-        let art_decision = Self::make_quarantine_decision(true, &stale_art_url, input);
-        (
-            Self::ArtQuarantined {
-                tracked_url: SmolStr::new(input.track.url.clone().unwrap_or_default()),
-                blocked_art_url: stale_art_url,
-                generation,
-                last_position: input.position,
-            },
-            TransitionOutcome::Push { art_decision },
-        )
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -747,7 +520,6 @@ mod tests {
         gen: u64,
         now: Instant,
         last_event: Instant,
-        same_url: bool,
     ) -> HealthCheckInput<'a> {
         HealthCheckInput {
             playback_status: status,
@@ -758,7 +530,6 @@ mod tests {
             generation: gen,
             now,
             last_event,
-            same_url_as_prev: same_url,
         }
     }
 
@@ -781,7 +552,6 @@ mod tests {
             1,
             now,
             now,
-            false,
         );
 
         let outcome = health.transition(&inp);
@@ -805,7 +575,6 @@ mod tests {
             1,
             now,
             now,
-            false,
         );
 
         let outcome = health.transition(&inp);
@@ -829,7 +598,6 @@ mod tests {
             1,
             now,
             now,
-            false,
         );
 
         let outcome = health.transition(&inp);
@@ -858,7 +626,6 @@ mod tests {
             1,
             now,
             now,
-            false,
         );
 
         let outcome = health.transition(&inp);
@@ -883,7 +650,6 @@ mod tests {
             1,
             now,
             now,
-            false,
         );
 
         let outcome = health.transition(&inp);
@@ -909,7 +675,6 @@ mod tests {
             1,
             now,
             now,
-            false,
         );
 
         let outcome = health.transition(&inp);
@@ -938,7 +703,6 @@ mod tests {
             1,
             now,
             now,
-            false,
         );
 
         let outcome = health.transition(&inp);
@@ -964,7 +728,6 @@ mod tests {
             1,
             now,
             now,
-            false,
         );
 
         let outcome = health.transition(&inp);
@@ -992,7 +755,6 @@ mod tests {
             1,
             now,
             now,
-            false,
         );
 
         let outcome = health.transition(&inp);
@@ -1017,7 +779,6 @@ mod tests {
             1,
             now,
             now,
-            false,
         );
 
         let outcome = health.transition(&inp);
@@ -1036,12 +797,6 @@ mod tests {
                 last_event: Instant::now(),
                 last_position: Duration::ZERO,
             },
-            PlayerHealth::ArtQuarantined {
-                tracked_url: SmolStr::new("https://youtube.com/watch?v=abc"),
-                blocked_art_url: None,
-                generation: 1,
-                last_position: Duration::ZERO,
-            },
             PlayerHealth::Stalled {
                 generation: 1,
                 since: Instant::now(),
@@ -1058,7 +813,6 @@ mod tests {
                 1,
                 now,
                 now,
-                false,
             );
             let outcome = health.transition(&inp);
             assert!(
@@ -1094,7 +848,6 @@ mod tests {
                 1,
                 now,
                 now,
-                false,
             );
             let outcome = health.transition(&inp);
             assert!(
@@ -1126,7 +879,6 @@ mod tests {
             1,
             now,
             now,
-            false,
         );
 
         let outcome = health.transition(&inp);
@@ -1151,7 +903,6 @@ mod tests {
             1,
             now,
             now,
-            false,
         );
 
         let outcome = health.transition(&inp);
@@ -1162,76 +913,6 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // Art quarantine basics
-    // ------------------------------------------------------------------
-    #[test]
-    fn healthy_enters_quarantine_on_same_url_track_change() {
-        let mut health = PlayerHealth::Healthy {
-            generation: 1,
-            last_event: Instant::now(),
-            last_position: Duration::ZERO,
-        };
-        let t = track(
-            "New Song",
-            "New Artist",
-            "https://www.youtube.com/watch?v=abc",
-            "file:///tmp/art_same.jpg",
-            "id2",
-        );
-        let now = Instant::now();
-        let inp = make_input(
-            PlaybackStatus::Playing,
-            &t,
-            Duration::from_secs(10),
-            true,
-            1,
-            now,
-            now,
-            true, // same_url_as_prev = true
-        );
-
-        let outcome = health.transition(&inp);
-        assert!(
-            matches!(&outcome, TransitionOutcome::Push { art_decision, .. } if art_decision.newly_quarantined),
-            "expected Push with quarantined art, got {:?}",
-            outcome
-        );
-        assert!(matches!(health, PlayerHealth::ArtQuarantined { .. }));
-    }
-
-    #[test]
-    fn non_youtube_url_does_not_quarantine() {
-        let mut health = PlayerHealth::Healthy {
-            generation: 1,
-            last_event: Instant::now(),
-            last_position: Duration::ZERO,
-        };
-        let t = track(
-            "New Song",
-            "New Artist",
-            "https://example.com/track",
-            "file:///tmp/art.jpg",
-            "id2",
-        );
-        let now = Instant::now();
-        let inp = make_input(
-            PlaybackStatus::Playing,
-            &t,
-            Duration::from_secs(10),
-            true,
-            1,
-            now,
-            now,
-            true, // same_url_as_prev, but not YouTube URL
-        );
-
-        let outcome = health.transition(&inp);
-        assert!(matches!(outcome, TransitionOutcome::Push { .. }));
-        // Should be Healthy (no quarantine triggered for non-YouTube)
-        assert!(matches!(health, PlayerHealth::Healthy { .. }));
-    }
-
-    // ------------------------------------------------------------------
     // ArtDecision behaviour
     // ------------------------------------------------------------------
     #[test]
@@ -1239,41 +920,6 @@ mod tests {
         let decision = ArtDecision::default();
         assert!(decision.read_cache);
         assert!(decision.source_options.allow_mpris_art_url);
-        assert!(!decision.newly_quarantined);
-    }
-
-    #[test]
-    fn quarantined_art_decision_suppresses_cache_and_mpris_art() {
-        let decision = ArtDecision {
-            source_options: metadata::ArtSourceOptions {
-                allow_mpris_art_url: false,
-            },
-            read_cache: false,
-            newly_quarantined: true,
-        };
-        assert!(!decision.read_cache);
-        assert!(!decision.source_options.allow_mpris_art_url);
-        assert!(decision.newly_quarantined);
-    }
-
-    #[test]
-    fn art_decision_from_quarantined_state() {
-        let health = PlayerHealth::ArtQuarantined {
-            tracked_url: SmolStr::new("https://youtube.com/watch?v=abc"),
-            blocked_art_url: Some("file:///tmp/art_same.jpg".to_string()),
-            generation: 1,
-            last_position: Duration::ZERO,
-        };
-        let t = track(
-            "Song",
-            "Artist",
-            "https://youtube.com/watch?v=abc",
-            "file:///tmp/art_same.jpg", // same blocked art_url
-            "id1",
-        );
-        let decision = health.art_decision(&t);
-        assert!(!decision.read_cache);
-        assert!(!decision.source_options.allow_mpris_art_url);
     }
 
     #[test]
