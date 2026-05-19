@@ -44,6 +44,18 @@ use crate::{
 
 use health::TrackFingerprint;
 
+/// Bundled inputs to `Presence::build_and_push_activity`. Borrows everywhere
+/// except the small `Copy` enums to avoid clones on the hot path.
+struct ActivityFraming<'a> {
+    texts: &'a crate::template::ActivityTexts,
+    /// `(start_s, Option<end_s>)`; absent when no timestamp should be sent.
+    timing: Option<(u64, Option<u64>)>,
+    cover_art_url: Option<&'a str>,
+    player_config: &'a PlayerConfig,
+    activity_type: ActivityType,
+    status_display_type: StatusDisplayType,
+}
+
 #[derive(Debug, Clone)]
 struct UpdateSnapshot {
     playback_status: PlaybackStatus,
@@ -1010,13 +1022,14 @@ impl Presence {
         }
         Self::build_and_push_activity(
             &discord_client,
-            &activity_texts,
-            start_s,
-            end_s,
-            cover_for_push,
-            &player_config,
-            activity_type,
-            status_display_type,
+            &ActivityFraming {
+                texts: &activity_texts,
+                timing: start_s.map(|s| (s, end_s)),
+                cover_art_url: cover_for_push,
+                player_config: &player_config,
+                activity_type,
+                status_display_type,
+            },
         )
         .map_err(|err| {
             if !self.error_logged.load(Ordering::Relaxed) {
@@ -1165,13 +1178,14 @@ impl Presence {
                 *last_resolved_cover_art_for_task.lock() = Some((spawn_gen, cover_url.clone()));
                 if let Err(err) = Self::build_and_push_activity(
                     &discord_client_for_task,
-                    &texts_for_task,
-                    start_s,
-                    end_s,
-                    Some(cover_url.as_str()),
-                    &player_config_for_task,
-                    activity_type,
-                    status_display_type,
+                    &ActivityFraming {
+                        texts: &texts_for_task,
+                        timing: start_s.map(|s| (s, end_s)),
+                        cover_art_url: Some(cover_url.as_str()),
+                        player_config: &player_config_for_task,
+                        activity_type,
+                        status_display_type,
+                    },
                 ) {
                     warn!(
                         "Failed to push cover art update for {}: {}",
@@ -1195,29 +1209,23 @@ impl Presence {
     /// `Arc`-shared.
     fn build_and_push_activity(
         discord_client: &Arc<Mutex<DiscordIpcClient>>,
-        texts: &crate::template::ActivityTexts,
-        start_s: Option<u64>,
-        end_s: Option<u64>,
-        cover_art_url: Option<&str>,
-        player_config: &PlayerConfig,
-        activity_type: ActivityType,
-        status_display_type: StatusDisplayType,
+        framing: &ActivityFraming<'_>,
     ) -> Result<(), DiscordError> {
         let mut activity = Activity::default()
-            .activity_type(activity_type.into())
-            .status_display_type(status_display_type.into());
+            .activity_type(framing.activity_type.into())
+            .status_display_type(framing.status_display_type.into());
 
-        if !texts.details.is_empty() {
-            activity = activity.details(&texts.details);
+        if !framing.texts.details.is_empty() {
+            activity = activity.details(&framing.texts.details);
         }
-        if !texts.state.is_empty() {
-            activity = activity.state(&texts.state);
+        if !framing.texts.state.is_empty() {
+            activity = activity.state(&framing.texts.state);
         }
 
-        if let Some(start) = start_s {
+        if let Some((start, end)) = framing.timing {
             activity = activity.timestamps({
                 let ts = Timestamps::default().start(start as i64);
-                if let Some(end) = end_s {
+                if let Some(end) = end {
                     ts.end(end as i64)
                 } else {
                     ts
@@ -1226,21 +1234,21 @@ impl Presence {
         }
 
         let mut assets = Assets::default();
-        if let Some(img_url) = cover_art_url {
+        if let Some(img_url) = framing.cover_art_url {
             assets = assets.large_image(img_url);
-            if !texts.large_text.is_empty() {
-                assets = assets.large_text(&texts.large_text);
+            if !framing.texts.large_text.is_empty() {
+                assets = assets.large_text(&framing.texts.large_text);
             }
-            if player_config.show_icon {
-                assets = assets.small_image(player_config.icon.as_str());
-                if !texts.small_text.is_empty() {
-                    assets = assets.small_text(&texts.small_text);
+            if framing.player_config.show_icon {
+                assets = assets.small_image(framing.player_config.icon.as_str());
+                if !framing.texts.small_text.is_empty() {
+                    assets = assets.small_text(&framing.texts.small_text);
                 }
             }
         } else {
-            assets = assets.large_image(player_config.icon.as_str());
-            if !texts.large_text.is_empty() {
-                assets = assets.large_text(&texts.large_text);
+            assets = assets.large_image(framing.player_config.icon.as_str());
+            if !framing.texts.large_text.is_empty() {
+                assets = assets.large_text(&framing.texts.large_text);
             }
         }
         activity = activity.assets(assets);
