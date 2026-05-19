@@ -581,6 +581,10 @@ impl Mprisence {
                     // This prevents Discord from cycling through every skipped track.
                     let evt = drain_latest_track_change(evt, &mut event_rx);
                     self.handle_player_event(evt, &event_tx).await;
+                    // Reset the fallback poll timer so the next poll happens a full
+                    // interval from now. Events are the primary update mechanism;
+                    // the fallback poll exists only to catch missed events.
+                    fallback_poll_interval.reset();
                 },
                 _ = fallback_poll_interval.tick() => {
                     trace!("fallback poll tick");

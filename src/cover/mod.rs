@@ -222,8 +222,8 @@ impl CoverManager {
             return None;
         }
 
-        let cache_key = CoverCache::generate_key(metadata_source);
-        let entry = self.cache.get_by_key(&cache_key).ok().flatten()?;
+        let cache_key = metadata_source.cache_key();
+        let entry = self.cache.get_by_key(cache_key).ok().flatten()?;
 
         // Reject pathological cache entries (e.g. provider stored an HTML
         // error page as the URL before validation was added). Stale-by-URL
@@ -255,12 +255,12 @@ impl CoverManager {
         metadata_source: &MetadataSource,
         read_cache: bool,
     ) -> Result<Option<String>, CoverArtError> {
-        let cache_key = CoverCache::generate_key(metadata_source);
+        let cache_key = metadata_source.cache_key();
         let recovered_cache_bytes: Option<Vec<u8>>;
 
         // 1. Check Cache
         if read_cache {
-            if let Some(mut entry) = self.cache_get_entry(&cache_key).await? {
+            if let Some(mut entry) = self.cache_get_entry(cache_key).await? {
                 let url = entry.url.clone();
                 let mut drop_reason: Option<&'static str> = None;
 

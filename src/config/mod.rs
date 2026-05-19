@@ -51,7 +51,8 @@ impl ConfigManager {
     /// `#[allow(dead_code)]` because integration tests are compiled separately
     /// and the production binary build sees no caller.
     #[allow(dead_code)]
-    pub fn new_with_config(config: Config) -> Self {
+    pub fn new_with_config(mut config: Config) -> Self {
+        config.precompile_patterns();
         let (tx, _) = broadcast::channel(16);
 
         Self {
@@ -446,6 +447,7 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     config.bundled_website = bundled.website;
     config.user_website = load_user_website_configs(path)?;
     config.rebuild_merged_website();
+    config.precompile_patterns();
     Ok(config)
 }
 

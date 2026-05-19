@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use handlebars::{handlebars_helper, no_escape, Handlebars};
 use handlebars_misc_helpers::regex_helpers;
-use mpris::Player;
+use mpris::{PlaybackStatus, Player};
 use serde::Serialize;
 
 use crate::{
@@ -26,17 +26,14 @@ pub struct RenderContext {
 }
 
 impl RenderContext {
-    pub fn new(player: &Player, metadata: MediaMetadata, name_override: Option<&str>) -> Self {
-        let status = player
-            .get_playback_status()
-            .map(|s| format!("{:?}", s))
-            .ok();
-
-        let status_icon = player
-            .get_playback_status()
-            .map(format_playback_status_icon)
-            .map(String::from)
-            .ok();
+    pub fn new(
+        player: &Player,
+        playback_status: PlaybackStatus,
+        metadata: MediaMetadata,
+        name_override: Option<&str>,
+    ) -> Self {
+        let status = Some(format!("{:?}", playback_status));
+        let status_icon = Some(format_playback_status_icon(playback_status).to_string());
 
         Self {
             player: name_override
@@ -149,13 +146,14 @@ impl TemplateManager {
     pub fn render_activity_texts(
         &self,
         player: &Player,
+        playback_status: PlaybackStatus,
         metadata: MediaMetadata,
         name_override: Option<&str>,
     ) -> Result<ActivityTexts, TemplateError> {
         trace!("Creating activity texts for player: {}", player.identity());
 
         debug!("Creating render context with player and metadata information");
-        let render_context = RenderContext::new(player, metadata, name_override);
+        let render_context = RenderContext::new(player, playback_status, metadata, name_override);
 
         trace!("Rendering all activity text templates");
         let details = self.render("details", &render_context)?;

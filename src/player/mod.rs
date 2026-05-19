@@ -74,9 +74,28 @@ impl Display for PlaybackState {
 impl From<&Player> for PlaybackState {
     fn from(player: &Player) -> Self {
         let metadata = player.get_metadata().ok();
+        let playback_status = player.get_playback_status().ok();
+        Self::from_parts(player, playback_status, metadata.as_ref())
+    }
+}
 
+impl PlaybackState {
+    /// Construct `PlaybackState` from an already-fetched status and metadata.
+    /// Avoids redundant D-Bus calls when the caller already has both values.
+    pub fn from_with_status(
+        player: &Player,
+        playback_status: PlaybackStatus,
+        metadata: &mpris::Metadata,
+    ) -> Self {
+        Self::from_parts(player, Some(playback_status), Some(metadata))
+    }
+
+    fn from_parts(
+        player: &Player,
+        playback_status: Option<PlaybackStatus>,
+        metadata: Option<&mpris::Metadata>,
+    ) -> Self {
         let track_identifier = metadata
-            .as_ref()
             .and_then(|m| {
                 m.track_id()
                     .map(|s| s.to_string())
@@ -85,15 +104,13 @@ impl From<&Player> for PlaybackState {
             .map(|s| s.into_boxed_str());
 
         Self {
-            playback_status: player.get_playback_status().ok(),
+            playback_status,
             track_identifier,
             title: metadata
-                .as_ref()
                 .and_then(|m| m.title().map(|s| s.to_string().into_boxed_str())),
             position: player.get_position().map(|d| d.as_secs() as u32).ok(),
             volume: player.get_volume().map(|v| (v * 100.0) as u8).ok(),
             url: metadata
-                .as_ref()
                 .and_then(|m| m.url().map(|s| s.to_string().into_boxed_str())),
         }
     }

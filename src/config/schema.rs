@@ -5,9 +5,29 @@ use url::Url;
 
 use crate::utils::normalize_player_identity;
 
+/// Pre-compiled player/website pattern.  Built once at config load time so
+/// repeated matching avoids per-call `Regex::new()` overhead.
+#[derive(Debug, Clone)]
+pub enum CompiledPattern {
+    Exact(String),
+    Wildcard(Regex),
+    Regex(Regex),
+}
+
+impl CompiledPattern {
+    fn matches(&self, candidate: &str) -> bool {
+        match self {
+            CompiledPattern::Exact(key) => key == candidate,
+            CompiledPattern::Wildcard(re) | CompiledPattern::Regex(re) => {
+                re.is_match(candidate)
+            }
+        }
+    }
+}
+
 pub const DEFAULT_INTERVAL: u64 = 2000;
 pub const DEFAULT_EVENT_DRIVEN: bool = true;
-pub const DEFAULT_FALLBACK_POLL_INTERVAL: u64 = 5000;
+pub const DEFAULT_FALLBACK_POLL_INTERVAL: u64 = 30000;
 pub const DEFAULT_USE_CONTENT_TYPE: bool = true;
 pub const DEFAULT_ACTIVITY_TYPE: ActivityType = ActivityType::Listening;
 pub const DEFAULT_TIME_SHOW: bool = true;
@@ -25,7 +45,7 @@ pub const DEFAULT_PLAYER_STATUS_DISPLAY_TYPE: StatusDisplayType = StatusDisplayT
 const DEFAULT_TEMPLATE_DETAIL: &str = "{{{title}}}";
 const DEFAULT_TEMPLATE_STATE: &str = "{{{artists}}}";
 const DEFAULT_TEMPLATE_LARGE_TEXT: &str =
-    "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}";
+    "{{#if album includeZero=true}}{{{album}}}{{else}}{{{title}}}{{/if}}";
 const DEFAULT_TEMPLATE_SMALL_TEXT: &str = "{{{player}}}";
 
 const DEFAULT_COVER_FILE_NAMES: [&str; 5] = ["cover", "folder", "front", "album", "art"];
@@ -168,6 +188,16 @@ pub struct Config {
     /// after every load/reload by `rebuild_merged_website`.
     #[serde(skip)]
     pub merged_website: HashMap<String, WebsiteConfigLayer>,
+
+    /// Pre-compiled player patterns (key → compiled matcher).  Populated by
+    /// `precompile_patterns()` and used by all player-config lookups.
+    #[serde(skip)]
+    pub compiled_player_patterns: HashMap<String, CompiledPattern>,
+
+    /// Pre-compiled website patterns (key → list of compiled matchers, one per
+    /// match pattern).  Populated by `precompile_patterns()`.
+    #[serde(skip)]
+    pub compiled_website_patterns: HashMap<String, Vec<CompiledPattern>>,
 }
 
 fn default_interval() -> u64 {
@@ -205,6 +235,8 @@ impl Default for Config {
             bundled_website: HashMap::default(),
             user_website: HashMap::default(),
             merged_website: HashMap::default(),
+            compiled_player_patterns: HashMap::default(),
+            compiled_website_patterns: HashMap::default(),
         }
     }
 }
@@ -276,7 +308,7 @@ impl Config {
             return base;
         }
         let host_or_url = url_host_for_match(raw_url);
-        if let Some(layer) = find_matching_website_entry(&self.merged_website, &host_or_url)
+        if let Some(layer) = find_matching_website_entry(&self.compiled_website_patterns, &self.merged_website, &host_or_url)
             .map(|(_, layer)| layer)
         {
             return layer
@@ -305,7 +337,7 @@ impl Config {
             return None;
         }
         let host = url_host_for_match(raw_url);
-        let (key, layer) = find_matching_website_entry(&self.merged_website, &host)?;
+        let (key, layer) = find_matching_website_entry(&self.compiled_website_patterns, &self.merged_website, &host)?;
         let resolved = layer.apply_into_website(WebsiteConfig::default());
         Some((key, resolved))
     }
@@ -332,6 +364,84 @@ impl Config {
             merged.insert(key, layer);
         }
         self.merged_website = merged;
+    }
+
+    /// Pre-compile all player and website patterns so repeated matching
+    /// avoids per-call `Regex::new()` overhead. Must be called after
+    /// `rebuild_merged_website()` and every config reload.
+    pub fn precompile_patterns(&mut self) {
+        self.compiled_player_patterns.clear();
+        self.compiled_website_patterns.clear();
+
+        // --- player patterns ---
+        let all_player_keys: HashSet<&String> = self
+            .bundled_player
+            .keys()
+            .chain(self.user_player.keys())
+            .collect();
+
+        for key in all_player_keys {
+            if key == "default" {
+                continue;
+            }
+            let compiled = Self::compile_single_pattern(key);
+            self.compiled_player_patterns
+                .insert(key.clone(), compiled);
+        }
+
+        // --- website patterns ---
+        for (key, layer) in &self.merged_website {
+            let patterns = layer.effective_patterns();
+            if patterns.is_empty() {
+                continue;
+            }
+            let compiled: Vec<CompiledPattern> = patterns
+                .iter()
+                .map(|p| Self::compile_single_pattern(p))
+                .collect();
+            self.compiled_website_patterns
+                .insert(key.clone(), compiled);
+        }
+    }
+
+    fn compile_single_pattern(pattern: &str) -> CompiledPattern {
+        if is_regex_pattern(pattern) {
+            let raw = if let Some(stripped) = pattern.strip_prefix("re:") {
+                stripped.to_string()
+            } else {
+                pattern
+                    .trim_start_matches('/')
+                    .trim_end_matches('/')
+                    .to_string()
+            };
+            match Regex::new(&raw) {
+                Ok(re) => CompiledPattern::Regex(re),
+                Err(err) => {
+                    log::warn!("Invalid regex pattern '{}': {}", pattern, err);
+                    CompiledPattern::Exact(pattern.to_string())
+                }
+            }
+        } else if is_wildcard_pattern(pattern) {
+            let mut regex_str = String::from("^");
+            for ch in pattern.chars() {
+                match ch {
+                    '*' => regex_str.push_str(".*"),
+                    '?' => regex_str.push('.'),
+                    _ => regex_str.push_str(&regex::escape(&ch.to_string())),
+                }
+            }
+            regex_str.push('$');
+
+            match Regex::new(&regex_str) {
+                Ok(re) => CompiledPattern::Wildcard(re),
+                Err(err) => {
+                    log::warn!("Invalid wildcard pattern '{}': {}", pattern, err);
+                    CompiledPattern::Exact(pattern.to_string())
+                }
+            }
+        } else {
+            CompiledPattern::Exact(pattern.to_string())
+        }
     }
 
     /// Try to match a website config by checking if the title ends with a
@@ -501,36 +611,43 @@ impl Config {
                 continue;
             }
 
-            if pattern_key == normalized_identity {
-                result.exact = Some(ScoredLayer::new(cfg.clone(), pattern_key.len(), 0));
-                continue;
-            }
+            let compiled = self
+                .compiled_player_patterns
+                .get(pattern_key)
+                .cloned()
+                .unwrap_or_else(|| Config::compile_single_pattern(pattern_key));
 
-            if let Some(re) = regex_from_pattern(pattern_key) {
-                if re.is_match(normalized_identity) {
+            match compiled {
+                CompiledPattern::Exact(key) if key == normalized_identity => {
+                    result.exact =
+                        Some(ScoredLayer::new(cfg.clone(), pattern_key.len(), 0));
+                }
+                CompiledPattern::Regex(_) if compiled.matches(normalized_identity) => {
                     let total_len = pattern_key.len();
                     match &result.regex {
                         Some(existing) if existing.pattern_len >= total_len => {}
-                        _ => result.regex = Some(ScoredLayer::new(cfg.clone(), total_len, 0)),
+                        _ => result.regex =
+                            Some(ScoredLayer::new(cfg.clone(), total_len, 0)),
                     }
                 }
-                continue;
-            }
-
-            if is_wildcard_pattern(pattern_key) && wildcard_match(pattern_key, normalized_identity)
-            {
-                let specificity = pattern_specificity(pattern_key);
-                let total_len = pattern_key.len();
-                match &result.wildcard {
-                    Some(existing)
-                        if existing.specificity > specificity
-                            || (existing.specificity == specificity
-                                && existing.pattern_len >= total_len) => {}
-                    _ => {
-                        result.wildcard =
-                            Some(ScoredLayer::new(cfg.clone(), total_len, specificity))
+                CompiledPattern::Wildcard(_) if compiled.matches(normalized_identity) => {
+                    let specificity = pattern_specificity(pattern_key);
+                    let total_len = pattern_key.len();
+                    match &result.wildcard {
+                        Some(existing)
+                            if existing.specificity > specificity
+                                || (existing.specificity == specificity
+                                    && existing.pattern_len >= total_len) => {}
+                        _ => {
+                            result.wildcard = Some(ScoredLayer::new(
+                                cfg.clone(),
+                                total_len,
+                                specificity,
+                            ))
+                        }
                     }
                 }
+                _ => {} // no match or already handled
             }
         }
 
@@ -1680,6 +1797,7 @@ mod website_tests {
         let mut cfg = Config::default();
         setup(&mut cfg);
         cfg.rebuild_merged_website();
+        cfg.precompile_patterns();
         cfg
     }
 
@@ -1989,28 +2107,50 @@ mod website_tests {
 /// Priority: exact host > regex > wildcard > plain substring fallback.
 /// Use `.map(|(_, layer)| layer)` to discard the key when not needed.
 fn find_matching_website_entry(
+    compiled_patterns: &HashMap<String, Vec<CompiledPattern>>,
     source: &HashMap<String, WebsiteConfigLayer>,
     url_host: &str,
 ) -> Option<(String, WebsiteConfigLayer)> {
     let mut best: Option<(String, WebsiteConfigLayer, (u8, usize))> = None;
 
     for (key, layer) in source.iter() {
-        let patterns = layer.effective_patterns();
-        if patterns.is_empty() {
-            continue;
-        }
+        let compiled_list: std::borrow::Cow<Vec<CompiledPattern>> = match compiled_patterns.get(key) {
+            Some(c) => std::borrow::Cow::Borrowed(c),
+            None => {
+                // Fallback: compile on-demand (tests that bypass precompile_patterns).
+                let list: Vec<CompiledPattern> = layer
+                    .effective_patterns()
+                    .iter()
+                    .map(|p| Config::compile_single_pattern(p))
+                    .collect();
+                std::borrow::Cow::Owned(list)
+            }
+        };
 
-        for pattern in patterns {
-            let score: Option<(u8, usize)> = if pattern == url_host {
-                Some((3, pattern.len()))
-            } else if let Some(re) = regex_from_pattern(pattern) {
-                re.is_match(url_host).then_some((2, pattern.len()))
-            } else if is_wildcard_pattern(pattern) {
-                wildcard_match(pattern, url_host).then(|| (1, pattern_specificity(pattern)))
-            } else if url_host.contains(pattern) {
-                Some((0, pattern.len()))
-            } else {
-                None
+        for (idx, compiled) in compiled_list.iter().enumerate() {
+            // For the score, we need the raw pattern string from effective_patterns.
+            // Re-derive the raw pattern for specificity scoring.
+            let raw_patterns = layer.effective_patterns();
+            let raw = raw_patterns.get(idx).copied().unwrap_or("");
+
+            let score: Option<(u8, usize)> = match compiled {
+                CompiledPattern::Exact(p) if p == url_host => {
+                    Some((3, raw.len()))
+                }
+                CompiledPattern::Regex(_) if compiled.matches(url_host) => {
+                    Some((2, raw.len()))
+                }
+                CompiledPattern::Wildcard(_) if compiled.matches(url_host) => {
+                    Some((1, pattern_specificity(raw)))
+                }
+                _ => {
+                    // Fallback: contains match (only for non-regex, non-wildcard strings)
+                    if !is_regex_pattern(raw) && !is_wildcard_pattern(raw) && url_host.contains(raw) {
+                        Some((0, raw.len()))
+                    } else {
+                        None
+                    }
+                }
             };
 
             let Some(score) = score else { continue };

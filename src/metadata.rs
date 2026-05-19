@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use blake3::Hasher;
 use crate::cover::sources::ArtSource;
 use crate::utils::{
     format_audio_channels, format_bit_depth, format_bitrate, format_duration, format_sample_rate,
@@ -186,6 +187,9 @@ pub struct MetadataSource {
     mpris_metadata: Option<Metadata>,
     tagged_file: Option<TaggedFile>,
     override_url: Option<String>,
+    /// Memoized cover-cache key. Computed once via `generate_cache_key()`
+    /// and reused across fast-path and slow-path lookups on the same track.
+    cache_key: std::sync::OnceLock<String>,
 }
 
 impl MetadataSource {
@@ -194,6 +198,7 @@ impl MetadataSource {
             mpris_metadata,
             tagged_file: lofty_tagged_file,
             override_url: None,
+            cache_key: std::sync::OnceLock::new(),
         }
     }
 
@@ -405,6 +410,72 @@ impl MetadataSource {
             .and_then(|m| m.get("mpris:trackid"))
             .and_then(|v| v.as_str())
             .map(String::from)
+    }
+
+    /// Returns the memoized cover-cache key for this track.
+    /// On first call, generates the key via BLAKE3 hashing of sorted
+    /// metadata fields; subsequent calls return the cached string.
+    /// This avoids redundant hashing when both the fast-path and
+    /// background cover-fetch paths need the same key.
+    pub fn cache_key(&self) -> &str {
+        self.cache_key
+            .get_or_init(|| Self::generate_cache_key(self))
+    }
+
+    fn generate_cache_key(&self) -> String {
+        let mut hasher = Hasher::new();
+        let mut key_components = Vec::new();
+
+        if let Some(title) = self.title() {
+            if !title.is_empty() {
+                key_components.push(format!("title:{}", title));
+            }
+        }
+        if let Some(mut artists) = self.artists() {
+            if !artists.is_empty() {
+                artists.sort_unstable();
+                key_components.push(format!("artists:{}", artists.join("|")));
+            }
+        }
+        if let Some(album) = self.album() {
+            if !album.is_empty() {
+                key_components.push(format!("album:{}", album));
+                if let Some(mut album_artists) = self.album_artists() {
+                    if !album_artists.is_empty()
+                        && Some(&album_artists) != self.artists().as_ref()
+                    {
+                        album_artists.sort_unstable();
+                        key_components.push(format!(
+                            "album_artists:{}",
+                            album_artists.join("|")
+                        ));
+                    }
+                }
+            }
+        }
+        if let Some(url) = self.url() {
+            if !url.is_empty() {
+                key_components.push(format!("url:{}", url));
+            }
+        }
+        if let Some(track_id) = self.track_id() {
+            if !track_id.is_empty() {
+                key_components.push(format!("track_id:{}", track_id));
+            }
+        }
+        if let Some(art_url) = self
+            .mpris_metadata()
+            .and_then(|m| m.art_url())
+            .filter(|s| !s.is_empty())
+        {
+            key_components.push(format!("art_url:{}", art_url));
+        }
+        if key_components.is_empty() {
+            key_components.push("default_mprisence_key".to_string());
+        }
+        let combined = key_components.join("||");
+        hasher.update(combined.as_bytes());
+        hasher.finalize().to_hex().to_string()
     }
 
     pub fn content_created(&self) -> Option<String> {

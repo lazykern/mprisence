@@ -30,13 +30,13 @@ use crate::{
     },
     cover::CoverManager,
     error::DiscordError,
-    metadata,
+    metadata::{self, MediaMetadata},
     player::{
         canonical_player_bus_name, cmus, health,
         events::{self, EventOutcome, PlayerEvent, PlayerEventKind},
         PlaybackState, PlayerIdentifier,
     },
-    template::TemplateManager,
+    template::{ActivityTexts, TemplateManager},
     utils,
 };
 
@@ -54,7 +54,7 @@ struct ActivityFraming<'a> {
     status_display_type: StatusDisplayType,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct UpdateSnapshot {
     playback_status: PlaybackStatus,
     track: health::TrackFingerprint,
@@ -133,8 +133,9 @@ pub struct Presence {
     health: parking_lot::Mutex<health::PlayerHealth>,
     /// Tracks which generation's background cover-fetch is in flight.
     /// 0 = no fetch in flight, non-zero = generation number of the in-flight fetch.
+    /// Shared via Arc so background tasks can atomically reset it on completion.
     /// Used to allow newer tracks to preempt older in-flight cover fetches.
-    cover_fetch_generation: parking_lot::Mutex<u64>,
+    cover_fetch_generation: Arc<AtomicU64>,
     /// Last cover URL successfully resolved for the current update generation.
     /// Used so later same-track activity refreshes don't clear artwork while
     /// quarantine disables normal cache reads.
@@ -146,6 +147,16 @@ pub struct Presence {
     /// detect track changes (plasma-browser-integration reuses the same track_id)
     /// and to compute `same_url_as_prev` for the health state machine.
     last_pushed_track_url: Mutex<Option<String>>,
+    /// Snapshot of the last rendered activity (playback_status + fingerprint).
+    /// Used to skip template rendering when nothing changed between events
+    /// (e.g. periodic Playing events on the same track).
+    last_rendered_snapshot: Option<UpdateSnapshot>,
+    /// Volume at the time of the last template render. Stored separately
+    /// because UpdateSnapshot doesn't include volume.
+    last_rendered_volume: Option<f64>,
+    /// Cached activity texts from the last template render. Reused when
+    /// `last_rendered_snapshot` matches the current state.
+    last_activity_texts: Option<crate::template::ActivityTexts>,
     config: Arc<ConfigManager>,
     /// Cancellation flag for the per-player event listener thread (event-driven mode only).
     listener_cancel: Option<Arc<AtomicBool>>,
@@ -188,10 +199,13 @@ impl Presence {
             update_generation: Arc::new(AtomicU64::new(0)),
             update_notify: Arc::new(Notify::new()),
             health,
-            cover_fetch_generation: parking_lot::Mutex::new(0),
+            cover_fetch_generation: Arc::new(AtomicU64::new(0)),
             last_resolved_cover_art: Arc::new(Mutex::new(None)),
             last_pushed_track_id: parking_lot::Mutex::new(None),
             last_pushed_track_url: parking_lot::Mutex::new(None),
+            last_rendered_snapshot: None,
+            last_rendered_volume: None,
+            last_activity_texts: None,
             config,
             listener_cancel: None,
             listener_bus: None,
@@ -393,7 +407,7 @@ impl Presence {
         //     tick, but still let health observe normal position progress so
         //     browser sources don't look "silent" after long playback.
         let start_time = Instant::now();
-        let new_state = PlaybackState::from(&self.player);
+        let new_state = PlaybackState::from_with_status(&self.player, playback_status, &metadata);
         let dbus_delay = start_time.elapsed();
         let effective_interval = if self.config.event_driven() {
             self.config.fallback_poll_interval()
@@ -726,7 +740,7 @@ impl Presence {
             self.update_notify.notify_waiters();
             // Allow the new track to spawn its own cover-art background task.
             // Setting to 0 means "no fetch in flight" — a new track can always spawn.
-            *self.cover_fetch_generation.lock() = 0;
+            self.cover_fetch_generation.store(0, Ordering::Release);
         }
 
         let player_bus_name = canonical_player_bus_name(self.player.bus_name());
@@ -793,6 +807,12 @@ impl Presence {
         }
         trace!("--- Raw Metadata End ---");
 
+        // --- Snapshot check: skip template rendering if nothing relevant changed ---
+        // The snapshot captures playback_status + TrackFingerprint.  Volume is
+        // checked separately because it's part of the template context but not
+        // included in UpdateSnapshot.  Position-only updates don't affect templates.
+        let volume = self.player.get_volume().ok();
+
         let mut media_metadata = metadata_source.to_media_metadata();
         let track_url: Option<String> = metadata_source.url();
         let track_url_ref = track_url.as_deref();
@@ -813,6 +833,41 @@ impl Presence {
                 }
             }
         }
+
+        let snapshot_matches = self
+            .last_rendered_snapshot
+            .as_ref()
+            .is_some_and(|cached| *cached == update_snapshot);
+
+        let activity_texts = if snapshot_matches && volume == self.last_rendered_volume {
+            // Fast path: nothing that affects template output has changed.
+            // Reuse the previously rendered texts — saves 4 Handlebars renders.
+            if let Some(ref cached) = self.last_activity_texts {
+                trace!(
+                    "Skipping template rendering — snapshot and volume unchanged for {}",
+                    self.player.identity()
+                );
+                cached.clone()
+            } else {
+                // Cache was populated by a previous push for this snapshot/volume
+                // (first tick on this track). Fall through to render below.
+                self.render_and_cache_texts(
+                    playback_status,
+                    &media_metadata,
+                    &player_config,
+                    &update_snapshot,
+                    volume,
+                )?
+            }
+        } else {
+            self.render_and_cache_texts(
+                playback_status,
+                &media_metadata,
+                &player_config,
+                &update_snapshot,
+                volume,
+            )?
+        };
 
         // Reconcile the Discord IPC client when the resolved app id changes
         // (e.g. the active [website.*] overlay matched a different service).
@@ -879,10 +934,6 @@ impl Presence {
         } else {
             (None, None)
         };
-
-        let activity_texts = self
-            .template_manager
-            .render_activity_texts(&self.player, media_metadata, player_config.name.as_deref())?;
 
         // Checkpoint 1: abort before any cover lookup if a newer TrackChanged
         // has already superseded this update.
@@ -995,13 +1046,27 @@ impl Presence {
         // allow the newest track to preempt older in-flight fetches.
         let spawn_gen = current_generation;
         if cover_for_push.is_none() && {
-            let mut in_flight = self.cover_fetch_generation.lock();
-            if *in_flight == 0 || *in_flight < spawn_gen {
-                *in_flight = spawn_gen;
-                true
-            } else {
-                false
+            let mut spawned = false;
+            loop {
+                let cur = self.cover_fetch_generation.load(Ordering::Acquire);
+                if cur != 0 && cur >= spawn_gen {
+                    // Already a fetch in flight for this or a newer generation.
+                    break;
+                }
+                match self.cover_fetch_generation.compare_exchange_weak(
+                    cur,
+                    spawn_gen,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                ) {
+                    Ok(_) => {
+                        spawned = true;
+                        break;
+                    }
+                    Err(_) => continue, // CAS failed, retry
+                }
             }
+            spawned
         } {
             let cover_manager = Arc::clone(&self.cover_manager);
             let discord_client_for_task = Arc::clone(&discord_client);
@@ -1014,7 +1079,7 @@ impl Presence {
             let metadata_source_for_task = metadata_source;
             let art_source_options_for_task = art_decision.source_options;
             let read_cache_for_task = art_decision.read_cache;
-            let cover_fetch_gen = Arc::new(parking_lot::Mutex::new(spawn_gen));
+            let cover_fetch_gen = Arc::clone(&self.cover_fetch_generation);
             // Always use the freshly-loaded generation (post-bump) so this task
             // self-cancels on any subsequent track change in either run mode.
             let fetch_gen = spawn_gen;
@@ -1022,17 +1087,21 @@ impl Presence {
             tokio::spawn(async move {
                 // Ensure the in-flight flag is always reset when the task exits.
                 struct InFlightGuard {
-                    gen: Arc<parking_lot::Mutex<u64>>,
+                    gen: Arc<AtomicU64>,
                     expected: u64,
                 }
                 impl Drop for InFlightGuard {
                     fn drop(&mut self) {
-                        let mut current = self.gen.lock();
-                        if *current == self.expected {
-                            *current = 0;
-                        }
-                        // If generation advanced (newer track), leave it — our
-                        // guard is stale and the newer fetch's guard will reset.
+                        self.gen
+                            .compare_exchange(
+                                self.expected,
+                                0,
+                                Ordering::AcqRel,
+                                Ordering::Acquire,
+                            )
+                            .ok();
+                        // If CAS fails, a newer generation is already in flight —
+                        // leave it alone.
                     }
                 }
                 let _guard = InFlightGuard {
@@ -1122,6 +1191,32 @@ impl Presence {
         }
 
         Ok(())
+    }
+
+    /// Render templates and populate the snapshot/volume/texts cache.
+    /// Centralised so the fast-path fallthrough and full-path don't diverge.
+    fn render_and_cache_texts(
+        &mut self,
+        playback_status: PlaybackStatus,
+        metadata: &MediaMetadata,
+        player_config: &PlayerConfig,
+        snapshot: &UpdateSnapshot,
+        volume: Option<f64>,
+    ) -> Result<ActivityTexts, DiscordError> {
+        trace!(
+            "Rendering templates — snapshot or volume changed for {}",
+            self.player.identity()
+        );
+        let texts = self.template_manager.render_activity_texts(
+            &self.player,
+            playback_status,
+            metadata.clone(),
+            player_config.name.as_deref(),
+        )?;
+        self.last_rendered_snapshot = Some(snapshot.clone());
+        self.last_rendered_volume = volume;
+        self.last_activity_texts = Some(texts.clone());
+        Ok(texts)
     }
 
     /// Build a Discord `Activity` and push it. Callable from both the fast
