@@ -3,8 +3,24 @@ use std::time::{Duration, Instant};
 use log::{debug, info, trace};
 use mpris::{Metadata as MprisMetadata, PlaybackStatus};
 use smol_str::SmolStr;
+use url::Url;
 
 use crate::metadata;
+
+/// Returns `true` when the URL belongs to a YouTube domain (youtube.com,
+/// music.youtube.com, youtu.be, youtube-nocookie.com).
+fn is_youtube_url(url: &str) -> bool {
+    Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
+        .is_some_and(|host| {
+            host == "youtube.com"
+                || host.ends_with(".youtube.com")
+                || host == "youtube-nocookie.com"
+                || host.ends_with(".youtube-nocookie.com")
+                || host == "youtu.be"
+        })
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -306,7 +322,6 @@ impl PlayerHealth {
                 });
                 ArtDecision {
                     source_options: metadata::ArtSourceOptions {
-                        allow_inferred_url: false,
                         allow_mpris_art_url: allow_mpris,
                     },
                     read_cache: false,
@@ -624,7 +639,7 @@ impl PlayerHealth {
         };
 
         // Only for services where we can infer artwork from URL (YouTube etc.)
-        metadata::infer_art_url_from_url(url).is_some()
+        is_youtube_url(url)
     }
 
     /// Should quarantine continue on the next tick?  Called from the
@@ -639,7 +654,7 @@ impl PlayerHealth {
         };
 
         // Not a YouTube-like URL → lift.
-        if metadata::infer_art_url_from_url(url).is_none() {
+        if !is_youtube_url(url) {
             return false;
         }
 
@@ -674,7 +689,6 @@ impl PlayerHealth {
         });
         ArtDecision {
             source_options: metadata::ArtSourceOptions {
-                allow_inferred_url: false,
                 allow_mpris_art_url: allow_mpris,
             },
             read_cache: false,
@@ -1224,23 +1238,20 @@ mod tests {
     fn art_decision_default_is_normal() {
         let decision = ArtDecision::default();
         assert!(decision.read_cache);
-        assert!(decision.source_options.allow_inferred_url);
         assert!(decision.source_options.allow_mpris_art_url);
         assert!(!decision.newly_quarantined);
     }
 
     #[test]
-    fn quarantined_art_decision_suppresses_cache_and_inferred() {
+    fn quarantined_art_decision_suppresses_cache_and_mpris_art() {
         let decision = ArtDecision {
             source_options: metadata::ArtSourceOptions {
-                allow_inferred_url: false,
                 allow_mpris_art_url: false,
             },
             read_cache: false,
             newly_quarantined: true,
         };
         assert!(!decision.read_cache);
-        assert!(!decision.source_options.allow_inferred_url);
         assert!(!decision.source_options.allow_mpris_art_url);
         assert!(decision.newly_quarantined);
     }
@@ -1262,7 +1273,6 @@ mod tests {
         );
         let decision = health.art_decision(&t);
         assert!(!decision.read_cache);
-        assert!(!decision.source_options.allow_inferred_url);
         assert!(!decision.source_options.allow_mpris_art_url);
     }
 
@@ -1276,7 +1286,6 @@ mod tests {
         let t = track("Song", "Artist", "https://example.com", "", "id1");
         let decision = health.art_decision(&t);
         assert!(decision.read_cache);
-        assert!(decision.source_options.allow_inferred_url);
         assert!(decision.source_options.allow_mpris_art_url);
     }
 

@@ -618,10 +618,6 @@ mod tests {
         );
         assert!(config.cover.provider.catbox.use_litter);
         assert_eq!(config.cover.provider.catbox.litter_hours, 24);
-        assert!(
-            config.cover.infer_youtube_thumbnail,
-            "YouTube thumbnail inference should be enabled by default"
-        );
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

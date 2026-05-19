@@ -369,10 +369,6 @@ impl MetadataSource {
             .allow_mpris_art_url
             .then(|| self.mpris_metadata.as_ref().and_then(|m| m.art_url()))
             .flatten();
-        let inferred = options
-            .allow_inferred_url
-            .then(|| self.url().as_deref().and_then(infer_art_url_from_url))
-            .flatten();
         let embedded = self
             .tagged_file
             .as_ref()
@@ -380,7 +376,7 @@ impl MetadataSource {
             .and_then(|tag| tag.pictures().first())
             .map(|picture| picture.data().to_vec());
 
-        select_art_source(art_url, inferred, embedded)
+        select_art_source(art_url, embedded)
     }
 
     pub fn mpris_metadata(&self) -> Option<&Metadata> {
@@ -601,14 +597,12 @@ impl MetadataSource {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArtSourceOptions {
-    pub allow_inferred_url: bool,
     pub allow_mpris_art_url: bool,
 }
 
 impl Default for ArtSourceOptions {
     fn default() -> Self {
         Self {
-            allow_inferred_url: true,
             allow_mpris_art_url: true,
         }
     }
@@ -623,28 +617,13 @@ pub fn is_http_art_url(url: &str) -> bool {
 /// Priority:
 /// 1. `mpris:artUrl` if it is an `http(s)://` URL — Discord can consume it
 ///    directly without a provider upload.
-/// 2. A URL inferred from `xesam:url` (e.g. YouTube thumbnail) — also
-///    directly usable and avoids touching plasma's temp artwork dump.
-/// 3. `mpris:artUrl` for any other scheme (`data:image/...;base64,...`,
+/// 2. `mpris:artUrl` for any other scheme (`data:image/...;base64,...`,
 ///    `file://`, bare path) — needs upload via the provider chain.
-/// 4. Embedded picture from the local file's tag.
+/// 3. Embedded picture from the local file's tag.
 fn select_art_source(
     art_url: Option<&str>,
-    inferred_url: Option<String>,
     embedded_bytes: Option<Vec<u8>>,
 ) -> Option<ArtSource> {
-    if let Some(url) = art_url {
-        if is_http_art_url(url) {
-            if let Some(src) = ArtSource::from_art_url(url) {
-                return Some(src);
-            }
-        }
-    }
-
-    if let Some(url) = inferred_url {
-        return Some(ArtSource::Url(url));
-    }
-
     if let Some(url) = art_url {
         if let Some(src) = ArtSource::from_art_url(url) {
             return Some(src);
@@ -654,82 +633,18 @@ fn select_art_source(
     embedded_bytes.map(ArtSource::Bytes)
 }
 
-/// Derive a public cover-art URL from a known web service URL.
-///
-/// Web players (YouTube in a browser, Plasma browser integration, etc.)
-/// often expose `xesam:url` but no `mpris:artUrl`. For services whose
-/// thumbnails are addressable from the page URL alone, return a direct
-/// image URL so Discord gets a real cover instead of falling back to the
-/// site's static icon.
-pub fn infer_art_url_from_url(url: &str) -> Option<String> {
-    let parsed = Url::parse(url).ok()?;
-    let scheme = parsed.scheme();
-    if scheme != "http" && scheme != "https" {
-        return None;
-    }
-    let host = parsed.host_str()?.to_ascii_lowercase();
-
-    let id = if host == "youtu.be" {
-        parsed
-            .path_segments()
-            .and_then(|mut s| s.next())
-            .map(str::to_string)
-    } else if host == "youtube.com"
-        || host.ends_with(".youtube.com")
-        || host == "youtube-nocookie.com"
-        || host.ends_with(".youtube-nocookie.com")
-    {
-        if let Some((_, v)) = parsed.query_pairs().find(|(k, _)| k == "v") {
-            Some(v.into_owned())
-        } else {
-            let mut segments = parsed.path_segments()?;
-            let first = segments.next()?;
-            match first {
-                "shorts" | "embed" | "live" | "v" => segments.next().map(str::to_string),
-                _ => None,
-            }
-        }
-    } else {
-        None
-    }?;
-
-    let id: String = id
-        .chars()
-        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
-        .collect();
-    if id.is_empty() || id.len() > 32 {
-        return None;
-    }
-    Some(format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{infer_art_url_from_url, select_art_source};
+    use super::select_art_source;
     use crate::cover::sources::ArtSource;
     use std::path::PathBuf;
 
-    const YT_URL: &str = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
-    const YT_THUMB: &str = "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg";
     const PLASMA_FILE: &str = "file:///tmp/plasma-browser-integration_artwork_zmXyTR.jpg";
 
-    fn youtube_inferred() -> Option<String> {
-        infer_art_url_from_url(YT_URL)
-    }
-
     #[test]
-    fn file_art_url_with_youtube_xesam_prefers_inferred_thumbnail() {
-        let got = select_art_source(Some(PLASMA_FILE), youtube_inferred(), None);
-        match got {
-            Some(ArtSource::Url(url)) => assert_eq!(url, YT_THUMB),
-            other => panic!("expected inferred YouTube URL, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn remote_http_art_url_beats_inferred_thumbnail() {
+    fn remote_http_art_url_wins() {
         let curated = "https://cdn.example.com/cover.png";
-        let got = select_art_source(Some(curated), youtube_inferred(), None);
+        let got = select_art_source(Some(curated), None);
         match got {
             Some(ArtSource::Url(url)) => assert_eq!(url, curated),
             other => panic!("expected curated http URL, got {other:?}"),
@@ -737,18 +652,8 @@ mod tests {
     }
 
     #[test]
-    fn data_art_url_with_youtube_xesam_prefers_inferred_thumbnail() {
-        let data_uri = "data:image/png;base64,iVBORw0KGgo=";
-        let got = select_art_source(Some(data_uri), youtube_inferred(), None);
-        match got {
-            Some(ArtSource::Url(url)) => assert_eq!(url, YT_THUMB),
-            other => panic!("expected inferred YouTube URL, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn file_art_url_with_non_youtube_xesam_keeps_file() {
-        let got = select_art_source(Some(PLASMA_FILE), None, None);
+    fn file_art_url_keeps_file() {
+        let got = select_art_source(Some(PLASMA_FILE), None);
         match got {
             Some(ArtSource::File(path)) => assert_eq!(
                 path,
@@ -759,18 +664,9 @@ mod tests {
     }
 
     #[test]
-    fn no_art_url_with_youtube_xesam_returns_inferred() {
-        let got = select_art_source(None, youtube_inferred(), None);
-        match got {
-            Some(ArtSource::Url(url)) => assert_eq!(url, YT_THUMB),
-            other => panic!("expected inferred YouTube URL, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn no_art_url_no_xesam_with_embedded_returns_bytes() {
+    fn no_art_url_with_embedded_returns_bytes() {
         let bytes = vec![1u8, 2, 3, 4];
-        let got = select_art_source(None, None, Some(bytes.clone()));
+        let got = select_art_source(None, Some(bytes.clone()));
         match got {
             Some(ArtSource::Bytes(b)) => assert_eq!(b, bytes),
             other => panic!("expected embedded bytes, got {other:?}"),
@@ -778,9 +674,9 @@ mod tests {
     }
 
     #[test]
-    fn data_art_url_without_inference_falls_back_to_base64() {
+    fn data_art_url_falls_back_to_base64() {
         let data_uri = "data:image/png;base64,iVBORw0KGgo=";
-        let got = select_art_source(Some(data_uri), None, None);
+        let got = select_art_source(Some(data_uri), None);
         match got {
             Some(ArtSource::Base64(payload)) => assert_eq!(payload, "iVBORw0KGgo="),
             other => panic!("expected base64 source, got {other:?}"),
@@ -789,88 +685,6 @@ mod tests {
 
     #[test]
     fn all_inputs_empty_returns_none() {
-        assert!(select_art_source(None, None, None).is_none());
-    }
-
-    #[test]
-    fn youtube_watch_url_yields_thumbnail() {
-        let got = infer_art_url_from_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-        assert_eq!(
-            got.as_deref(),
-            Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
-        );
-    }
-
-    #[test]
-    fn youtube_music_watch_url_yields_thumbnail() {
-        let got = infer_art_url_from_url("https://music.youtube.com/watch?v=abcDEF12345&list=foo");
-        assert_eq!(
-            got.as_deref(),
-            Some("https://i.ytimg.com/vi/abcDEF12345/hqdefault.jpg")
-        );
-    }
-
-    #[test]
-    fn youtu_be_short_url_yields_thumbnail() {
-        let got = infer_art_url_from_url("https://youtu.be/dQw4w9WgXcQ?t=42");
-        assert_eq!(
-            got.as_deref(),
-            Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
-        );
-    }
-
-    #[test]
-    fn youtube_shorts_url_yields_thumbnail() {
-        let got = infer_art_url_from_url("https://www.youtube.com/shorts/abc_def-123");
-        assert_eq!(
-            got.as_deref(),
-            Some("https://i.ytimg.com/vi/abc_def-123/hqdefault.jpg")
-        );
-    }
-
-    #[test]
-    fn youtube_embed_and_live_urls_yield_thumbnail() {
-        assert_eq!(
-            infer_art_url_from_url("https://www.youtube.com/embed/dQw4w9WgXcQ").as_deref(),
-            Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
-        );
-        assert_eq!(
-            infer_art_url_from_url("https://www.youtube.com/live/dQw4w9WgXcQ").as_deref(),
-            Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
-        );
-    }
-
-    #[test]
-    fn youtube_nocookie_embed_url_yields_thumbnail() {
-        let got =
-            infer_art_url_from_url("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0");
-        assert_eq!(
-            got.as_deref(),
-            Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
-        );
-    }
-
-    #[test]
-    fn unrecognized_host_returns_none() {
-        assert!(infer_art_url_from_url("https://soundcloud.com/foo/bar").is_none());
-        assert!(infer_art_url_from_url("https://example.com/watch?v=dQw4w9WgXcQ").is_none());
-    }
-
-    #[test]
-    fn youtube_homepage_returns_none() {
-        assert!(infer_art_url_from_url("https://www.youtube.com/").is_none());
-        assert!(infer_art_url_from_url("https://www.youtube.com/feed/subscriptions").is_none());
-    }
-
-    #[test]
-    fn non_http_scheme_returns_none() {
-        assert!(infer_art_url_from_url("file:///tmp/song.mp3").is_none());
-        assert!(infer_art_url_from_url("spotify:track:xyz").is_none());
-    }
-
-    #[test]
-    fn malformed_video_id_returns_none() {
-        assert!(infer_art_url_from_url("https://www.youtube.com/watch?v=").is_none());
-        assert!(infer_art_url_from_url("https://youtu.be/").is_none());
+        assert!(select_art_source(None, None).is_none());
     }
 }

@@ -675,7 +675,7 @@ impl Presence {
     async fn update_activity(
         &mut self,
         generation: Option<u64>,
-        mut art_decision: health::ArtDecision,
+        art_decision: health::ArtDecision,
     ) -> Result<(), DiscordError> {
         if self.discord_client.is_none() {
             return Ok(());
@@ -759,7 +759,7 @@ impl Presence {
 
         if art_decision.newly_quarantined {
             warn!(
-                "Suppressing stale YouTube MPRIS artwork for {}: url={:?}, art_url={:?}, allow_mpris_art_url={}",
+                "Suppressing stale MPRIS artwork for {}: url={:?}, art_url={:?}, allow_mpris_art_url={}",
                 self.player.identity(),
                 update_snapshot.track.url,
                 update_snapshot.track.art_url,
@@ -767,7 +767,7 @@ impl Presence {
             );
         } else if art_decision.source_options != metadata::ArtSourceOptions::default() {
             trace!(
-                "Continuing stale YouTube MPRIS artwork quarantine for {}: url={:?}, art_url={:?}, allow_mpris_art_url={}",
+                "Continuing stale MPRIS artwork quarantine for {}: url={:?}, art_url={:?}, allow_mpris_art_url={}",
                 self.player.identity(),
                 update_snapshot.track.url,
                 update_snapshot.track.art_url,
@@ -1024,14 +1024,6 @@ impl Presence {
             );
         }
         self.error_logged.store(false, Ordering::Relaxed);
-
-        // Apply the cover config: when `infer_youtube_thumbnail` is disabled,
-        // disallow inferred art URLs (YouTube thumbnails derived from the
-        // track's `xesam:url`). The health state machine normally enables
-        // inference, so this override lets the user opt out.
-        if !self.config.cover_config().infer_youtube_thumbnail {
-            art_decision.source_options.allow_inferred_url = false;
-        }
 
         // Slow path: cache miss → background cover fetch + second push when ready.
         // Guard: skip if a background task is already in flight for a newer or

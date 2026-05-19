@@ -20,7 +20,6 @@ default = "listening"
 [cover]
 file_names = ["cover", "folder", "front", "album", "art"]
 local_search_depth = 2
-infer_youtube_thumbnail = true
 
 [cover.provider]
 provider = ["catbox", "musicbrainz"]
