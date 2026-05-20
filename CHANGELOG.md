@@ -32,8 +32,9 @@ cargo build --release  # binary at target/release/mprisence
   `ignore = true` on any entry to keep it hidden despite being configured.
   Previously unknown players showed the generic "mprisence" presence; they are
   now fully hidden.
-- Push track metadata to Discord before cover art upload completes, for faster
-  presence updates.
+- Two-phase presence updates: push track metadata to Discord immediately (without
+  cover art), then update again once cover art is uploaded. The initial push
+  makes the presence appear faster; the second pass adds the cover image.
 - Resize cover art before upload to reduce bandwidth.
 
 ### Added
