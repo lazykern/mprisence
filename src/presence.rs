@@ -435,7 +435,7 @@ impl Presence {
             health::TransitionOutcome::Push { art_decision } => {
                 self.last_player_state = Some(new_state);
                 let art_gen = Some(generation);
-                self.update_activity(art_gen, art_decision).await.map_err(|err| {
+                self.update_activity(art_gen, art_decision, Some(playback_status)).await.map_err(|err| {
                     if matches!(err, DiscordError::ActivityError(_)) {
                         if !self.error_logged.load(Ordering::Relaxed) {
                             warn!("Discord connection error, will attempt to reconnect next update");
@@ -482,7 +482,7 @@ impl Presence {
         // Seed `last_player_state` so the next polling tick's diff sees no change
         // and skips re-pushing (and re-fetching cover art) for the same track.
         self.last_player_state = Some(PlaybackState::from(&self.player));
-        self.update_activity(None, health::ArtDecision::default())
+        self.update_activity(None, health::ArtDecision::default(), None)
             .await
     }
 
@@ -684,15 +684,19 @@ impl Presence {
         &mut self,
         mut generation: Option<u64>,
         art_decision: health::ArtDecision,
+        playback_status: Option<PlaybackStatus>,
     ) -> Result<(), DiscordError> {
         if self.discord_client.is_none() {
             return Ok(());
         }
 
-        let playback_status = self.player.get_playback_status().map_err(|err| {
-            error!("Failed to get playback status: {}", err);
-            DiscordError::ActivityError(format!("Failed to get playback status: {}", err))
-        })?;
+        let playback_status = match playback_status {
+            Some(s) => s,
+            None => self.player.get_playback_status().map_err(|err| {
+                error!("Failed to get playback status: {}", err);
+                DiscordError::ActivityError(format!("Failed to get playback status: {}", err))
+            })?,
+        };
 
         if playback_status == PlaybackStatus::Stopped || playback_status == PlaybackStatus::Paused {
             self.clear_discord_activity_with_reason(&format!(
@@ -1393,6 +1397,7 @@ impl Presence {
         // machine can react to the new track.
         // Other events keep the existing snapshot behaviour.
         let art_decision;
+        let playback_status: Option<PlaybackStatus>;
         if is_track_change {
             let metadata = match self.player.get_metadata() {
                 Ok(m) => m,
@@ -1404,15 +1409,16 @@ impl Presence {
             let track = health::TrackFingerprint::from_mpris(&metadata);
             let position = self.player.get_position().unwrap_or_default();
             let now = Instant::now();
-            let playback_status = self
+            let status = self
                 .player
                 .get_playback_status()
                 .unwrap_or(PlaybackStatus::Playing);
+            playback_status = Some(status);
             let is_browser =
                 Self::is_browser_source(self.player.bus_name(), self.player.identity());
             let gen = generation.unwrap_or(0);
             let input = health::HealthCheckInput {
-                playback_status,
+                playback_status: status,
                 position,
                 track: &track,
                 track_length: track.length,
@@ -1443,6 +1449,7 @@ impl Presence {
                 }
             }
         } else {
+            playback_status = None;
             // Non-TrackChanged: snapshot existing art_decision.
             let current_track = self
                 .player
@@ -1455,7 +1462,7 @@ impl Presence {
                 .map(|t| self.health.lock().art_decision(t))
                 .unwrap_or_default();
         }
-        if let Err(err) = self.update_activity(generation, art_decision).await {
+        if let Err(err) = self.update_activity(generation, art_decision, playback_status).await {
             if matches!(err, DiscordError::ActivityError(_)) {
                 if !self.error_logged.load(Ordering::Relaxed) {
                     warn!("Discord connection error, will attempt to reconnect next event");
