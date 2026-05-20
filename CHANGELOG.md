@@ -26,7 +26,12 @@ cargo build --release  # binary at target/release/mprisence
 - Rename `discovery_interval` to `fallback_poll_interval`. Old key still accepted.
   Default changed from 5s to 30s.
 - Default `player.default.ignore` to `true` for fresh configs. Existing configs
-  unchanged.
+  unchanged. Only explicitly configured players and websites generate Discord
+  presence — unknown players default to hidden, unknown web URLs are auto-ignored.
+  Adding a `[player.*]` or `[website.*]` entry implicitly opts it in; set
+  `ignore = true` on any entry to keep it hidden despite being configured.
+  Previously unknown players showed the generic "mprisence" presence; they are
+  now fully hidden.
 - Push track metadata to Discord before cover art upload completes, for faster
   presence updates.
 - Resize cover art before upload to reduce bandwidth.
