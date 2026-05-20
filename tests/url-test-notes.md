@@ -8,14 +8,18 @@
 - [x] apple music (music.apple.com)
 
 ## To test
-- [ ] deezer
-- [ ] pocket casts
-- [ ] podurama
-- [ ] apple podcasts
+- [x] deezer
+- [x] pocket casts
+- [x] podurama
+- [x] apple podcasts
 
 ## Skipped (need sub)
-- [ ] qobuz, tidal, amazon music, yandex music
+- [ ] qobuz, amazon music, yandex music
+- [x] tidal (tested, works)
 
 ## Findings
 - **bandcamp**: needs special integration (no standard MPRIS metadata iframe)
 - **youtube music**: song length keeps incrementing on playlists (duration drift on each track change)
+- **deezer**: MPRIS artwork is wrong (mismatched / stale images)
+- **pocket casts**: needs better special integration
+- **apple podcasts**: needs integration, partially works
