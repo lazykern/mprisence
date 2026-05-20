@@ -464,7 +464,9 @@ impl Presence {
                     "Clearing Discord activity - player {} is stalled/stopped/paused",
                     self.player.identity()
                 ))?;
-                self.last_player_state = None;
+                // Preserve the latest snapshot so paused/stopped polling does
+                // not keep looking like a fresh significant change every tick.
+                self.last_player_state = Some(new_state);
             }
             health::TransitionOutcome::Noop => {
                 trace!("Noop from health state machine, skipping");

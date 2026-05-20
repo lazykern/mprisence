@@ -256,6 +256,7 @@ impl PlayerHealth {
             || reason == "healthy_progress"
             || reason == "confirming_wait"
             || reason == "stalled_wait"
+            || (!state_changed && reason == "playback_not_playing")
         {
             trace!("{}", msg);
         } else {
