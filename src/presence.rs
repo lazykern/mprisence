@@ -684,7 +684,7 @@ impl Presence {
 
     async fn update_activity(
         &mut self,
-        generation: Option<u64>,
+        mut generation: Option<u64>,
         art_decision: health::ArtDecision,
     ) -> Result<(), DiscordError> {
         if self.discord_client.is_none() {
@@ -759,11 +759,16 @@ impl Presence {
             changed
         };
         if track_changed {
-            self.update_generation.fetch_add(1, Ordering::Relaxed);
+            let new_gen = self.update_generation.fetch_add(1, Ordering::Relaxed) + 1;
             self.update_notify.notify_waiters();
             // Allow the new track to spawn its own cover-art background task.
             // Setting to 0 means "no fetch in flight" — a new track can always spawn.
             self.cover_fetch_generation.store(0, Ordering::Release);
+            // Re-read the bumped generation so the stale checks below don't
+            // abort this very same push. Both the polling path (update()) and
+            // the event-driven path (handle_event) can experience this: the
+            // caller loaded the pre-bump generation, but we just bumped it.
+            generation = Some(new_gen);
         }
 
         let player_bus_name = canonical_player_bus_name(self.player.bus_name());
