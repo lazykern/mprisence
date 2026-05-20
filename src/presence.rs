@@ -143,6 +143,10 @@ pub struct Presence {
     /// URL of the last pushed track. Used alongside `last_pushed_track_id` to
     /// detect track changes (plasma-browser-integration reuses the same track_id).
     last_pushed_track_url: Mutex<Option<String>>,
+    /// Art URL of the last pushed track. Used alongside track_id and url to
+    /// detect track changes when plasma-browser-integration updates artUrl
+    /// a few seconds after the track metadata rolls over.
+    last_pushed_art_url: Mutex<Option<String>>,
     /// Snapshot of the last rendered activity (playback_status + fingerprint).
     /// Used to skip template rendering when nothing changed between events
     /// (e.g. periodic Playing events on the same track).
@@ -203,6 +207,7 @@ impl Presence {
             last_resolved_cover_art: Arc::new(Mutex::new(None)),
             last_pushed_track_id: parking_lot::Mutex::new(None),
             last_pushed_track_url: parking_lot::Mutex::new(None),
+            last_pushed_art_url: parking_lot::Mutex::new(None),
             last_rendered_snapshot: None,
             last_rendered_volume: None,
             last_activity_texts: None,
@@ -341,6 +346,7 @@ impl Presence {
             self.last_player_state = None;
             self.cmus.reset();
             *self.last_pushed_track_url.lock() = None;
+            *self.last_pushed_art_url.lock() = None;
             *self.last_resolved_cover_art.lock() = None;
             // Reset health on connection handoff (new underlying player).
             let is_browser = Self::is_browser_source(
@@ -445,9 +451,12 @@ impl Presence {
                     }
                     err
                 })?;
-                // Update previous URL reference for next tick's same_url_as_prev check.
+                // Update previous URL/art_url reference for next tick's track-change check.
                 if let Some(ref url) = track.url {
                     *self.last_pushed_track_url.lock() = Some(url.clone());
+                }
+                if let Some(ref art_url) = track.art_url {
+                    *self.last_pushed_art_url.lock() = Some(art_url.clone());
                 }
             }
             health::TransitionOutcome::Clear => {
@@ -719,20 +728,35 @@ impl Presence {
         // previous track aborts before re-pushing its (now stale) result.
         // Event-driven mode already bumps from the listener thread; this path
         // makes the same guarantee hold in polling mode.
+        //
+        // Also compare art_url: plasma-browser-integration reuses the same
+        // track_id AND xesam:url across tracks, and updates artUrl to the
+        // correct file 2-5s after the other metadata fields. Bumping the
+        // generation on an art_url change both aborts the stale fetch that
+        // read the old file AND resets cover_fetch_generation so a correct
+        // task can spawn with the updated path.
         let track_changed = {
             let track_id = metadata.track_id().map(|id| id.to_string());
             let track_url = metadata.url().map(|url| url.to_string());
+            let art_url = metadata.art_url().map(|url| url.to_string());
             let mut last_id = self.last_pushed_track_id.lock();
             let mut last_url = self.last_pushed_track_url.lock();
+            let mut last_art = self.last_pushed_art_url.lock();
             let id_changed = last_id.as_deref() != track_id.as_deref();
             let url_changed = last_url.as_deref() != track_url.as_deref();
-            if id_changed || url_changed {
+            let art_changed = last_art.as_deref() != art_url.as_deref();
+            let changed = id_changed || url_changed || art_changed;
+            if changed {
+                debug!(
+                    "track change detected: id={} url={} art={} gen={}",
+                    id_changed, url_changed, art_changed,
+                    self.update_generation.load(Ordering::Relaxed),
+                );
                 *last_id = track_id;
                 *last_url = track_url;
-                true
-            } else {
-                false
+                *last_art = art_url;
             }
+            changed
         };
         if track_changed {
             self.update_generation.fetch_add(1, Ordering::Relaxed);
@@ -1019,10 +1043,12 @@ impl Presence {
         let spawn_gen = current_generation;
         if cover_for_push.is_none() && {
             let mut spawned = false;
+            let mut skip_reason: Option<(u64, u64)> = None;
             loop {
                 let cur = self.cover_fetch_generation.load(Ordering::Acquire);
                 if cur != 0 && cur >= spawn_gen {
                     // Already a fetch in flight for this or a newer generation.
+                    skip_reason = Some((cur, spawn_gen));
                     break;
                 }
                 match self.cover_fetch_generation.compare_exchange_weak(
@@ -1037,6 +1063,12 @@ impl Presence {
                     }
                     Err(_) => continue, // CAS failed, retry
                 }
+            }
+            if let Some((in_flight, wanted)) = skip_reason {
+                debug!(
+                    "skipping background cover fetch: in_flight_gen={} >= spawn_gen={} for {}",
+                    in_flight, wanted, self.player.identity(),
+                );
             }
             spawned
         } {
@@ -1268,6 +1300,7 @@ impl Presence {
         self.last_player_state = None;
         self.cmus.reset();
         *self.last_pushed_track_url.lock() = None;
+        *self.last_pushed_art_url.lock() = None;
         *self.last_resolved_cover_art.lock() = None;
     }
 
