@@ -141,9 +141,15 @@ impl ConfigManager {
         url: Option<&str>,
         title: Option<&str>,
     ) -> (schema::PlayerConfig, Option<String>) {
-        let guard = self.config.read().expect("Failed to read config: RwLock poisoned");
+        let guard = self
+            .config
+            .read()
+            .expect("Failed to read config: RwLock poisoned");
         if url.is_some() {
-            return (guard.get_player_config_with_url(identity, player_bus_name, url), None);
+            return (
+                guard.get_player_config_with_url(identity, player_bus_name, url),
+                None,
+            );
         }
         let base = guard.get_player_config(identity, player_bus_name);
         guard.apply_website_overrides_by_title(base, title)

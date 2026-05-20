@@ -18,9 +18,7 @@ impl CompiledPattern {
     fn matches(&self, candidate: &str) -> bool {
         match self {
             CompiledPattern::Exact(key) => key == candidate,
-            CompiledPattern::Wildcard(re) | CompiledPattern::Regex(re) => {
-                re.is_match(candidate)
-            }
+            CompiledPattern::Wildcard(re) | CompiledPattern::Regex(re) => re.is_match(candidate),
         }
     }
 }
@@ -78,8 +76,7 @@ macro_rules! normalized_map_serde {
             where
                 D: Deserializer<'de>,
             {
-                let temp_map =
-                    HashMap::<String, super::$value_type>::deserialize(deserializer)?;
+                let temp_map = HashMap::<String, super::$value_type>::deserialize(deserializer)?;
                 let mut final_map: HashMap<String, super::$value_type> = HashMap::new();
                 for (key, value) in temp_map {
                     let normalized_key = normalize_player_identity(&key);
@@ -144,7 +141,10 @@ pub struct Config {
     #[serde(default = "default_event_driven")]
     pub event_driven: bool,
 
-    #[serde(default = "default_fallback_poll_interval", alias = "discovery_interval")]
+    #[serde(
+        default = "default_fallback_poll_interval",
+        alias = "discovery_interval"
+    )]
     pub fallback_poll_interval: u64,
 
     #[serde(default = "default_allowed_players")]
@@ -308,8 +308,12 @@ impl Config {
             return base;
         }
         let host_or_url = url_host_for_match(raw_url);
-        if let Some(layer) = find_matching_website_entry(&self.compiled_website_patterns, &self.merged_website, &host_or_url)
-            .map(|(_, layer)| layer)
+        if let Some(layer) = find_matching_website_entry(
+            &self.compiled_website_patterns,
+            &self.merged_website,
+            &host_or_url,
+        )
+        .map(|(_, layer)| layer)
         {
             return layer
                 .apply_into_website(WebsiteConfig::default())
@@ -337,7 +341,11 @@ impl Config {
             return None;
         }
         let host = url_host_for_match(raw_url);
-        let (key, layer) = find_matching_website_entry(&self.compiled_website_patterns, &self.merged_website, &host)?;
+        let (key, layer) = find_matching_website_entry(
+            &self.compiled_website_patterns,
+            &self.merged_website,
+            &host,
+        )?;
         let resolved = layer.apply_into_website(WebsiteConfig::default());
         Some((key, resolved))
     }
@@ -385,8 +393,7 @@ impl Config {
                 continue;
             }
             let compiled = Self::compile_single_pattern(key);
-            self.compiled_player_patterns
-                .insert(key.clone(), compiled);
+            self.compiled_player_patterns.insert(key.clone(), compiled);
         }
 
         // --- website patterns ---
@@ -399,8 +406,7 @@ impl Config {
                 .iter()
                 .map(|p| Self::compile_single_pattern(p))
                 .collect();
-            self.compiled_website_patterns
-                .insert(key.clone(), compiled);
+            self.compiled_website_patterns.insert(key.clone(), compiled);
         }
     }
 
@@ -619,15 +625,13 @@ impl Config {
 
             match compiled {
                 CompiledPattern::Exact(key) if key == normalized_identity => {
-                    result.exact =
-                        Some(ScoredLayer::new(cfg.clone(), pattern_key.len(), 0));
+                    result.exact = Some(ScoredLayer::new(cfg.clone(), pattern_key.len(), 0));
                 }
                 CompiledPattern::Regex(_) if compiled.matches(normalized_identity) => {
                     let total_len = pattern_key.len();
                     match &result.regex {
                         Some(existing) if existing.pattern_len >= total_len => {}
-                        _ => result.regex =
-                            Some(ScoredLayer::new(cfg.clone(), total_len, 0)),
+                        _ => result.regex = Some(ScoredLayer::new(cfg.clone(), total_len, 0)),
                     }
                 }
                 CompiledPattern::Wildcard(_) if compiled.matches(normalized_identity) => {
@@ -639,11 +643,8 @@ impl Config {
                                 || (existing.specificity == specificity
                                     && existing.pattern_len >= total_len) => {}
                         _ => {
-                            result.wildcard = Some(ScoredLayer::new(
-                                cfg.clone(),
-                                total_len,
-                                specificity,
-                            ))
+                            result.wildcard =
+                                Some(ScoredLayer::new(cfg.clone(), total_len, specificity))
                         }
                     }
                 }
@@ -1804,8 +1805,10 @@ mod website_tests {
     #[test]
     fn website_match_host_swaps_app_id() {
         let cfg = build_cfg(|cfg| {
-            cfg.bundled_website
-                .insert("youtube_music".into(), website("music.youtube.com", Some("YT")));
+            cfg.bundled_website.insert(
+                "youtube_music".into(),
+                website("music.youtube.com", Some("YT")),
+            );
         });
 
         let resolved = cfg.get_player_config_with_url(
@@ -1839,11 +1842,8 @@ mod website_tests {
         assert_eq!(resolved_long.app_id, "SC");
         assert!(resolved_long.allow_streaming);
 
-        let resolved_short = cfg.get_player_config_with_url(
-            "Firefox",
-            "firefox",
-            Some("https://snd.sc/abc"),
-        );
+        let resolved_short =
+            cfg.get_player_config_with_url("Firefox", "firefox", Some("https://snd.sc/abc"));
         assert_eq!(resolved_short.app_id, "SC");
         assert!(resolved_short.allow_streaming);
     }
@@ -1868,8 +1868,10 @@ mod website_tests {
     #[test]
     fn website_unknown_http_url_forces_ignore() {
         let cfg = build_cfg(|cfg| {
-            cfg.bundled_website
-                .insert("youtube_music".into(), website("music.youtube.com", Some("YT")));
+            cfg.bundled_website.insert(
+                "youtube_music".into(),
+                website("music.youtube.com", Some("YT")),
+            );
         });
 
         let resolved = cfg.get_player_config_with_url(
@@ -1886,16 +1888,15 @@ mod website_tests {
     #[test]
     fn website_non_http_scheme_falls_through_to_base() {
         let cfg = build_cfg(|cfg| {
-            cfg.bundled_website
-                .insert("youtube_music".into(), website("music.youtube.com", Some("YT")));
+            cfg.bundled_website.insert(
+                "youtube_music".into(),
+                website("music.youtube.com", Some("YT")),
+            );
         });
         let baseline = cfg.get_player_config("Spotify", "spotify");
 
-        let resolved = cfg.get_player_config_with_url(
-            "Spotify",
-            "spotify",
-            Some("spotify:track:abc123"),
-        );
+        let resolved =
+            cfg.get_player_config_with_url("Spotify", "spotify", Some("spotify:track:abc123"));
         assert_eq!(resolved.app_id, baseline.app_id);
         assert_eq!(resolved.ignore, baseline.ignore);
     }
@@ -1903,24 +1904,25 @@ mod website_tests {
     #[test]
     fn website_file_url_falls_through_to_base() {
         let cfg = build_cfg(|cfg| {
-            cfg.bundled_website
-                .insert("youtube_music".into(), website("music.youtube.com", Some("YT")));
+            cfg.bundled_website.insert(
+                "youtube_music".into(),
+                website("music.youtube.com", Some("YT")),
+            );
         });
         let baseline = cfg.get_player_config("VLC", "vlc");
 
-        let resolved = cfg.get_player_config_with_url(
-            "VLC",
-            "vlc",
-            Some("file:///home/user/track.flac"),
-        );
+        let resolved =
+            cfg.get_player_config_with_url("VLC", "vlc", Some("file:///home/user/track.flac"));
         assert_eq!(resolved.ignore, baseline.ignore);
     }
 
     #[test]
     fn website_no_url_returns_base_player_config() {
         let cfg = build_cfg(|cfg| {
-            cfg.bundled_website
-                .insert("youtube_music".into(), website("music.youtube.com", Some("YT")));
+            cfg.bundled_website.insert(
+                "youtube_music".into(),
+                website("music.youtube.com", Some("YT")),
+            );
         });
         let baseline = cfg.get_player_config("Firefox", "firefox");
 
@@ -2025,7 +2027,10 @@ mod website_tests {
             "firefox",
             Some("https://www.youtube.com/watch?v=x"),
         );
-        assert!(!resolved.ignore, "user override should flip ignore to false");
+        assert!(
+            !resolved.ignore,
+            "user override should flip ignore to false"
+        );
         assert_eq!(
             resolved.app_id, "YT_BUNDLED",
             "bundled app_id should still apply since user didn't override it"
@@ -2052,10 +2057,8 @@ mod website_tests {
                     ..Default::default()
                 },
             );
-            cfg.bundled_website.insert(
-                "youtube".into(),
-                website("youtube.com", Some("YT_SITE")),
-            );
+            cfg.bundled_website
+                .insert("youtube".into(), website("youtube.com", Some("YT_SITE")));
         });
 
         let resolved = cfg.get_player_config_with_url(
@@ -2114,7 +2117,8 @@ fn find_matching_website_entry(
     let mut best: Option<(String, WebsiteConfigLayer, (u8, usize))> = None;
 
     for (key, layer) in source.iter() {
-        let compiled_list: std::borrow::Cow<Vec<CompiledPattern>> = match compiled_patterns.get(key) {
+        let compiled_list: std::borrow::Cow<Vec<CompiledPattern>> = match compiled_patterns.get(key)
+        {
             Some(c) => std::borrow::Cow::Borrowed(c),
             None => {
                 // Fallback: compile on-demand (tests that bypass precompile_patterns).
@@ -2134,18 +2138,15 @@ fn find_matching_website_entry(
             let raw = raw_patterns.get(idx).copied().unwrap_or("");
 
             let score: Option<(u8, usize)> = match compiled {
-                CompiledPattern::Exact(p) if p == url_host => {
-                    Some((3, raw.len()))
-                }
-                CompiledPattern::Regex(_) if compiled.matches(url_host) => {
-                    Some((2, raw.len()))
-                }
+                CompiledPattern::Exact(p) if p == url_host => Some((3, raw.len())),
+                CompiledPattern::Regex(_) if compiled.matches(url_host) => Some((2, raw.len())),
                 CompiledPattern::Wildcard(_) if compiled.matches(url_host) => {
                     Some((1, pattern_specificity(raw)))
                 }
                 _ => {
                     // Fallback: contains match (only for non-regex, non-wildcard strings)
-                    if !is_regex_pattern(raw) && !is_wildcard_pattern(raw) && url_host.contains(raw) {
+                    if !is_regex_pattern(raw) && !is_wildcard_pattern(raw) && url_host.contains(raw)
+                    {
                         Some((0, raw.len()))
                     } else {
                         None

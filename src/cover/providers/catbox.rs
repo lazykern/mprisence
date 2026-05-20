@@ -173,10 +173,7 @@ impl CatboxProvider {
                 .into_rgb8()
                 .write_to(&mut cursor, ImageFormat::Jpeg)
                 .map_err(|e| {
-                    CoverArtError::provider_error(
-                        provider,
-                        &format!("image re-encode failed: {e}"),
-                    )
+                    CoverArtError::provider_error(provider, &format!("image re-encode failed: {e}"))
                 })?;
             debug!(
                 "{} resized cover art {}x{} ({} B) -> {}x{} ({} B JPEG)",

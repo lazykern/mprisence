@@ -1,11 +1,11 @@
 use std::time::Duration;
 
-use blake3::Hasher;
 use crate::cover::sources::ArtSource;
 use crate::utils::{
     format_audio_channels, format_bit_depth, format_bitrate, format_duration, format_sample_rate,
     format_track_number,
 };
+use blake3::Hasher;
 use lofty::{
     file::{AudioFile, TaggedFile, TaggedFileExt},
     prelude::*,
@@ -439,14 +439,10 @@ impl MetadataSource {
             if !album.is_empty() {
                 key_components.push(format!("album:{}", album));
                 if let Some(mut album_artists) = self.album_artists() {
-                    if !album_artists.is_empty()
-                        && Some(&album_artists) != self.artists().as_ref()
+                    if !album_artists.is_empty() && Some(&album_artists) != self.artists().as_ref()
                     {
                         album_artists.sort_unstable();
-                        key_components.push(format!(
-                            "album_artists:{}",
-                            album_artists.join("|")
-                        ));
+                        key_components.push(format!("album_artists:{}", album_artists.join("|")));
                     }
                 }
             }
@@ -509,8 +505,10 @@ impl MetadataSource {
         metadata.album = self.album();
 
         if let Some(album_artists) = self.album_artists() {
-            let album_artists: Vec<String> =
-                album_artists.into_iter().filter(|s| !s.is_empty()).collect();
+            let album_artists: Vec<String> = album_artists
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect();
             if !album_artists.is_empty() {
                 metadata.album_artist_display = Some(album_artists.join(", "));
                 metadata.album_artists = album_artists;
@@ -616,10 +614,7 @@ impl Default for ArtSourceOptions {
 /// 2. `mpris:artUrl` for any other scheme (`data:image/...;base64,...`,
 ///    `file://`, bare path) — needs upload via the provider chain.
 /// 3. Embedded picture from the local file's tag.
-fn select_art_source(
-    art_url: Option<&str>,
-    embedded_bytes: Option<Vec<u8>>,
-) -> Option<ArtSource> {
+fn select_art_source(art_url: Option<&str>, embedded_bytes: Option<Vec<u8>>) -> Option<ArtSource> {
     if let Some(url) = art_url {
         if let Some(src) = ArtSource::from_art_url(url) {
             return Some(src);

@@ -424,12 +424,18 @@ impl CoverManager {
                 None => provider.supports_metadata_only(),
             };
             if !supported {
-                trace!("Provider {} does not support this source type", provider.name());
+                trace!(
+                    "Provider {} does not support this source type",
+                    provider.name()
+                );
                 continue;
             }
 
             debug!("Attempting cover art retrieval with {}", provider.name());
-            match provider.process(process_source.clone(), metadata_source).await {
+            match provider
+                .process(process_source.clone(), metadata_source)
+                .await
+            {
                 Ok(Some(result)) => {
                     let CoverResult {
                         url,
@@ -532,7 +538,8 @@ impl CoverManager {
     async fn cache_get_entry(&self, key: &str) -> Result<Option<CacheEntry>, CoverArtError> {
         let cache = self.cache.clone();
         let key = key.to_string();
-        self.run_blocking("lookup", move || cache.get_by_key(&key)).await
+        self.run_blocking("lookup", move || cache.get_by_key(&key))
+            .await
     }
 
     async fn cache_update_entry(&self, key: &str, entry: &CacheEntry) -> Result<(), CoverArtError> {
@@ -562,12 +569,14 @@ impl CoverManager {
     async fn cache_remove_entry(&self, key: &str) -> Result<(), CoverArtError> {
         let cache = self.cache.clone();
         let key = key.to_string();
-        self.run_blocking("remove", move || cache.remove_by_key(&key)).await
+        self.run_blocking("remove", move || cache.remove_by_key(&key))
+            .await
     }
 
     async fn cache_load_bytes(&self, entry: CacheEntry) -> Result<Option<Vec<u8>>, CoverArtError> {
         let cache = self.cache.clone();
-        self.run_blocking("load-bytes", move || cache.load_bytes(&entry)).await
+        self.run_blocking("load-bytes", move || cache.load_bytes(&entry))
+            .await
     }
 
     async fn prepare_cache_payload(
@@ -684,5 +693,4 @@ mod tests {
         assert!(policy.allow_direct);
         assert_eq!(policy.reason, "public_url");
     }
-
 }

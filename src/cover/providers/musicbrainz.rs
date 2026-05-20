@@ -393,7 +393,9 @@ impl MusicbrainzProvider {
                             if !rec_title.trim().to_lowercase().eq(&search_title_normalized) {
                                 debug!(
                                     "Skipping recording {} because title '{}' != '{}'",
-                                    recording.id, rec_title, track.as_ref()
+                                    recording.id,
+                                    rec_title,
+                                    track.as_ref()
                                 );
                                 continue;
                             }
@@ -412,9 +414,9 @@ impl MusicbrainzProvider {
                                         .unwrap_or_default()
                                         .trim()
                                         .to_lowercase();
-                                    artists.iter().any(|a| {
-                                        a.as_ref().trim().to_lowercase() == credit_name
-                                    })
+                                    artists
+                                        .iter()
+                                        .any(|a| a.as_ref().trim().to_lowercase() == credit_name)
                                 });
                                 if !has_artist_match {
                                     debug!(

@@ -64,7 +64,6 @@ impl ArtSource {
             Self::Url(_) => Ok(None),
         }
     }
-
 }
 
 pub fn search_local_cover_art(

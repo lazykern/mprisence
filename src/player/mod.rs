@@ -50,6 +50,7 @@ pub struct PlaybackState {
     pub position: Option<u32>,
     pub volume: Option<u8>,
     pub url: Option<Box<str>>,
+    pub art_url: Option<Box<str>>,
 }
 
 impl Display for PlaybackState {
@@ -106,12 +107,11 @@ impl PlaybackState {
         Self {
             playback_status,
             track_identifier,
-            title: metadata
-                .and_then(|m| m.title().map(|s| s.to_string().into_boxed_str())),
+            title: metadata.and_then(|m| m.title().map(|s| s.to_string().into_boxed_str())),
             position: player.get_position().map(|d| d.as_secs() as u32).ok(),
             volume: player.get_volume().map(|v| (v * 100.0) as u8).ok(),
-            url: metadata
-                .and_then(|m| m.url().map(|s| s.to_string().into_boxed_str())),
+            url: metadata.and_then(|m| m.url().map(|s| s.to_string().into_boxed_str())),
+            art_url: metadata.and_then(|m| m.art_url().map(|s| s.to_string().into_boxed_str())),
         }
     }
 }
@@ -148,7 +148,10 @@ pub(crate) fn metadata_richness(player: &Player) -> u8 {
         if meta.album_name().is_some_and(|a| !a.is_empty()) {
             score += 2;
         }
-        if meta.artists().is_some_and(|a| a.iter().any(|s| !s.is_empty())) {
+        if meta
+            .artists()
+            .is_some_and(|a| a.iter().any(|s| !s.is_empty()))
+        {
             score += 2;
         }
         if meta.art_url().is_some() {
@@ -250,6 +253,18 @@ impl PlaybackState {
         // updates xesam:url to the correct value.
         if self.url != previous.url {
             debug!("URL changed: {:?} -> {:?}", previous.url, self.url);
+            return true;
+        }
+
+        // Art URL changes are significant even when the title/track id/url are
+        // unchanged. plasma-browser-integration often fixes mpris:artUrl a few
+        // seconds after the track title changes; reaching update_activity lets
+        // the generation gate cancel stale cover fetches and spawn the fresh one.
+        if self.art_url != previous.art_url {
+            debug!(
+                "Art URL changed: {:?} -> {:?}",
+                previous.art_url, self.art_url
+            );
             return true;
         }
 
@@ -384,7 +399,9 @@ fn compute_url_merges(groups: &[GroupSnapshot]) -> Vec<(SmolStr, SmolStr)> {
                     // registered before us — merge into it.
                     if let Some(existing) = url_to_norm
                         .iter()
-                        .find(|(k, v)| *v != &group.norm_id && origin_of(k).as_deref() == Some(origin_str))
+                        .find(|(k, v)| {
+                            *v != &group.norm_id && origin_of(k).as_deref() == Some(origin_str)
+                        })
                         .map(|(_, v)| v.clone())
                     {
                         merges.push((group.norm_id.clone(), existing));
@@ -430,11 +447,7 @@ pub fn merge_url_duplicates(
     let snapshots: Vec<GroupSnapshot> = candidates
         .iter()
         .map(|(norm_id, players)| {
-            let max_richness = players
-                .iter()
-                .map(metadata_richness)
-                .max()
-                .unwrap_or(0);
+            let max_richness = players.iter().map(metadata_richness).max().unwrap_or(0);
             let urls = players
                 .iter()
                 .map(|p| {
@@ -459,7 +472,8 @@ pub fn merge_url_duplicates(
         if let Some(players) = candidates.remove(&from) {
             trace!(
                 "Merging duplicate player group '{}' into '{}' (same URL or origin)",
-                from, into
+                from,
+                into
             );
             candidates.entry(into).or_default().extend(players);
         }
@@ -552,11 +566,40 @@ pub fn compute_presence_migrations(
 #[cfg(test)]
 mod tests {
     use super::{
-        canonical_player_bus_name, compute_presence_migrations, compute_url_merges,
-        BucketSummary, GroupSnapshot, PresenceDrop, PresenceMigration,
+        canonical_player_bus_name, compute_presence_migrations, compute_url_merges, BucketSummary,
+        GroupSnapshot, PlaybackState, PresenceDrop, PresenceMigration,
     };
+    use mpris::PlaybackStatus;
     use smol_str::SmolStr;
     use std::collections::HashMap;
+
+    fn playback_state(art_url: Option<&str>) -> PlaybackState {
+        PlaybackState {
+            playback_status: Some(PlaybackStatus::Playing),
+            track_identifier: Some("track-1".into()),
+            title: Some("Song".into()),
+            position: Some(10),
+            volume: Some(50),
+            url: Some("https://music.example/track-1".into()),
+            art_url: art_url.map(Into::into),
+        }
+    }
+
+    #[test]
+    fn art_url_change_is_significant() {
+        let previous = playback_state(Some("file:///tmp/old-cover.jpg"));
+        let current = playback_state(Some("file:///tmp/new-cover.jpg"));
+
+        assert!(current.has_significant_changes(&previous));
+    }
+
+    #[test]
+    fn unchanged_art_url_is_not_significant_by_itself() {
+        let previous = playback_state(Some("file:///tmp/cover.jpg"));
+        let current = playback_state(Some("file:///tmp/cover.jpg"));
+
+        assert!(!current.has_significant_changes(&previous));
+    }
 
     #[test]
     fn keeps_reverse_dns_player_names() {
@@ -784,10 +827,7 @@ mod tests {
         // Both presences pre-exist; winner bus matches neither's bound bus.
         // Neither is correctly keyed (bucket norm_id is "youtube_app"), and
         // neither bus equals winner_bus ("c") → alphabetical wins.
-        let existing = existing_from(&[
-            ("zoo", "a"),
-            ("abc", "b"),
-        ]);
+        let existing = existing_from(&[("zoo", "a"), ("abc", "b")]);
         let buckets = vec![bucket("youtube_app", &["a", "b"], "c")];
 
         let (migrations, drops) = compute_presence_migrations(&existing, &buckets);

@@ -17,7 +17,6 @@ use parking_lot::Mutex;
 use smol_str::SmolStr;
 use tokio::sync::{mpsc, Notify};
 
-
 use crate::{
     config::{
         schema::{
@@ -30,9 +29,9 @@ use crate::{
     error::DiscordError,
     metadata::{self, MediaMetadata},
     player::{
-        canonical_player_bus_name, cmus, health,
+        canonical_player_bus_name, cmus,
         events::{self, EventOutcome, PlayerEvent, PlayerEventKind},
-        PlaybackState, PlayerIdentifier,
+        health, PlaybackState, PlayerIdentifier,
     },
     template::{ActivityTexts, TemplateManager},
     utils,
@@ -66,8 +65,6 @@ impl UpdateSnapshot {
         }
     }
 }
-
-
 
 fn resolve_status_display_type(player_config: &PlayerConfig) -> StatusDisplayType {
     if player_config.app_id == DEFAULT_PLAYER_APP_ID
@@ -277,10 +274,7 @@ impl Presence {
         self.initialize_discord_client_with_app_id(&player_config.app_id)
     }
 
-    fn initialize_discord_client_with_app_id(
-        &mut self,
-        app_id: &str,
-    ) -> Result<(), DiscordError> {
+    fn initialize_discord_client_with_app_id(&mut self, app_id: &str) -> Result<(), DiscordError> {
         let client = DiscordIpcClient::new(app_id);
         self.discord_client = Some(Arc::new(Mutex::new(client)));
         self.needs_initial_connection.store(true, Ordering::Relaxed);
@@ -349,10 +343,8 @@ impl Presence {
             *self.last_pushed_art_url.lock() = None;
             *self.last_resolved_cover_art.lock() = None;
             // Reset health on connection handoff (new underlying player).
-            let is_browser = Self::is_browser_source(
-                self.player.bus_name(),
-                self.player.identity(),
-            );
+            let is_browser =
+                Self::is_browser_source(self.player.bus_name(), self.player.identity());
             *self.health.lock() = if is_browser {
                 health::PlayerHealth::confirming(self.update_generation.load(Ordering::Relaxed))
             } else {
@@ -384,10 +376,7 @@ impl Presence {
         let position = self.player.get_position().unwrap_or_default();
         let now = Instant::now();
         let generation = self.update_generation.load(Ordering::Relaxed);
-        let is_browser = Self::is_browser_source(
-            self.player.bus_name(),
-            self.player.identity(),
-        );
+        let is_browser = Self::is_browser_source(self.player.bus_name(), self.player.identity());
 
         let input = health::HealthCheckInput {
             playback_status,
@@ -487,7 +476,8 @@ impl Presence {
         // Seed `last_player_state` so the next polling tick's diff sees no change
         // and skips re-pushing (and re-fetching cover art) for the same track.
         self.last_player_state = Some(PlaybackState::from(&self.player));
-        self.update_activity(None, health::ArtDecision::default()).await
+        self.update_activity(None, health::ArtDecision::default())
+            .await
     }
 
     fn ensure_connection(&mut self) -> Result<(), DiscordError> {
@@ -751,7 +741,9 @@ impl Presence {
             if changed {
                 debug!(
                     "track change detected: id={} url={} art={} gen={}",
-                    id_changed, url_changed, art_changed,
+                    id_changed,
+                    url_changed,
+                    art_changed,
                     self.update_generation.load(Ordering::Relaxed),
                 );
                 *last_id = track_id;
@@ -791,7 +783,10 @@ impl Presence {
 
         debug!("--- Raw MPRIS Metadata Start ---");
         if let Some(mpris_meta) = metadata_source.mpris_metadata() {
-            debug!("MPRIS Metadata Map ({} entries):", mpris_meta.iter().count());
+            debug!(
+                "MPRIS Metadata Map ({} entries):",
+                mpris_meta.iter().count()
+            );
             for (key, value) in mpris_meta.iter() {
                 debug!(
                     "  MPRIS Key: '{}', Value: {}",
@@ -969,12 +964,11 @@ impl Presence {
         // the background task already resolved. Otherwise a position/timestamp
         // refresh pushes cover_art=None and clears Discord's artwork.
         let remembered_cover = if cached_cover.is_none() {
-            self.last_resolved_cover_art
-                .lock()
-                .as_ref()
-                .and_then(|(cover_generation, cover_url)| {
+            self.last_resolved_cover_art.lock().as_ref().and_then(
+                |(cover_generation, cover_url)| {
                     (*cover_generation == current_generation).then(|| cover_url.clone())
-                })
+                },
+            )
         } else {
             None
         };
@@ -987,7 +981,13 @@ impl Presence {
         let cover_for_push = cached_cover.as_deref().or(remembered_cover.as_deref());
         debug!(
             "Artwork source for push: {}",
-            if cover_for_push.is_none() { "none (placeholder)" } else if cached_cover.is_some() { "cached_cover" } else { "remembered_cover" }
+            if cover_for_push.is_none() {
+                "none (placeholder)"
+            } else if cached_cover.is_some() {
+                "cached_cover"
+            } else {
+                "remembered_cover"
+            }
         );
 
         // Final checkpoint right before the Discord write so a stale push
@@ -1031,8 +1031,7 @@ impl Presence {
             }
             err
         })?;
-        self.discord_activity_is_set
-            .store(true, Ordering::Relaxed);
+        self.discord_activity_is_set.store(true, Ordering::Relaxed);
         if !self.error_logged.load(Ordering::Relaxed) {
             info!(
                 "Updated Discord activity for {} - {} ({:?})",
@@ -1074,7 +1073,9 @@ impl Presence {
             if let Some((in_flight, wanted)) = skip_reason {
                 debug!(
                     "skipping background cover fetch: in_flight_gen={} >= spawn_gen={} for {}",
-                    in_flight, wanted, self.player.identity(),
+                    in_flight,
+                    wanted,
+                    self.player.identity(),
                 );
             }
             spawned
@@ -1105,12 +1106,7 @@ impl Presence {
                 impl Drop for InFlightGuard {
                     fn drop(&mut self) {
                         self.gen
-                            .compare_exchange(
-                                self.expected,
-                                0,
-                                Ordering::AcqRel,
-                                Ordering::Acquire,
-                            )
+                            .compare_exchange(self.expected, 0, Ordering::AcqRel, Ordering::Acquire)
                             .ok();
                         // If CAS fails, a newer generation is already in flight —
                         // leave it alone.
@@ -1339,10 +1335,14 @@ impl Presence {
             | PlayerEventKind::Mpris(MprisEvent::PlaybackRateChanged(_))
             | PlayerEventKind::Mpris(MprisEvent::TrackAdded(_))
             | PlayerEventKind::Mpris(MprisEvent::TrackRemoved(_))
-            | PlayerEventKind::Mpris(MprisEvent::TrackMetadataChanged { .. })
             | PlayerEventKind::Mpris(MprisEvent::TrackListReplaced) => {
                 trace!("ignoring event variant (no Discord-relevant change)");
                 return Ok(EventOutcome::Continue);
+            }
+            PlayerEventKind::Mpris(MprisEvent::TrackMetadataChanged { .. }) => {
+                // plasma-browser-integration can emit corrected mpris:artUrl
+                // after TrackChanged. Let update_activity re-run so it can
+                // bump generation on art changes and refresh Discord artwork.
             }
             PlayerEventKind::Mpris(MprisEvent::TrackChanged(_)) => {
                 // Force the next polling-style diff (if event_driven flips off) to detect a change.
@@ -1387,11 +1387,12 @@ impl Presence {
             let track = health::TrackFingerprint::from_mpris(&metadata);
             let position = self.player.get_position().unwrap_or_default();
             let now = Instant::now();
-            let playback_status = self.player.get_playback_status().unwrap_or(PlaybackStatus::Playing);
-            let is_browser = Self::is_browser_source(
-                self.player.bus_name(),
-                self.player.identity(),
-            );
+            let playback_status = self
+                .player
+                .get_playback_status()
+                .unwrap_or(PlaybackStatus::Playing);
+            let is_browser =
+                Self::is_browser_source(self.player.bus_name(), self.player.identity());
             let gen = generation.unwrap_or(0);
             let input = health::HealthCheckInput {
                 playback_status,
@@ -1505,10 +1506,7 @@ impl Drop for Presence {
 mod tests {
     use super::*;
 
-    fn player_config_with(
-        app_id: &str,
-        status_display_type: StatusDisplayType,
-    ) -> PlayerConfig {
+    fn player_config_with(app_id: &str, status_display_type: StatusDisplayType) -> PlayerConfig {
         PlayerConfig {
             app_id: app_id.to_string(),
             status_display_type,
@@ -1538,8 +1536,7 @@ mod tests {
 
     #[test]
     fn explicit_non_name_status_is_unchanged() {
-        let default_app_state =
-            player_config_with(DEFAULT_PLAYER_APP_ID, StatusDisplayType::State);
+        let default_app_state = player_config_with(DEFAULT_PLAYER_APP_ID, StatusDisplayType::State);
         let default_app_details =
             player_config_with(DEFAULT_PLAYER_APP_ID, StatusDisplayType::Details);
 

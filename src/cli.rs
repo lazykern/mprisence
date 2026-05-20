@@ -113,12 +113,13 @@ impl Command {
                         // Resolve URL-aware config so the CLI reflects what
                         // the runtime would actually push (website overrides
                         // can fully replace the browser's player config).
-                        let (player_config, _suffix) = config.get_player_config_with_title_fallback(
-                            &identity,
-                            &player_bus_name,
-                            url.as_deref(),
-                            title.as_deref(),
-                        );
+                        let (player_config, _suffix) = config
+                            .get_player_config_with_title_fallback(
+                                &identity,
+                                &player_bus_name,
+                                url.as_deref(),
+                                title.as_deref(),
+                            );
                         let website_match = config.matched_website_for_url(url.as_deref());
 
                         entries.push(PlayerDisplay {
@@ -279,10 +280,7 @@ impl Command {
                                 println!("  URL      : {}", url);
                             }
                             if let Some((key, website)) = &entry.website_match {
-                                println!(
-                                    "  Website  : {}",
-                                    format_website_match(key, website)
-                                );
+                                println!("  Website  : {}", format_website_match(key, website));
                             }
                             println!(
                                 "  Presence : {}",

@@ -213,18 +213,15 @@ impl Mprisence {
                 // Before skipping, check if a website override un-ignores this player
                 // (e.g. SoundCloud in a browser that is ignored by default).
                 let meta = player.get_metadata().ok();
-                let url = meta
-                    .as_ref()
-                    .and_then(|m| m.url().map(|s| s.to_string()));
-                let title = meta
-                    .as_ref()
-                    .and_then(|m| m.title().map(|s| s.to_string()));
-                let (effective_config, _suffix) = self.config.get_player_config_with_title_fallback(
-                    &id.identity,
-                    &id.player_bus_name,
-                    url.as_deref(),
-                    title.as_deref(),
-                );
+                let url = meta.as_ref().and_then(|m| m.url().map(|s| s.to_string()));
+                let title = meta.as_ref().and_then(|m| m.title().map(|s| s.to_string()));
+                let (effective_config, _suffix) =
+                    self.config.get_player_config_with_title_fallback(
+                        &id.identity,
+                        &id.player_bus_name,
+                        url.as_deref(),
+                        title.as_deref(),
+                    );
                 if effective_config.ignore {
                     trace!("Skipping ignored player: {}", id.identity);
                     continue;
@@ -264,10 +261,8 @@ impl Mprisence {
                 .map(|(norm_id, players)| {
                     let ids: Vec<PlayerIdentifier> =
                         players.iter().map(PlayerIdentifier::from).collect();
-                    let mut bus_names: Vec<SmolStr> = ids
-                        .iter()
-                        .map(|id| id.player_bus_name.clone())
-                        .collect();
+                    let mut bus_names: Vec<SmolStr> =
+                        ids.iter().map(|id| id.player_bus_name.clone()).collect();
                     bus_names.sort_unstable();
                     let winner_idx = select_richest_player(players, None);
                     BucketSummary {
@@ -466,7 +461,10 @@ impl Mprisence {
     pub async fn run(&mut self) -> Result<(), MprisenceError> {
         info!("Starting mprisence service");
         if self.config.event_driven() {
-            info!("Run mode: event-driven (D-Bus signal monitoring, fallback poll={}ms)", self.config.fallback_poll_interval());
+            info!(
+                "Run mode: event-driven (D-Bus signal monitoring, fallback poll={}ms)",
+                self.config.fallback_poll_interval()
+            );
             self.run_event_driven().await
         } else {
             info!("Run mode: polling (interval={}ms)", self.config.interval());
@@ -529,12 +527,13 @@ impl Mprisence {
         fn drain_latest_track_change(
             mut evt: PlayerEvent,
             rx: &mut tokio::sync::mpsc::Receiver<PlayerEvent>,
-        ) -> PlayerEvent {
+        ) -> (PlayerEvent, Vec<PlayerEvent>) {
+            let mut deferred = Vec::new();
             if !matches!(
                 evt.kind,
                 PlayerEventKind::Mpris(MprisEvent::TrackChanged(_))
             ) {
-                return evt;
+                return (evt, deferred);
             }
             while let Ok(newer) = rx.try_recv() {
                 if newer.norm_id == evt.norm_id
@@ -549,16 +548,18 @@ impl Mprisence {
                     );
                     evt = newer;
                 } else {
-                    // Non-TrackChanged or different player: can't put back, but these are
-                    // stale action events (play/pause during a skip flurry) — safe to drop.
+                    // Preserve non-TrackChanged events (notably TrackMetadataChanged,
+                    // which can carry the corrected art URL a few seconds after a
+                    // browser track switch) and other players' events.
                     trace!(
-                        "drain: dropping stale {:?} for {} during skip drain",
+                        "drain: deferring {:?} for {} during skip drain",
                         newer.kind,
                         newer.norm_id
                     );
+                    deferred.push(newer);
                 }
             }
-            evt
+            (evt, deferred)
         }
         let (event_tx, mut event_rx) = mpsc::channel::<PlayerEvent>(64);
 
@@ -579,8 +580,11 @@ impl Mprisence {
                     // For TrackChanged events, drain any newer ones for the same player
                     // that already queued while we were processing the previous event.
                     // This prevents Discord from cycling through every skipped track.
-                    let evt = drain_latest_track_change(evt, &mut event_rx);
+                    let (evt, deferred) = drain_latest_track_change(evt, &mut event_rx);
                     self.handle_player_event(evt, &event_tx).await;
+                    for deferred_evt in deferred {
+                        self.handle_player_event(deferred_evt, &event_tx).await;
+                    }
                     // Reset the fallback poll timer so the next poll happens a full
                     // interval from now. Events are the primary update mechanism;
                     // the fallback poll exists only to catch missed events.

@@ -117,10 +117,7 @@ pub struct HealthCheckInput<'a> {
 pub enum PlayerHealth {
     /// Awaiting first position move (browser sources).  Prevents the stale
     /// position from a previous session being pushed on initial discovery.
-    Confirming {
-        generation: u64,
-        since: Instant,
-    },
+    Confirming { generation: u64, since: Instant },
 
     /// Fresh data — normal operation.
     Healthy {
@@ -167,8 +164,9 @@ impl PlayerHealth {
     /// Get the last known position stored in this state.
     fn last_position(&self) -> Duration {
         match self {
-            Self::Healthy { last_position, .. }
-            | Self::Stalled { last_position, .. } => *last_position,
+            Self::Healthy { last_position, .. } | Self::Stalled { last_position, .. } => {
+                *last_position
+            }
             Self::Confirming { .. } => Duration::ZERO,
         }
     }
@@ -321,8 +319,7 @@ impl PlayerHealth {
                 let elapsed = now.saturating_duration_since(since);
                 let is_stalled = (!input.is_browser_source
                     && elapsed >= STALLED_PLAYING_THRESHOLD_GENERAL)
-                    || (input.is_browser_source
-                        && elapsed >= STALLED_PLAYING_THRESHOLD_BROWSER);
+                    || (input.is_browser_source && elapsed >= STALLED_PLAYING_THRESHOLD_BROWSER);
 
                 if input.position > Duration::ZERO {
                     (
@@ -461,9 +458,9 @@ impl PlayerHealth {
 
     /// True if position ≥ track length (song ended but player didn't signal it).
     fn is_ended(input: &HealthCheckInput) -> bool {
-        input.track_length.is_some_and(|len| {
-            input.position + Duration::from_secs(2) >= len
-        })
+        input
+            .track_length
+            .is_some_and(|len| input.position + Duration::from_secs(2) >= len)
     }
 
     /// True if the player has been silent (no events) for the browser
@@ -543,7 +540,13 @@ mod tests {
             generation: 1,
             since: Instant::now(),
         };
-        let t = track("Song", "Artist", "https://youtube.com/watch?v=abc", "", "id1");
+        let t = track(
+            "Song",
+            "Artist",
+            "https://youtube.com/watch?v=abc",
+            "",
+            "id1",
+        );
         let now = Instant::now();
         let inp = make_input(
             PlaybackStatus::Playing,
@@ -566,7 +569,13 @@ mod tests {
             generation: 1,
             since: Instant::now(),
         };
-        let t = track("Song", "Artist", "https://youtube.com/watch?v=abc", "", "id1");
+        let t = track(
+            "Song",
+            "Artist",
+            "https://youtube.com/watch?v=abc",
+            "",
+            "id1",
+        );
         let now = Instant::now();
         let inp = make_input(
             PlaybackStatus::Playing,
@@ -589,7 +598,13 @@ mod tests {
             generation: 1,
             since: Instant::now() - STALLED_PLAYING_THRESHOLD_BROWSER - Duration::from_secs(1),
         };
-        let t = track("Song", "Artist", "https://youtube.com/watch?v=abc", "", "id1");
+        let t = track(
+            "Song",
+            "Artist",
+            "https://youtube.com/watch?v=abc",
+            "",
+            "id1",
+        );
         let now = Instant::now();
         let inp = make_input(
             PlaybackStatus::Playing,
@@ -613,8 +628,7 @@ mod tests {
     fn healthy_native_stalls_after_threshold() {
         let mut health = PlayerHealth::Healthy {
             generation: 1,
-            last_event: Instant::now() - STALLED_PLAYING_THRESHOLD_GENERAL
-                - Duration::from_secs(1),
+            last_event: Instant::now() - STALLED_PLAYING_THRESHOLD_GENERAL - Duration::from_secs(1),
             last_position: Duration::from_secs(22), // same as current → frozen
         };
         let t = track("Song", "Artist", "https://example.com/stream", "", "id1");
@@ -662,11 +676,16 @@ mod tests {
     fn healthy_browser_stalls_after_4s() {
         let mut health = PlayerHealth::Healthy {
             generation: 1,
-            last_event: Instant::now() - STALLED_PLAYING_THRESHOLD_BROWSER
-                - Duration::from_secs(1),
+            last_event: Instant::now() - STALLED_PLAYING_THRESHOLD_BROWSER - Duration::from_secs(1),
             last_position: Duration::from_secs(22), // same as current → frozen
         };
-        let t = track("Song", "Artist", "https://youtube.com/watch?v=abc", "", "id1");
+        let t = track(
+            "Song",
+            "Artist",
+            "https://youtube.com/watch?v=abc",
+            "",
+            "id1",
+        );
         let now = Instant::now();
         let inp = make_input(
             PlaybackStatus::Playing,
@@ -693,7 +712,13 @@ mod tests {
             last_event: Instant::now(),
             last_position: Duration::ZERO,
         };
-        let mut t = track("Song", "Artist", "https://youtube.com/watch?v=abc", "", "id1");
+        let mut t = track(
+            "Song",
+            "Artist",
+            "https://youtube.com/watch?v=abc",
+            "",
+            "id1",
+        );
         t.length = Some(Duration::from_secs(180));
         let now = Instant::now();
         let inp = make_input(
@@ -718,7 +743,13 @@ mod tests {
             last_event: Instant::now(),
             last_position: Duration::ZERO,
         };
-        let mut t = track("Song", "Artist", "https://youtube.com/watch?v=abc", "", "id1");
+        let mut t = track(
+            "Song",
+            "Artist",
+            "https://youtube.com/watch?v=abc",
+            "",
+            "id1",
+        );
         t.length = Some(Duration::from_secs(180));
         let now = Instant::now();
         let inp = make_input(
@@ -804,7 +835,13 @@ mod tests {
                 last_position: Duration::ZERO,
             },
         ] {
-            let t = track("Song", "Artist", "https://youtube.com/watch?v=abc", "", "id1");
+            let t = track(
+                "Song",
+                "Artist",
+                "https://youtube.com/watch?v=abc",
+                "",
+                "id1",
+            );
             let now = Instant::now();
             let inp = make_input(
                 PlaybackStatus::Paused,
@@ -839,7 +876,13 @@ mod tests {
                 last_position: Duration::ZERO,
             },
         ] {
-            let t = track("Song", "Artist", "https://youtube.com/watch?v=abc", "", "id1");
+            let t = track(
+                "Song",
+                "Artist",
+                "https://youtube.com/watch?v=abc",
+                "",
+                "id1",
+            );
             let now = Instant::now();
             let inp = make_input(
                 PlaybackStatus::Stopped,
@@ -870,7 +913,13 @@ mod tests {
             last_event: Instant::now() - BROWSER_SILENCE_TIMEOUT - Duration::from_secs(1),
             last_position: Duration::ZERO,
         };
-        let t = track("Song", "Artist", "https://youtube.com/watch?v=abc", "", "id1");
+        let t = track(
+            "Song",
+            "Artist",
+            "https://youtube.com/watch?v=abc",
+            "",
+            "id1",
+        );
         let now = Instant::now();
         let inp = make_input(
             PlaybackStatus::Playing,
@@ -935,5 +984,4 @@ mod tests {
         assert!(decision.read_cache);
         assert!(decision.source_options.allow_mpris_art_url);
     }
-
 }
