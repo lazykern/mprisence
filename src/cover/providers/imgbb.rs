@@ -9,6 +9,7 @@ use crate::config::schema::ImgBBConfig;
 use crate::cover::error::CoverArtError;
 use crate::cover::sources::ArtSource;
 use crate::metadata::MetadataSource;
+use tokio_util::sync::CancellationToken;
 
 pub struct ImgbbProvider {
     config: ImgBBConfig,
@@ -62,7 +63,12 @@ impl CoverArtProvider for ImgbbProvider {
         &self,
         source: ArtSource,
         metadata_source: &MetadataSource,
+        cancel: &CancellationToken,
     ) -> Result<Option<CoverResult>, CoverArtError> {
+        if cancel.is_cancelled() {
+            debug!("ImgBB provider cancelled before upload");
+            return Ok(None);
+        }
         if self.config.api_key.is_none() {
             warn!("ImgBB provider is disabled (no API key configured)");
             return Ok(None);
@@ -85,6 +91,10 @@ impl CoverArtProvider for ImgbbProvider {
             ArtSource::Base64(data) => builder.data(&data),
             ArtSource::Bytes(data) => builder.bytes(&data),
             ArtSource::File(path) => {
+                if cancel.is_cancelled() {
+                    debug!("ImgBB cancelled before file read");
+                    return Ok(None);
+                }
                 let data = tokio::fs::read(&path).await.map_err(|e| {
                     CoverArtError::provider_error("imgbb", &format!("Failed to read file: {}", e))
                 })?;

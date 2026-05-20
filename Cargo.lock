@@ -1718,6 +1718,7 @@ dependencies = [
  "smol_str",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
  "toml 1.1.2+spec-1.1.0",
  "url",
  "urlencoding",
@@ -2950,6 +2951,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

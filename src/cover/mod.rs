@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::task::spawn_blocking;
+use tokio_util::sync::CancellationToken;
 use url::{Host, Url};
 
 use crate::config;
@@ -254,7 +255,12 @@ impl CoverManager {
         source: Option<ArtSource>,
         metadata_source: &MetadataSource,
         read_cache: bool,
+        cancel: &CancellationToken,
     ) -> Result<Option<String>, CoverArtError> {
+        if cancel.is_cancelled() {
+            debug!("Cover art fetch cancelled before start");
+            return Ok(None);
+        }
         let cache_key = metadata_source.cache_key();
         let recovered_cache_bytes: Option<Vec<u8>>;
 
@@ -329,6 +335,10 @@ impl CoverManager {
                     policy.reason, url
                 );
                 // Try to fetch bytes so providers can upload
+                if cancel.is_cancelled() {
+                    debug!("Cover art fetch cancelled before URL download");
+                    return Ok(None);
+                }
                 let client = create_shared_client();
                 match client.get(url).send().await {
                     Ok(resp) if resp.status().is_success() => match resp.bytes().await {
@@ -395,7 +405,7 @@ impl CoverManager {
 
                 if let Some(art_source) = local_art {
                     if let Some(url) = self
-                        .try_providers(Some(&art_source), metadata_source, &cache_key)
+                        .try_providers(Some(&art_source), metadata_source, &cache_key, cancel)
                         .await?
                     {
                         return Ok(Some(url));
@@ -405,7 +415,7 @@ impl CoverManager {
         }
 
         // 4. Try configured providers with the prepared source (or metadata-only)
-        self.try_providers(source_for_providers.as_ref(), metadata_source, &cache_key)
+        self.try_providers(source_for_providers.as_ref(), metadata_source, &cache_key, cancel)
             .await
     }
 
@@ -414,6 +424,7 @@ impl CoverManager {
         source: Option<&ArtSource>,
         metadata_source: &MetadataSource,
         cache_key: &str,
+        cancel: &CancellationToken,
     ) -> Result<Option<String>, CoverArtError> {
         let dummy = ArtSource::Url(String::new());
         let process_source = source.unwrap_or(&dummy);
@@ -433,7 +444,7 @@ impl CoverManager {
 
             debug!("Attempting cover art retrieval with {}", provider.name());
             match provider
-                .process(process_source.clone(), metadata_source)
+                .process(process_source.clone(), metadata_source, cancel)
                 .await
             {
                 Ok(Some(result)) => {

@@ -16,6 +16,7 @@ use mpris::{Event as MprisEvent, Metadata as MprisMetadata, PlaybackStatus, Play
 use parking_lot::Mutex;
 use smol_str::SmolStr;
 use tokio::sync::{mpsc, Notify};
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     config::{
@@ -159,6 +160,10 @@ pub struct Presence {
     /// Prevents redundant Clear→Clear log spam from duplicate players.
     discord_activity_is_set: Arc<AtomicBool>,
     config: Arc<ConfigManager>,
+    /// Cancellation token for background cover-art tasks. Cancelled on every
+    /// track change so in-flight provider jobs (MusicBrainz, uploads) can abort
+    /// early instead of wasting bandwidth and API quota.
+    cover_cancel_token: Arc<parking_lot::Mutex<CancellationToken>>,
     /// Cancellation flag for the per-player event listener thread (event-driven mode only).
     listener_cancel: Option<Arc<AtomicBool>>,
     /// The MPRIS bus name the active listener is bound to (used to detect winner-bus handoff).
@@ -210,6 +215,7 @@ impl Presence {
             last_activity_texts: None,
             discord_activity_is_set: Arc::new(AtomicBool::new(false)),
             config,
+            cover_cancel_token: Arc::new(parking_lot::Mutex::new(CancellationToken::new())),
             listener_cancel: None,
             listener_bus: None,
         }
@@ -758,6 +764,13 @@ impl Presence {
             // Allow the new track to spawn its own cover-art background task.
             // Setting to 0 means "no fetch in flight" — a new track can always spawn.
             self.cover_fetch_generation.store(0, Ordering::Release);
+            // Cancel any in-flight provider job (MusicBrainz, uploads) so
+            // bandwidth and API quota aren't wasted on a stale track.
+            {
+                let mut token = self.cover_cancel_token.lock();
+                token.cancel();
+                *token = CancellationToken::new();
+            }
             // Re-read the bumped generation so the stale checks below don't
             // abort this very same push. Both the polling path (update()) and
             // the event-driven path (handle_event) can experience this: the
@@ -1083,7 +1096,10 @@ impl Presence {
             let cover_manager = Arc::clone(&self.cover_manager);
             let discord_client_for_task = Arc::clone(&discord_client);
             let update_generation = Arc::clone(&self.update_generation);
-            let update_notify = Arc::clone(&self.update_notify);
+            let cancel_token = {
+                let token = self.cover_cancel_token.lock();
+                token.clone()
+            };
             let last_resolved_cover_art_for_task = Arc::clone(&self.last_resolved_cover_art);
             let texts_for_task = activity_texts.clone();
             let player_config_for_task = player_config.clone();
@@ -1123,22 +1139,14 @@ impl Presence {
                         art_source.clone(),
                         &metadata_source_for_task,
                         read_cache_for_task,
+                        &cancel_token,
                     ) => result,
-                    _ = update_notify.notified() => {
-                        if update_generation.load(Ordering::Relaxed) != spawn_gen {
-                            trace!(
-                                "background cover fetch cancelled: newer track arrived for {}",
-                                identity_for_task
-                            );
-                            return;
-                        }
-                        cover_manager
-                            .get_cover_art(
-                                art_source.clone(),
-                                &metadata_source_for_task,
-                                read_cache_for_task,
-                            )
-                            .await
+                    _ = cancel_token.cancelled() => {
+                        trace!(
+                            "background cover fetch cancelled via token: newer track for {}",
+                            identity_for_task
+                        );
+                        return;
                     }
                 };
 
@@ -1364,6 +1372,15 @@ impl Presence {
         } else {
             None
         };
+
+        // Cancel stale provider jobs so a new track's cover fetch doesn't
+        // waste bandwidth competing with the old one.
+        if is_track_change {
+            let mut token = self.cover_cancel_token.lock();
+            token.cancel();
+            *token = CancellationToken::new();
+            self.cover_fetch_generation.store(0, Ordering::Release);
+        }
 
         let Some(_discord_client) = &self.discord_client else {
             return Ok(EventOutcome::Continue);

@@ -10,6 +10,7 @@ use crate::config::schema::MusicbrainzConfig;
 use crate::cover::error::CoverArtError;
 use crate::cover::sources::ArtSource;
 use crate::metadata::MetadataSource;
+use tokio_util::sync::CancellationToken;
 
 const MUSICBRAINZ_API: &str = "https://musicbrainz.org/ws/2";
 const COVERART_API: &str = "https://coverartarchive.org";
@@ -96,6 +97,7 @@ impl MusicbrainzProvider {
         &self,
         entity_type: &str,
         mbid: &str,
+        cancel: &CancellationToken,
     ) -> Result<Option<String>, CoverArtError> {
         trace!(
             "Attempting to fetch cover art for {} ({})",
@@ -104,6 +106,10 @@ impl MusicbrainzProvider {
         );
 
         for size in Self::THUMBNAIL_SIZES {
+            if cancel.is_cancelled() {
+                debug!("MusicBrainz cover art fetch cancelled for {}", mbid);
+                return Ok(None);
+            }
             let url = format!("{}/{}/{}/front-{}", COVERART_API, entity_type, mbid, size);
             debug!("Requesting cover art from: {} ({}px)", url, size);
 
@@ -135,6 +141,7 @@ impl MusicbrainzProvider {
     async fn try_cover_art_sources(
         &self,
         sources: Vec<(String, String)>,
+        cancel: &CancellationToken,
     ) -> Result<Option<String>, CoverArtError> {
         let source_count = sources.len();
         debug!(
@@ -150,7 +157,11 @@ impl MusicbrainzProvider {
                 entity_type,
                 id
             );
-            match self.get_cover_art(&entity_type, &id).await {
+            if cancel.is_cancelled() {
+                debug!("MusicBrainz cover art source iteration cancelled");
+                return Ok(None);
+            }
+            match self.get_cover_art(&entity_type, &id, cancel).await {
                 Ok(Some(url)) => {
                     debug!(
                         "Found valid cover art URL from source {}/{}: {}",
@@ -184,6 +195,7 @@ impl MusicbrainzProvider {
         &self,
         album: S,
         album_artists: &[S],
+        cancel: &CancellationToken,
     ) -> Result<Option<String>, CoverArtError> {
         let album_name = album.as_ref();
         let normalized_album = album_name.trim();
@@ -211,6 +223,11 @@ impl MusicbrainzProvider {
             release_group_url
         );
         debug!("Searching MusicBrainz Releases: {}", release_url);
+
+        if cancel.is_cancelled() {
+            debug!("MusicBrainz album search cancelled");
+            return Ok(None);
+        }
 
         let (release_groups, releases) = futures::join!(
             self.client.get(&release_group_url).send(),
@@ -300,7 +317,7 @@ impl MusicbrainzProvider {
             debug!("Found {} potential cover art sources", cover_sources.len());
         }
 
-        self.try_cover_art_sources(cover_sources).await
+        self.try_cover_art_sources(cover_sources, cancel).await
     }
 
     async fn search_track<S: AsRef<str>>(
@@ -309,6 +326,7 @@ impl MusicbrainzProvider {
         artists: &[S],
         album: Option<S>,
         duration_ms: Option<u128>,
+        cancel: &CancellationToken,
     ) -> Result<Option<String>, CoverArtError> {
         let normalized_album = album
             .as_ref()
@@ -365,6 +383,11 @@ impl MusicbrainzProvider {
                 MUSICBRAINZ_API, encoded_query
             );
             debug!("Searching MusicBrainz Recordings: {}", url);
+
+            if cancel.is_cancelled() {
+                debug!("MusicBrainz track search cancelled (attempt {})", attempt_idx + 1);
+                return Ok(None);
+            }
 
             let mut cover_sources = Vec::new();
             if let Ok(response) = self.client.get(&url).send().await {
@@ -466,7 +489,7 @@ impl MusicbrainzProvider {
             }
 
             debug!("Found {} potential cover art sources", cover_sources.len());
-            return self.try_cover_art_sources(cover_sources).await;
+            return self.try_cover_art_sources(cover_sources, cancel).await;
         }
 
         debug!("No recordings found matching the search criteria");
@@ -492,7 +515,12 @@ impl CoverArtProvider for MusicbrainzProvider {
         &self,
         _source: ArtSource,
         metadata_source: &MetadataSource,
+        cancel: &CancellationToken,
     ) -> Result<Option<CoverResult>, CoverArtError> {
+        if cancel.is_cancelled() {
+            debug!("MusicBrainz provider cancelled before start");
+            return Ok(None);
+        }
         info!("Processing metadata with MusicBrainz provider");
         trace!(
             "Metadata details: album={:?}, title={:?}, artists={:?}, album_artists={:?}, length={:?}",
@@ -519,7 +547,7 @@ impl CoverArtProvider for MusicbrainzProvider {
                 "Attempting fetch using {} direct MusicBrainz IDs",
                 cover_sources.len()
             );
-            if let Some(url) = self.try_cover_art_sources(cover_sources).await? {
+            if let Some(url) = self.try_cover_art_sources(cover_sources, cancel).await? {
                 info!(
                     "Successfully found cover art via direct MusicBrainz ID: {}",
                     url
@@ -554,7 +582,7 @@ impl CoverArtProvider for MusicbrainzProvider {
                 if !album_artists.is_empty() {
                     let album_artists_refs: Vec<&String> = album_artists.iter().collect();
                     debug!("Attempting album-based search for '{}' with artists", album);
-                    if let Some(url) = self.search_album(&album, &album_artists_refs).await? {
+                    if let Some(url) = self.search_album(&album, &album_artists_refs, cancel).await? {
                         info!("Successfully found cover art via album search: {}", url);
                         return Ok(Some(CoverResult {
                             url,
@@ -578,7 +606,7 @@ impl CoverArtProvider for MusicbrainzProvider {
                 let artists_refs: Vec<&String> = artists.iter().collect();
 
                 if let Some(url) = self
-                    .search_track(&title, &artists_refs, album.as_ref(), duration)
+                    .search_track(&title, &artists_refs, album.as_ref(), duration, cancel)
                     .await?
                 {
                     info!("Successfully found cover art via track search: {}", url);

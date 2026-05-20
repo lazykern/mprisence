@@ -13,6 +13,7 @@ use crate::config::schema::CatboxConfig;
 use crate::cover::error::CoverArtError;
 use crate::cover::sources::ArtSource;
 use crate::metadata::MetadataSource;
+use tokio_util::sync::CancellationToken;
 
 use super::{CoverArtProvider, CoverResult};
 
@@ -116,8 +117,8 @@ impl CatboxProvider {
         Ok(())
     }
 
-    async fn upload_from_bytes(&self, data: &[u8]) -> Result<String, CoverArtError> {
-        let prepared = self.prepare_upload_bytes(data.to_vec()).await?;
+    async fn upload_from_bytes(&self, data: &[u8], cancel: &CancellationToken) -> Result<String, CoverArtError> {
+        let prepared = self.prepare_upload_bytes(data.to_vec(), cancel).await?;
         let temp_path = Self::temp_file_path();
         trace!(
             "Writing {} bytes to temporary file for Catbox upload: {:?}",
@@ -143,7 +144,7 @@ impl CatboxProvider {
     /// in bytes. Skips work for small images. Re-encodes as JPEG q=85 because
     /// album covers don't need alpha and JPEG shrinks far better than PNG.
     /// CPU-bound; runs on a blocking task so the async runtime stays free.
-    async fn prepare_upload_bytes(&self, bytes: Vec<u8>) -> Result<Vec<u8>, CoverArtError> {
+    async fn prepare_upload_bytes(&self, bytes: Vec<u8>, cancel: &CancellationToken) -> Result<Vec<u8>, CoverArtError> {
         const MAX_DIM: u32 = 512;
         const MAX_BYTES: usize = 256 * 1024;
 
@@ -155,6 +156,12 @@ impl CatboxProvider {
 
         let provider = self.provider_label();
         let original_len = bytes.len();
+
+        if cancel.is_cancelled() {
+            debug!("{} image resize cancelled", provider);
+            return Err(CoverArtError::other("cancelled"));
+        }
+
         spawn_blocking(move || -> Result<Vec<u8>, CoverArtError> {
             let img = image::load_from_memory(&bytes).map_err(|e| {
                 CoverArtError::provider_error(provider, &format!("image decode failed: {e}"))
@@ -228,7 +235,12 @@ impl CoverArtProvider for CatboxProvider {
         &self,
         source: ArtSource,
         _metadata_source: &MetadataSource,
+        cancel: &CancellationToken,
     ) -> Result<Option<CoverResult>, CoverArtError> {
+        if cancel.is_cancelled() {
+            debug!("{} provider cancelled before upload", self.name());
+            return Ok(None);
+        }
         debug!("Processing cover art with {} provider", self.name());
 
         let url = match source {
@@ -242,12 +254,12 @@ impl CoverArtProvider for CatboxProvider {
                         &format!("read {:?}: {e}", path),
                     )
                 })?;
-                Some(self.upload_from_bytes(&bytes).await?)
+                Some(self.upload_from_bytes(&bytes, cancel).await?)
             }
-            ArtSource::Bytes(data) => Some(self.upload_from_bytes(&data).await?),
+            ArtSource::Bytes(data) => Some(self.upload_from_bytes(&data, cancel).await?),
             ArtSource::Base64(data) => {
                 let bytes = self.base64_to_bytes(&data)?;
-                Some(self.upload_from_bytes(&bytes).await?)
+                Some(self.upload_from_bytes(&bytes, cancel).await?)
             }
             ArtSource::Url(_) => return Ok(None),
         };
