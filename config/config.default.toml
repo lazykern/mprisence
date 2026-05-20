@@ -319,7 +319,7 @@ allow_streaming = true
 ignore = false
 
 [website.pocket_casts]
-match_pattern = "play.pocketcasts.com"
+match_patterns = ["pocketcasts.com", "play.pocketcasts.com"]
 name = "Pocket Casts"
 app_id = "1291170916952309782"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/pocket-casts.png"
