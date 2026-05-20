@@ -39,6 +39,11 @@ cargo build --release  # binary at target/release/mprisence
 
 ### Added
 
+- Cancel stale provider jobs (MusicBrainz searches, cover-art archive fetches,
+  Catbox/ImgBB uploads) on track change via CancellationToken propagation.
+  Previously provider jobs kept running until completion, wasting bandwidth and
+  API quota, even though results were discarded by the generation gate.
+
 - Add `[website.*]` config section with 14 bundled entries: YouTube Music, SoundCloud,
   Qobuz, Apple Music, Bandcamp, Tidal, Amazon Music, Deezer, Pocket Casts, Yandex
   Music, Podurama, YouTube, Apple Podcasts, Spotify Web.
@@ -61,7 +66,6 @@ cargo build --release  # binary at target/release/mprisence
 - Select richest player first with current D-Bus bus as tiebreaker.
 - Filter empty artist and album-artist strings from metadata.
 - Skip MusicBrainz lookup when artist metadata is empty.
-- Cancel stale cover art uploads when track changes during polling.
 - Reject non-URL responses from catbox/litterbox uploads.
 
 [1.7.0-beta.1]: https://github.com/lazykern/mprisence/releases/tag/v1.7.0-beta.1
