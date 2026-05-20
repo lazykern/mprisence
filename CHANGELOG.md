@@ -1,5 +1,65 @@
 # Changelog
 
+## [1.7.0-beta.1] - 2026-05-20 (pre-release)
+
+_This is a pre-release. Not published to crates.io.
+Install from the attached assets, or build from source:_
+
+```sh
+cargo install --git https://github.com/lazykern/mprisence --tag v1.7.0-beta.1
+```
+
+_Or clone and build manually:_
+
+```sh
+git clone https://github.com/lazykern/mprisence.git
+cd mprisence
+git checkout v1.7.0-beta.1
+cargo build --release  # binary at target/release/mprisence
+```_
+
+### Changed
+
+- **Breaking:** replace per-browser `[player.*]` configs with per-website `[website.*]`
+  overrides for web-based players. Browsers default to ignored; websites must be
+  explicitly enabled.
+- Rename `discovery_interval` to `fallback_poll_interval`. Old key still accepted.
+  Default changed from 5s to 30s.
+- Default `player.default.ignore` to `true` for fresh configs. Existing configs
+  unchanged.
+- Push track metadata to Discord before cover art upload completes, for faster
+  presence updates.
+- Resize cover art before upload to reduce bandwidth.
+
+### Added
+
+- Add `[website.*]` config section with 14 bundled entries: YouTube Music, SoundCloud,
+  Qobuz, Apple Music, Bandcamp, Tidal, Amazon Music, Deezer, Pocket Casts, Yandex
+  Music, Podurama, YouTube, Apple Podcasts, Spotify Web.
+  > **Note:** Amazon Music, Apple Podcasts, Deezer, Pocket Casts, Podurama, Qobuz,
+  > SoundCloud, Spotify Web, and Yandex Music are **untested** — bundled app IDs and
+  > icons are best-guess. Testing and feedback appreciated.
+  > **Note (Bandcamp):** Matches the website override, but browsers expose only the
+  > page title as `xesam:title` with no artist or real album metadata — Discord
+  > presence shows page title instead of track/album info. MPRIS metadata from
+  > browsers is limited; mprisence cannot recover the real track data.
+  > **Tested on:** Arch Linux (KDE Plasma).
+- Infer website from title suffix when `xesam:url` is absent (e.g. `"… | YouTube Music"`).
+- Add `name` field to player and website configs for CLI display.
+- Add `cmus` player support.
+- Surface URL and website match in `mprisence list` detailed view.
+
+### Fixed
+
+- Merge duplicate browser players by URL origin.
+- Select richest player first with current D-Bus bus as tiebreaker.
+- Filter empty artist and album-artist strings from metadata.
+- Skip MusicBrainz lookup when artist metadata is empty.
+- Cancel stale cover art uploads when track changes during polling.
+- Reject non-URL responses from catbox/litterbox uploads.
+
+[1.7.0-beta.1]: https://github.com/lazykern/mprisence/releases/tag/v1.7.0-beta.1
+
 ## [1.6.0](https://github.com/lazykern/mprisence/compare/v1.5.2...v1.6.0)
 
 * Player
