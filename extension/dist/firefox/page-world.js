@@ -50,7 +50,7 @@
             const bSize = parseInt(b.sizes) || 0;
             return aSize > bSize ? a : b;
           });
-          metadata.art_url = best.src || void 0;
+          metadata.art_url = resolveArtworkUrl(best.src || void 0);
         }
         confidence = "provider";
       }
@@ -111,6 +111,19 @@
     true
     // capture
   );
+  function resolveArtworkUrl(url) {
+    if (!url) return void 0;
+    if (url.includes("sndcdn.com") || url.includes("soundcloud")) {
+      url = url.replace(/-t\d+x\d+(?=\.[a-z]+)/i, "-t500x500");
+      url = url.replace(/-original(?=\.[a-z]+)/i, "-t500x500");
+      url = url.replace(/-crop-[a-z]+(?=\.[a-z]+)/i, "");
+    }
+    if (url.includes("ytimg.com") || url.includes("yt3.")) {
+      url = url.replace(/\/[a-z]+default\./g, "/maxresdefault.");
+      url = url.replace(/=[a-z0-9-]+$/, "");
+    }
+    return url;
+  }
   dispatch(collectState());
 })();
 //# sourceMappingURL=page-world.js.map

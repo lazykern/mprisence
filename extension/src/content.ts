@@ -17,12 +17,14 @@ import type { ProviderResult } from "./providers/base";
 import { GenericMediaProvider } from "./providers/base";
 import { YouTubeMusicProvider } from "./providers/youtube-music";
 import { YouTubeProvider } from "./providers/youtube";
+import { SoundCloudProvider } from "./providers/soundcloud";
 
 // ─── Provider registry ───────────────────────────────────────────
 
 const providers = [
   new YouTubeMusicProvider(),
   new YouTubeProvider(),
+  new SoundCloudProvider(),
   new GenericMediaProvider(),
 ];
 

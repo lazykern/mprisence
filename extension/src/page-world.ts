@@ -67,15 +67,14 @@
           track_id: undefined,
         };
 
-        // Pick largest artwork
+        // Pick largest artwork, then upgrade to highest resolution
         if (md.artwork?.length > 0) {
           const best = md.artwork.reduce((a: any, b: any) => {
             const aSize = parseInt(a.sizes) || 0;
             const bSize = parseInt(b.sizes) || 0;
             return aSize > bSize ? a : b;
           });
-          // Media Session often gives blob: URLs — pass through
-          metadata.art_url = best.src || undefined;
+          metadata.art_url = resolveArtworkUrl(best.src || undefined);
         }
 
         confidence = "provider";
@@ -155,6 +154,23 @@
     }) as EventListener,
     true // capture
   );
+
+  /** Upgrade artwork URL to highest available resolution */
+  function resolveArtworkUrl(url: string | undefined): string | undefined {
+    if (!url) return undefined;
+    // SoundCloud sndcdn.com: use t500x500 (largest standard square)
+    if (url.includes("sndcdn.com") || url.includes("soundcloud")) {
+      url = url.replace(/-t\d+x\d+(?=\.[a-z]+)/i, "-t500x500");
+      url = url.replace(/-original(?=\.[a-z]+)/i, "-t500x500");
+      url = url.replace(/-crop-[a-z]+(?=\.[a-z]+)/i, "");
+    }
+    // YouTube ytimg.com: upgrade to maxresdefault
+    if (url.includes("ytimg.com") || url.includes("yt3.")) {
+      url = url.replace(/\/[a-z]+default\./g, "/maxresdefault.");
+      url = url.replace(/=[a-z0-9-]+$/, "");
+    }
+    return url;
+  }
 
   // Initial dispatch
   dispatch(collectState());

@@ -278,10 +278,198 @@ var YouTubeProvider = class {
   }
 };
 
+// src/providers/soundcloud.ts
+var SoundCloudProvider = class {
+  matches(url) {
+    return url.hostname === "soundcloud.com" || url.hostname.endsWith(".soundcloud.com");
+  }
+  extract() {
+    const meta = {
+      title: void 0,
+      artist: [],
+      album: void 0,
+      album_artist: [],
+      art_url: void 0,
+      track_id: void 0
+    };
+    let playback = {
+      status: "stopped",
+      position_ms: 0,
+      duration_ms: 0,
+      rate: 1
+    };
+    let confidence = "dom";
+    let pageUrl;
+    let hasMs = false;
+    try {
+      const ms = navigator.mediaSession;
+      if (ms?.metadata) {
+        const md = ms.metadata;
+        const hasContent = !!(md.title || md.artist || md.album);
+        if (hasContent) {
+          if (md.title) meta.title = md.title;
+          if (md.artist) meta.artist = [md.artist];
+          if (md.album) meta.album = md.album;
+          if (md.artwork?.length > 0) {
+            const best = md.artwork.reduce((a, b) => {
+              const aSize = parseInt(a.sizes) || 0;
+              const bSize = parseInt(b.sizes) || 0;
+              return aSize > bSize ? a : b;
+            });
+            meta.art_url = resolveArtwork(best.src || void 0);
+          }
+          confidence = "provider";
+          hasMs = true;
+        }
+      }
+    } catch {
+    }
+    if (!meta.title) {
+      const titleEl = document.querySelector(".soundTitle__title") ?? document.querySelector(".soundTitle__title > span");
+      if (titleEl) {
+        meta.title = titleEl.textContent?.trim() || void 0;
+      }
+    }
+    if (meta.artist.length === 0) {
+      const artistEl = document.querySelector(".soundTitle__username");
+      if (artistEl) {
+        meta.artist = [artistEl.textContent?.trim() || ""].filter(Boolean);
+      }
+    }
+    if (!meta.art_url) {
+      const artImg = document.querySelector(".soundTitle__artwork img, .soundTitleArt__artwork img");
+      if (artImg?.src) {
+        meta.art_url = resolveArtwork(artImg.src);
+      }
+    }
+    const playBtn = document.querySelector(".sc-button-play");
+    const isPlaying = playBtn?.classList.contains("playing") || playBtn?.getAttribute("title") === "Pause" || document.querySelector(".playControls__play.playing") !== null;
+    let durationMs = 0;
+    const durHidden = document.querySelector(
+      ".playbackTimeline__duration .sc-visuallyhidden"
+    );
+    if (durHidden?.textContent) {
+      durationMs = parseSoundCloudDuration(durHidden.textContent);
+    }
+    if (durationMs === 0) {
+      const durSpan = document.querySelector(
+        ".playbackTimeline__duration span[aria-hidden=true]"
+      );
+      if (durSpan?.textContent) {
+        durationMs = parseMmSsDuration(durSpan.textContent);
+      }
+    }
+    let positionMs = 0;
+    if (durationMs > 0) {
+      const progressBar = document.querySelector(
+        ".playbackTimeline__progressBar"
+      );
+      if (progressBar) {
+        const style = progressBar.getAttribute("style") || "";
+        const m = style.match(/width\s*:\s*([\d.]+)%/);
+        if (m) {
+          positionMs = Math.floor(parseFloat(m[1]) / 100 * durationMs);
+        }
+      }
+    }
+    playback = {
+      status: isPlaying ? "playing" : hasMs ? "paused" : "stopped",
+      position_ms: positionMs,
+      duration_ms: durationMs,
+      rate: 1
+    };
+    const hasNext = !!document.querySelector(".playControls__next") || !!document.querySelector(".skipButton__forward");
+    const hasPrev = !!document.querySelector(".playControls__prev") || !!document.querySelector(".skipButton__backward");
+    const hasPlayBtn = !!document.querySelector(".sc-button-play") || !!document.querySelector(".playControls__play");
+    const capabilities = {
+      play_pause: hasPlayBtn,
+      next: hasNext,
+      previous: hasPrev,
+      seek: false,
+      // no audio element for seeking
+      set_position: false,
+      raise: true
+    };
+    if (!meta.title && !hasMs) return null;
+    return {
+      metadata: meta,
+      playback,
+      capabilities,
+      confidence,
+      pageUrl
+    };
+  }
+  async command(cmd) {
+    switch (cmd) {
+      case "play_pause": {
+        const btn = document.querySelector(".playControls__play") ?? document.querySelector(".sc-button-play");
+        btn?.click();
+        break;
+      }
+      case "next": {
+        const btn = document.querySelector(".playControls__next") ?? document.querySelector(".skipButton__forward");
+        btn?.click();
+        break;
+      }
+      case "previous": {
+        const btn = document.querySelector(".playControls__prev") ?? document.querySelector(".skipButton__backward");
+        btn?.click();
+        break;
+      }
+      case "seek":
+      case "set_position":
+        break;
+    }
+  }
+};
+function resolveArtwork(url) {
+  if (!url) return void 0;
+  if (url.includes("sndcdn.com") || url.includes("soundcloud")) {
+    url = url.replace(/-t\d+x\d+(?=\.[a-z]+)/i, "-t500x500");
+    url = url.replace(/-original(?=\.[a-z]+)/i, "-t500x500");
+    url = url.replace(/-crop-[a-z]+(?=\.[a-z]+)/i, "");
+  }
+  return url;
+}
+function parseSoundCloudDuration(text) {
+  const m = text.match(/(\d+)\s*minutes?\s*(\d+)?\s*seconds?/i);
+  if (m) {
+    const mins = parseInt(m[1]) || 0;
+    const secs = parseInt(m[2]) || 0;
+    return (mins * 60 + secs) * 1e3;
+  }
+  const m2 = text.match(/(\d+)\s*minute/i);
+  if (m2) {
+    return parseInt(m2[1]) * 60 * 1e3;
+  }
+  const m3 = text.match(/(\d+)\s*second/i);
+  if (m3) {
+    return parseInt(m3[1]) * 1e3;
+  }
+  return 0;
+}
+function parseMmSsDuration(text) {
+  text = text.trim();
+  const parts = text.split(":");
+  if (parts.length === 2) {
+    const mins = parseInt(parts[0]) || 0;
+    const secs = parseInt(parts[1]) || 0;
+    return (mins * 60 + secs) * 1e3;
+  }
+  if (parts.length === 3) {
+    const hours = parseInt(parts[0]) || 0;
+    const mins = parseInt(parts[1]) || 0;
+    const secs = parseInt(parts[2]) || 0;
+    return (hours * 3600 + mins * 60 + secs) * 1e3;
+  }
+  return 0;
+}
+
 // src/content.ts
 var providers = [
   new YouTubeMusicProvider(),
   new YouTubeProvider(),
+  new SoundCloudProvider(),
   new GenericMediaProvider()
 ];
 var lastSourceId = "";
