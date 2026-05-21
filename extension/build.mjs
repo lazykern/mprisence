@@ -1,0 +1,91 @@
+// ─── Build script for mprisence-browser-extension ─────────────────
+// Usage: node build.mjs <browser> [--watch]
+//   browser: "firefox" | "chromium"
+
+import * as esbuild from "esbuild";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const browsers = ["firefox", "chromium"];
+const target = process.argv[2];
+const isWatch = process.argv.includes("--watch");
+
+if (!target || !browsers.includes(target)) {
+  console.error(`Usage: node build.mjs <browser> [--watch]\n  browser: ${browsers.join(" | ")}`);
+  process.exit(1);
+}
+
+console.log(`Building for ${target}...`);
+
+const outdir = join(__dirname, "dist", target);
+mkdirSync(outdir, { recursive: true });
+
+// ── Read manifest, substitute placeholders ──
+const manifestRaw = readFileSync(join(__dirname, `manifest.${target}.json`), "utf-8");
+const manifest = JSON.parse(manifestRaw);
+
+// ── Get git SHA ──
+let gitSha = "unknown";
+try {
+  const { execSync } = await import("child_process");
+  gitSha = execSync("git rev-parse --short HEAD").toString().trim();
+  const status = execSync("git status --porcelain").toString().trim();
+  if (status) gitSha += "-dirty";
+} catch {}
+
+// ── esbuild entries ──
+const entryPoints = {
+  "background": "src/background.ts",
+  "content": "src/content.ts",
+  "page-world": "src/page-world.ts",
+};
+
+async function build() {
+  const ctx = await esbuild.context({
+    entryPoints,
+    outdir,
+    bundle: true,
+    sourcemap: true,
+    target: "es2022",
+    format: "esm",
+    platform: "browser",
+    define: { __GIT_SHA__: JSON.stringify(gitSha) },
+    outbase: "src",
+    outExtension: { ".js": ".js" },
+  });
+
+  if (isWatch) {
+    await ctx.watch();
+    console.log(`Watching ${target}...`);
+  } else {
+    await ctx.rebuild();
+    await ctx.dispose();
+
+    // Write manifest
+    writeFileSync(join(outdir, "manifest.json"), JSON.stringify(manifest, null, 2));
+
+    // Copy icons
+    const iconDir = join(outdir, "icons");
+    mkdirSync(iconDir, { recursive: true });
+    if (existsSync(join(__dirname, "icons", "icon-48.png"))) {
+      copyFileSync(join(__dirname, "icons", "icon-48.png"), join(iconDir, "icon-48.png"));
+    }
+    if (existsSync(join(__dirname, "icons", "icon-96.png"))) {
+      copyFileSync(join(__dirname, "icons", "icon-96.png"), join(iconDir, "icon-96.png"));
+    }
+    // Use SVG as fallback icon
+    if (existsSync(join(__dirname, "icons", "icon.svg"))) {
+      copyFileSync(join(__dirname, "icons", "icon.svg"), join(iconDir, "icon.svg"));
+    }
+
+    console.log(`Built: ${outdir}/`);
+  }
+}
+
+build().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

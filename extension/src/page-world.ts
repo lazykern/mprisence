@@ -1,0 +1,161 @@
+/**
+ * Page-world script — runs in the page's JavaScript context, not the
+ * extension's isolated world. This allows direct access to page DOM,
+ * Media Session API, and JavaScript variables without CSP issues.
+ *
+ * Communicates back to content.ts via CustomEvent.
+ *
+ * Injected as a static <script src="page-world.js"> element from content.ts.
+ */
+
+(function () {
+  // Prevent double injection
+  if ((window as any).__mprisence_page_world) return;
+  (window as any).__mprisence_page_world = true;
+
+  /** Debounce utility */
+  function debounce<T extends (...args: any[]) => void>(
+    fn: T,
+    ms: number
+  ): T {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    return ((...args: any[]) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        fn(...args);
+      }, ms);
+    }) as T;
+  }
+
+  /** Send media data to content script via CustomEvent */
+  function dispatch(data: Record<string, any>): void {
+    window.dispatchEvent(
+      new CustomEvent("mprisence-media-state", { detail: data })
+    );
+  }
+
+  /** Collect state from a media element + Media Session API */
+  function collectState(): Record<string, any> {
+    const video = document.querySelector("video");
+    const audio = document.querySelector("audio");
+    const media = video ?? audio;
+
+    let metadata: Record<string, any> = { artist: [] };
+    let playback = { status: "stopped", position_ms: 0, duration_ms: 0, rate: 1.0 };
+    let capabilities = {
+      play_pause: true,
+      next: false,
+      previous: false,
+      seek: false,
+      set_position: false,
+      raise: true,
+    };
+    let confidence = "dom";
+
+    // Get metadata from Media Session API (richer than DOM)
+    try {
+      const ms = (navigator as any).mediaSession;
+      if (ms?.metadata) {
+        const md = ms.metadata;
+        metadata = {
+          title: md.title || undefined,
+          artist: md.artist ? [md.artist] : [],
+          album: md.album || undefined,
+          album_artist: [],
+          art_url: undefined,
+          track_id: undefined,
+        };
+
+        // Pick largest artwork
+        if (md.artwork?.length > 0) {
+          const best = md.artwork.reduce((a: any, b: any) => {
+            const aSize = parseInt(a.sizes) || 0;
+            const bSize = parseInt(b.sizes) || 0;
+            return aSize > bSize ? a : b;
+          });
+          // Media Session often gives blob: URLs — pass through
+          metadata.art_url = best.src || undefined;
+        }
+
+        confidence = "provider";
+      }
+    } catch {
+      // Media Session not available
+    }
+
+    if (media) {
+      playback = {
+        status: media.paused
+          ? "paused"
+          : media.ended
+            ? "stopped"
+            : "playing",
+        position_ms: Math.floor((media.currentTime || 0) * 1000),
+        duration_ms: Math.floor((media.duration || 0) * 1000),
+        rate: media.playbackRate || 1.0,
+      };
+
+      capabilities = {
+        ...capabilities,
+        play_pause: true,
+        seek: true,
+        set_position: true,
+      };
+    }
+
+    return {
+      type: "media-state",
+      metadata,
+      playback,
+      capabilities,
+      confidence,
+    };
+  }
+
+  // ─── Observers ──────────────────────────────────────────────
+
+  const dispatchDebounced = debounce(() => {
+    dispatch(collectState());
+  }, 500);
+
+  // Watch for Media Session metadata changes
+  try {
+    const ms = (navigator as any).mediaSession;
+    if (ms?.metadata) {
+      // Poll for metadata changes (Media Session API has no callback)
+      setInterval(() => {
+        dispatchDebounced();
+      }, 1000);
+    }
+  } catch {
+    // ignore
+  }
+
+  // Watch for media elements being added
+  const observer = new MutationObserver(() => {
+    const media = document.querySelector("video, audio");
+    if (media) {
+      dispatchDebounced();
+    }
+  });
+  observer.observe(document.body || document.documentElement, {
+    childList: true,
+    subtree: true,
+  });
+
+  // Listen for timeupdate on media elements
+  document.addEventListener(
+    "timeupdate",
+    ((e: Event) => {
+      const target = e.target as HTMLMediaElement;
+      if (target && (target.tagName === "VIDEO" || target.tagName === "AUDIO")) {
+        dispatchDebounced();
+      }
+    }) as EventListener,
+    true // capture
+  );
+
+  // Initial dispatch
+  dispatch(collectState());
+})();

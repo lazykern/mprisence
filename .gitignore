@@ -17,6 +17,7 @@ AGENTS.md
 
 /PLAN.md
 /plans/
+/extension/node_modules/
 
 # Benchmark raw run data (keep only bench/RESULTS.md)
 /bench/*/

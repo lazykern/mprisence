@@ -1,0 +1,18 @@
+{
+  "name": "mprisence-bridge",
+  "version": "0.1.0",
+  "description": "Browser extension for mprisence-web-bridge — sends media metadata from websites to the native bridge",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:firefox": "node build.mjs firefox",
+    "build:chromium": "node build.mjs chromium",
+    "build:all": "node build.mjs firefox chromium",
+    "watch:firefox": "node build.mjs firefox --watch",
+    "watch:chromium": "node build.mjs chromium --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "@types/webextension-polyfill": "^0.12.0"
+  }
+}
