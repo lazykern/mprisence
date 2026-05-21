@@ -8,7 +8,8 @@ use mpris::PlayerFinder;
 use player::{
     compute_presence_migrations,
     events::{EventOutcome, PlayerEvent, PlayerEventKind},
-    is_playerctld_no_active_error, merge_url_duplicates, select_richest_player, select_winner_idx,
+    is_mprisence_web_bridge_bus, is_playerctld_no_active_error, merge_url_duplicates,
+    select_bridge_winner, select_richest_player, select_winner_idx,
     BucketSummary, PlayerIdentifier,
 };
 use presence::Presence;
@@ -320,8 +321,16 @@ impl Mprisence {
             let ids: Vec<PlayerIdentifier> = group.iter().map(PlayerIdentifier::from).collect();
 
             let winner_idx = if group.len() > 1 {
-                // Use metadata-aware selection for merged/duplicate groups
-                select_richest_player(&group, current_bus.as_deref())
+                // Bridge-aware selection: prefers active+playing bridge tab.
+                // Falls back to metadata richness for non-bridge groups.
+                let has_bridge = ids.iter().any(|id| {
+                    is_mprisence_web_bridge_bus(&id.player_bus_name)
+                });
+                if has_bridge {
+                    select_bridge_winner(&group, current_bus.as_deref())
+                } else {
+                    select_richest_player(&group, current_bus.as_deref())
+                }
             } else {
                 select_winner_idx(&ids, current_bus.as_deref())
             };

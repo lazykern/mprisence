@@ -1,4 +1,4 @@
-use crate::protocol::{SourceState, Status};
+use crate::protocol::{MediaMetadata, SourceState, Status};
 use log::{debug, info, warn};
 use mpris_server::{
     zbus::zvariant::ObjectPath, Metadata, Player, Time, TrackId,
@@ -47,19 +47,19 @@ impl PlayerManager {
     }
 
     /// Get or create a player for the given source_id.
-    /// Each source gets a stable bus name derived from the source_id.
-    /// Get or create a player for the given source_id.
+    /// Each source gets a stable bus name derived from the source_id + site.
     /// Returns None if creation fails.
     pub async fn ensure_player(
         &mut self,
         source_id: &str,
+        site: &str,
         cmd_tx: &mpsc::Sender<TaggedCommand>,
     ) -> Option<&MprisPublisher> {
         use std::collections::hash_map::Entry;
         match self.players.entry(source_id.to_string()) {
             Entry::Occupied(entry) => Some(&entry.into_mut().publisher),
             Entry::Vacant(entry) => {
-                let suffix = make_player_suffix(source_id);
+                let suffix = make_player_suffix(source_id, site);
                 match MprisPublisher::new(&suffix, source_id, cmd_tx.clone()).await {
                     Ok(publisher) => {
                         let run_task = publisher.run_task();
@@ -104,11 +104,14 @@ impl PlayerManager {
     }
 }
 
-fn make_player_suffix(source_id: &str) -> String {
-    // Stable hash of source_id for the bus name suffix
-    // Replace non-alphanumeric chars with underscores for D-Bus compliance
+/// Stable config key all bridge MPRIS players resolve to.
+pub const BRIDGE_CONFIG_KEY: &str = "mprisence_web";
+
+fn make_player_suffix(source_id: &str, site: &str) -> String {
+    // Parseable bus: mprisence_web.<site>.<hexhash>
+    // site is D-Bus-safe already (lowercase, underscore-separated).
     let hash = simple_hash(source_id);
-    format!("web_{hash}")
+    format!("web.{site}.{hash}")
 }
 
 fn simple_hash(input: &str) -> String {
@@ -116,6 +119,22 @@ fn simple_hash(input: &str) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     input.hash(&mut hasher);
     format!("{:08x}", hasher.finish())
+}
+
+/// Returns the MPRIS bus suffix for a bridge player.
+/// Produces `mprisence_web.<site>.<hash>` so `canonical_player_bus_name`
+/// can extract the stable `mprisence_web` prefix.
+pub fn bridge_player_suffix(_source_id: &str, _site: &str) -> String {
+    make_player_suffix(_source_id, _site)
+}
+
+/// Escape a value for inclusion in an MPRIS metadata key.
+/// Follows D-Bus object path rules (only [A-Za-z0-9_]).
+#[allow(dead_code)]
+fn dbus_safe_value(raw: &str) -> String {
+    raw.chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .collect::<String>()
 }
 
 /// Wraps an MPRIS server player, handling property updates.
@@ -197,7 +216,7 @@ impl MprisPublisher {
     }
 
     /// Update the MPRIS player state from a source.
-    pub async fn publish(&self, source: Option<&SourceState>) {
+    pub async fn publish(&self, source: Option<&SourceState>, is_active: bool) {
         let player = &self.player;
 
         let identity = source
@@ -214,7 +233,7 @@ impl MprisPublisher {
             .unwrap_or(mpris_server::PlaybackStatus::Stopped);
         let _ = player.set_playback_status(status).await;
 
-        let metadata = build_metadata(source);
+        let metadata = build_metadata(source, is_active, &self.bus_name);
         let _ = player.set_metadata(metadata).await;
 
         if let Some(s) = source {
@@ -286,22 +305,59 @@ fn format_site_name(site: &str) -> String {
     }
 }
 
-fn build_metadata(source: Option<&SourceState>) -> Metadata {
+fn build_metadata(source: Option<&SourceState>, is_active: bool, _bus_name: &str) -> Metadata {
     let mut builder = Metadata::builder();
+
+    // Always include the bridge marker so mprisence can detect bridge players.
+    builder = builder.other("mprisence:bridge", "true");
 
     if let Some(s) = source {
         let meta = &s.metadata;
 
-        let track_id_str = make_track_id(&s.source_id, &meta.track_id, meta.title.as_deref());
+        // ── Custom mprisence metadata ──────────────────────────
+        builder = builder.other("mprisence:sourceId", s.source_id.clone());
+        builder = builder.other("mprisence:site", s.site.clone());
+        builder = builder.other("mprisence:origin", s.origin.clone());
+        builder = builder.other("mprisence:pageUrl", s.url.clone());
+        if let Some(ref cu) = s.canonical_url {
+            if !cu.is_empty() && !cu.starts_with("blob:") {
+                builder = builder.other("mprisence:canonicalUrl", cu.clone());
+            }
+        }
+        builder = builder.other(
+            "mprisence:confidence",
+            format!("{:?}", s.confidence).to_lowercase(),
+        );
+        builder = builder.other("mprisence:active", if is_active { "true" } else { "false" });
+        builder = builder.other(
+            "mprisence:seenAgeMs",
+            s.last_seen
+                .elapsed()
+                .as_millis()
+                .to_string(),
+        );
+        // Extract browser from bus_name (e.g. org.mpris.MediaPlayer2.mprisence_web.youtube_music.habc)
+        // The browser info is embedded in the source_id (e.g. "firefox:tab:12:frame").
+        let browser = s.source_id.split(':').next().unwrap_or("unknown").to_string();
+        builder = builder.other("mprisence:browser", browser);
+        // Group key for dedup: same site = same group.
+        builder = builder.other("mprisence:group", s.site.clone());
+
+        // ── Standard MPRIS metadata ────────────────────────────
+        let track_id_str = make_track_id(s, meta);
         if let Ok(path) = ObjectPath::try_from(track_id_str.as_str()) {
             builder = builder.trackid(path);
         }
 
         if let Some(title) = &meta.title {
-            builder = builder.title(title);
+            if !title.trim().is_empty() {
+                builder = builder.title(title);
+            }
         }
         if let Some(album) = &meta.album {
-            builder = builder.album(album);
+            if !album.trim().is_empty() {
+                builder = builder.album(album);
+            }
         }
         if !meta.artist.is_empty() {
             let artists: Vec<&str> = meta.artist.iter().map(|s| s.as_str()).collect();
@@ -313,20 +369,48 @@ fn build_metadata(source: Option<&SourceState>) -> Metadata {
             builder = builder.album_artist(album_artists);
         }
         if let Some(art_url) = &meta.art_url {
-            builder = builder.art_url(art_url);
+            // Only publish art URL if it's an http/https URL mprisence can actually fetch.
+            if art_url.starts_with("http://") || art_url.starts_with("https://") {
+                builder = builder.art_url(art_url);
+            }
         }
 
-        let length_us = s.playback.duration_ms * 1000;
-        builder = builder.length(Time::from_micros(length_us as i64));
+        // Length: only publish when finite and > 0 (avoid garbage like 0 or NaN).
+        let dur_ms = s.playback.duration_ms;
+        if dur_ms > 0 && dur_ms < 86_400_000 {
+            // cap at 24h to avoid overflow
+            let length_us = dur_ms * 1000;
+            builder = builder.length(Time::from_micros(length_us as i64));
+        }
 
-        builder = builder.url(&s.url);
+        // URL: prefer canonical URL, then page URL, but never blob:
+        let best_url = select_best_url(s);
+        if !best_url.is_empty() && !best_url.starts_with("blob:") {
+            builder = builder.url(&best_url);
+        }
     }
 
     builder.build()
 }
 
-fn make_track_id(source_id: &str, track_id: &Option<String>, title: Option<&str>) -> String {
-    if let Some(tid) = track_id {
+/// Pick the best URL for `xesam:url`:
+/// 1. Provider canonical URL (track page, not mini-player)
+/// 2. Page URL (if not blob:)
+fn select_best_url(s: &SourceState) -> String {
+    if let Some(ref cu) = s.canonical_url {
+        if !cu.is_empty() && !cu.starts_with("blob:") {
+            return cu.clone();
+        }
+    }
+    if !s.url.starts_with("blob:") {
+        return s.url.clone();
+    }
+    s.origin.clone()
+}
+
+fn make_track_id(s: &SourceState, meta: &MediaMetadata) -> String {
+    // 1. Provider track_id (most stable)
+    if let Some(ref tid) = meta.track_id {
         if !tid.is_empty() {
             if tid.starts_with('/') {
                 return tid.clone();
@@ -334,6 +418,17 @@ fn make_track_id(source_id: &str, track_id: &Option<String>, title: Option<&str>
             return format!("/mprisence/track/{tid}");
         }
     }
-    let hash_input = format!("{source_id}+{}", title.unwrap_or(""));
+    // 2. Canonical URL (stable across page navigations)
+    if let Some(ref cu) = s.canonical_url {
+        if !cu.is_empty() {
+            return format!("/mprisence/track/{}", simple_hash(cu));
+        }
+    }
+    // 3. Page URL (less stable, but better than title-only)
+    if !s.url.is_empty() && !s.url.starts_with("blob:") {
+        return format!("/mprisence/track/{}", simple_hash(&s.url));
+    }
+    // 4. Fallback: source_id + title hash
+    let hash_input = format!("{}+{}", s.source_id, meta.title.as_deref().unwrap_or(""));
     format!("/mprisence/track/{}", simple_hash(&hash_input))
 }

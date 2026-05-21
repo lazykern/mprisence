@@ -144,10 +144,14 @@ async fn run_bridge_inner() {
                 for id in &removed {
                     players.remove_player(id);
                 }
+                // Run selection to update active_source_id
+                registry.select_active();
                 // Publish current state for each player
+                let active_id = registry.active_source_id().map(|s| s.to_string());
                 for (source_id, state) in registry.sources() {
                     if let Some(publisher) = players.get(source_id) {
-                        publisher.publish(Some(state)).await;
+                        let is_active = active_id.as_deref() == Some(source_id);
+                        publisher.publish(Some(state), is_active).await;
                     }
                 }
             }
@@ -209,19 +213,22 @@ async fn handle_extension_message(
             }
         }
 
-        ExtMessage::Update { source_id, url, origin, site, playback, metadata, capabilities, confidence } => {
+        ExtMessage::Update { source_id, url, origin, site, playback, metadata, capabilities, confidence, canonical_url } => {
+            let site_for_player = site.clone();
             let state = SourceState {
                 source_id: source_id.clone(),
                 url, origin, site,
                 playback, metadata, capabilities, confidence,
+                canonical_url,
                 last_seen: std::time::Instant::now(),
             };
             registry.upsert(state);
 
             // Ensure this source has an MPRIS player, then publish
-            if let Some(publisher) = players.ensure_player(&source_id, cmd_tx).await {
+            if let Some(publisher) = players.ensure_player(&source_id, &site_for_player, cmd_tx).await {
                 if let Some(state) = registry.get(&source_id) {
-                    publisher.publish(Some(state)).await;
+                    let is_active = registry.active_source_id() == Some(source_id.as_str());
+                    publisher.publish(Some(state), is_active).await;
                 }
             }
         }
@@ -408,12 +415,13 @@ async fn debug_fake_player(mpris_name: String) {
             set_position: true,
             raise: true,
         },
+        canonical_url: Some("https://music.youtube.com/watch?v=dQw4w9WgXcQ".into()),
         confidence: ConfidenceLevel::Provider,
         last_seen: std::time::Instant::now(),
     };
 
     info!("Publishing fake player...");
-    publisher.publish(Some(&fake_source)).await;
+    publisher.publish(Some(&fake_source), false).await;
     info!("Fake player published! Check with: playerctl metadata");
     info!("Running...");
 }

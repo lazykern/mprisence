@@ -26,6 +26,10 @@ pub enum ExtMessage {
         capabilities: Capabilities,
         #[serde(default = "default_confidence")]
         confidence: ConfidenceLevel,
+        /// Best canonical track/page URL from the provider.
+        /// Takes priority over `url` for MPRIS `xesam:url` and website matching.
+        #[serde(default)]
+        canonical_url: Option<String>,
     },
     #[serde(rename = "remove")]
     Remove {
@@ -162,6 +166,9 @@ pub struct SourceState {
     #[allow(dead_code)]
     pub confidence: ConfidenceLevel,
     pub last_seen: std::time::Instant,
+    /// Best canonical URL from the provider (track page, not mini-player).
+    /// Falls back to page URL if provider doesn't supply one.
+    pub canonical_url: Option<String>,
 }
 
 impl SourceState {

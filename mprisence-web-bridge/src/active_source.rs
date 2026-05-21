@@ -183,6 +183,7 @@ mod tests {
             },
             confidence: crate::protocol::ConfidenceLevel::Fallback,
             last_seen: Instant::now(),
+            canonical_url: None,
         }
     }
 

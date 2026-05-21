@@ -1,4 +1,5 @@
 use crate::utils::normalize_player_identity;
+use crate::player::{is_mprisence_web_bridge_bus, BRIDGE_CONFIG_KEY};
 use figment::providers::{Format, Toml};
 use figment::Figment;
 use log::trace;
@@ -145,13 +146,23 @@ impl ConfigManager {
             .config
             .read()
             .expect("Failed to read config: RwLock poisoned");
+
+        // Bridge players all resolve to the stable [player.mprisence_web] config key.
+        // This allows a single config entry to set ignore=true for all bridge players,
+        // with individual sites un-ignored by [website.*] overrides.
+        let (config_identity, config_bus) = if is_mprisence_web_bridge_bus(player_bus_name) {
+            (BRIDGE_CONFIG_KEY, BRIDGE_CONFIG_KEY)
+        } else {
+            (identity, player_bus_name)
+        };
+
         if url.is_some() {
             return (
-                guard.get_player_config_with_url(identity, player_bus_name, url),
+                guard.get_player_config_with_url(config_identity, config_bus, url),
                 None,
             );
         }
-        let base = guard.get_player_config(identity, player_bus_name);
+        let base = guard.get_player_config(config_identity, config_bus);
         guard.apply_website_overrides_by_title(base, title)
     }
 
