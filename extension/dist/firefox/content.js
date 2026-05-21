@@ -91,7 +91,11 @@ var YouTubeMusicProvider = class {
     let artUrl = artImg?.src || void 0;
     if (artUrl && artUrl.startsWith("data:")) artUrl = void 0;
     if (artUrl) {
-      artUrl = artUrl.replace("/sddefault.", "/hqdefault.");
+      if (artUrl.includes("yt3.googleusercontent.com")) {
+        artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
+      } else {
+        artUrl = artUrl.replace(/\/[a-z]+default\./g, "/maxresdefault.");
+      }
     }
     const thumbSrc = artImg?.src || "";
     const videoIdMatch = thumbSrc.match(this.videoIdRegex);
@@ -149,10 +153,6 @@ var YouTubeMusicProvider = class {
   }
   qs(selector) {
     return document.querySelector(selector);
-  }
-  /** Convert sddefault → hqdefault for better quality art */
-  static upgradeArtQuality(url) {
-    return url.replace("/sddefault.", "/hqdefault.");
   }
 };
 

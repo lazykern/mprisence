@@ -22,6 +22,7 @@ import type { Provider, ProviderResult } from "./base";
  *   - No MediaSession API — must use DOM scraping
  *   - Byline has NO album — only "Artist • views • likes"
  *   - Album art is HTTPS (i.ytimg.com) — no blob: issue
+ *   - Upgrade to /maxresdefault/ for 1280x720 clean art (no black bar)
  *   - videoId in thumbnail URL, not always in ?v= param
  *   - No <audio> — YTM uses <video>
  */
@@ -59,9 +60,17 @@ export class YouTubeMusicProvider implements Provider {
     let artUrl = artImg?.src || undefined;
     // Skip 1×1 placeholder GIFs
     if (artUrl && artUrl.startsWith("data:")) artUrl = undefined;
-    // Try upscaling to hqdefault for better Discord quality
+    // Upgrade thumbnails to higher resolution.
     if (artUrl) {
-      artUrl = artUrl.replace("/sddefault.", "/hqdefault.");
+      if (artUrl.includes("yt3.googleusercontent.com")) {
+        // Channel avatar: strip size params to get default 512x512.
+        // Use =s800-c-k-no for 800x800 if needed.
+        artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
+      } else {
+        // Video thumbnail: upgrade to maxresdefault (1280x720, 16:9)
+        // — no YouTube black bar at bottom.
+        artUrl = artUrl.replace(/\/[a-z]+default\./g, "/maxresdefault.");
+      }
     }
 
     // ── Video ID from thumbnail URL ────────────────────────────
@@ -140,8 +149,5 @@ export class YouTubeMusicProvider implements Provider {
     return document.querySelector<T>(selector);
   }
 
-  /** Convert sddefault → hqdefault for better quality art */
-  static upgradeArtQuality(url: string): string {
-    return url.replace("/sddefault.", "/hqdefault.");
-  }
+
 }
