@@ -95,7 +95,7 @@ export class YouTubeMusicProvider implements Provider {
       ? playBtn.getAttribute("title")?.toLowerCase().includes("pause")
       : !isPaused;
 
-    const status: PlaybackState["status"] = isPlaying ? "playing" : "paused";
+    const status = isPlaying ? "playing" : "paused";
 
     const metadata: MediaMetadata = {
       title,

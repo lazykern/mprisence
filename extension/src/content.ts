@@ -16,11 +16,13 @@ import type { ConfidenceLevel, ExtMessage, Capabilities, PlaybackState, MediaMet
 import type { ProviderResult } from "./providers/base";
 import { GenericMediaProvider } from "./providers/base";
 import { YouTubeMusicProvider } from "./providers/youtube-music";
+import { YouTubeProvider } from "./providers/youtube";
 
 // ─── Provider registry ───────────────────────────────────────────
 
 const providers = [
   new YouTubeMusicProvider(),
+  new YouTubeProvider(),
   new GenericMediaProvider(),
 ];
 
@@ -31,6 +33,7 @@ let lastTitle = "";
 let lastArtist = "";
 let lastState = "";
 let lastArtUrl = "";
+let lastPageUrl = "";
 let lastSentTime = 0;
 const FORCE_RESEND_INTERVAL = 5000; // ms — re-send even if nothing changed (must be < bridge stale timeout)
 
@@ -124,7 +127,7 @@ function stopPolling(): void {
 
 function sendUpdate(result: ProviderResult): void {
   const sourceId = `${sourceIdBase}:frame`;
-  const url = window.location.href;
+  const url = result.pageUrl || window.location.href;
   const origin = window.location.origin;
 
   // Deduplicate: skip if nothing changed (unless forced refresh)
@@ -136,7 +139,8 @@ function sendUpdate(result: ProviderResult): void {
     lastTitle === titleKey &&
     lastArtist === artistKey &&
     lastState === result.playback.status &&
-    lastArtUrl === (result.metadata.art_url ?? "");
+    lastArtUrl === (result.metadata.art_url ?? "") &&
+    lastPageUrl === url;
   if (unchanged && now - lastSentTime < FORCE_RESEND_INTERVAL) {
     return;
   }
@@ -146,6 +150,7 @@ function sendUpdate(result: ProviderResult): void {
   lastArtist = artistKey;
   lastState = result.playback.status;
   lastArtUrl = result.metadata.art_url ?? "";
+  lastPageUrl = url;
   lastSentTime = now;
 
   // Detect the site name from the first matching provider

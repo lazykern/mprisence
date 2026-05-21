@@ -3,15 +3,14 @@ mod mpris;
 mod native_messaging;
 mod protocol;
 
-use active_source::{SourceRegistry, HEARTBEAT_TIMEOUT};
+use active_source::SourceRegistry;
 use clap::{Parser, Subcommand};
 use log::{debug, error, info, trace, warn};
-use mpris::{MprisCommand, MprisPublisher};
+use mpris::{MprisPublisher, PlayerManager, TaggedCommand};
 use native_messaging::{read_message, send_message};
 use protocol::{BridgeMessage, ExtMessage, SourceState};
-use std::io::{stdout, Write};
+use std::io::stdout;
 use tokio::io::BufReader;
-use tokio::pin;
 use tokio::sync::mpsc;
 use tokio::time::{interval, Duration};
 
@@ -43,9 +42,8 @@ enum BridgeCommand {
     /// Run the bridge (native messaging host).
     #[command(hide = true)]
     Run {
-        /// MPRIS bus name suffix.
         #[arg(long, default_value = "web")]
-        mpris_name: String,
+        _mpris_name: String,
     },
     /// Install native messaging host manifests for detected browsers.
     Install {
@@ -77,54 +75,43 @@ async fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(BridgeCommand::Run { mpris_name }) => run_bridge(mpris_name).await,
+        Some(BridgeCommand::Run { .. }) => run_bridge().await,
         Some(BridgeCommand::Install { browser }) => cmd_install(browser).await,
         Some(BridgeCommand::Uninstall { browser }) => cmd_uninstall(browser).await,
         Some(BridgeCommand::Doctor) => cmd_doctor().await,
         Some(BridgeCommand::DebugFakePlayer { mpris_name }) => debug_fake_player(mpris_name).await,
-        None => {
-            run_bridge("web".into()).await;
-        }
+        None => run_bridge().await,
     }
 }
 
 // ─── Run ──────────────────────────────────────────────────────────
 
-async fn run_bridge(mpris_name: String) {
-    info!("Starting mprisence-web-bridge (mpris_name: {mpris_name})");
+async fn run_bridge() {
+    info!("Starting mprisence-web-bridge (multi-player)");
 
-    let (cmd_tx, mut cmd_rx) = mpsc::channel::<MprisCommand>(64);
+    // Wrap in LocalSet so we can spawn_local() for each player's run task
+    let local_set = tokio::task::LocalSet::new();
+    local_set
+        .run_until(async {
+            run_bridge_inner().await;
+        })
+        .await;
+}
 
-    let publisher = match MprisPublisher::new(&mpris_name, cmd_tx).await {
-        Ok(p) => {
-            info!("MPRIS player published: {}", p.bus_name());
-            p
-        }
-        Err(e) => {
-            error!("Failed to publish MPRIS player: {e}");
-            return;
-        }
-    };
-
-    let mpris_run = publisher.run_task();
-    pin!(mpris_run);
+async fn run_bridge_inner() {
+    // Shared command channel: (source_id, command) pairs from all MPRIS players
+    let (cmd_tx, mut cmd_rx) = mpsc::channel::<TaggedCommand>(64);
 
     let mut registry = SourceRegistry::new();
+    let mut players = PlayerManager::new();
 
     let stdin = tokio::io::stdin();
     let mut stdin_reader = BufReader::new(stdin);
 
     let mut heartbeat_timer = interval(Duration::from_secs(2));
-    let mut mpris_done = false;
 
     loop {
         tokio::select! {
-            _ = &mut mpris_run => {
-                info!("MPRIS server stopped");
-                mpris_done = true;
-                break;
-            }
-
             msg_result = read_message(&mut stdin_reader) => {
                 match msg_result {
                     Ok(Some(bytes)) => {
@@ -133,7 +120,7 @@ async fn run_bridge(mpris_name: String) {
                                 trace!("← ext: {}", String::from_utf8_lossy(
                                     &bytes[..bytes.len().min(200)]));
                                 handle_extension_message(ext_msg, &mut registry,
-                                    &publisher, &mut stdout()).await;
+                                    &mut players, &mut stdout(), &cmd_tx).await;
                             }
                             Err(e) => warn!("Failed to parse: {e}"),
                         }
@@ -143,49 +130,65 @@ async fn run_bridge(mpris_name: String) {
                 }
             }
 
-            cmd = cmd_rx.recv() => {
-                match cmd {
-                    Some(cmd) => {
-                        trace!("← MPRIS cmd: {cmd:?}");
-                        handle_mpris_command(cmd, &registry, &mut stdout()).await;
-                    }
-                    None => { info!("MPRIS channel closed"); break; }
+            Some((source_id, cmd)) = cmd_rx.recv() => {
+                trace!("← MPRIS cmd from {source_id}: {cmd:?}");
+                // Forward command to the extension (targeting specific source)
+                let msg = bridge_command_for(&source_id, &cmd);
+                if let Err(e) = send_message(&mut stdout(), &msg) {
+                    warn!("Failed to send command: {e}");
                 }
             }
 
             _ = heartbeat_timer.tick() => {
-                registry.prune_stale();
-                let (active, _reason) = registry.select_active();
-                if let Some(source) = active {
-                    if source.is_stale(HEARTBEAT_TIMEOUT) {
-                        publisher.publish(None).await;
-                    } else {
-                        publisher.publish(Some(source)).await;
+                let removed = registry.prune_stale();
+                for id in &removed {
+                    players.remove_player(id);
+                }
+                // Publish current state for each player
+                for (source_id, state) in registry.sources() {
+                    if let Some(publisher) = players.get(source_id) {
+                        publisher.publish(Some(state)).await;
                     }
-                } else {
-                    publisher.publish(None).await;
                 }
             }
         }
     }
 
-    if !mpris_done {
-        publisher.publish(None).await;
-    }
     info!("Bridge shutting down");
+}
+
+fn bridge_command_for(source_id: &str, cmd: &mpris::MprisCommand) -> BridgeMessage {
+    use mpris::MprisCommand;
+    let command = match cmd {
+        MprisCommand::PlayPause => protocol::CommandKind::PlayPause,
+        MprisCommand::Next => protocol::CommandKind::Next,
+        MprisCommand::Previous => protocol::CommandKind::Previous,
+        MprisCommand::Seek(_) => protocol::CommandKind::Seek,
+        MprisCommand::SetPosition(_) => protocol::CommandKind::SetPosition,
+        _ => protocol::CommandKind::PlayPause,
+    };
+    let position_ms = match cmd {
+        MprisCommand::Seek(us) | MprisCommand::SetPosition(us) => Some((*us / 1000) as u64),
+        _ => None,
+    };
+    BridgeMessage::Command {
+        source_id: source_id.to_string(),
+        command,
+        position_ms,
+    }
 }
 
 async fn handle_extension_message(
     msg: ExtMessage,
     registry: &mut SourceRegistry,
-    publisher: &MprisPublisher,
-    stdout: &mut impl Write,
+    players: &mut PlayerManager,
+    stdout: &mut impl std::io::Write,
+    cmd_tx: &mpsc::Sender<TaggedCommand>,
 ) {
     match msg {
         ExtMessage::Hello { browser, extension_version, protocol, git_sha } => {
             info!("Extension connected: {browser:?} v{extension_version}");
 
-            // Protocol version check
             if protocol != protocol::PROTOCOL_VERSION {
                 warn!(
                     "Protocol mismatch: extension protocol={protocol}, bridge protocol={}",
@@ -214,10 +217,11 @@ async fn handle_extension_message(
                 last_seen: std::time::Instant::now(),
             };
             registry.upsert(state);
-            if registry.source_count() == 1 {
-                let (active, _) = registry.select_active();
-                if let Some(s) = active {
-                    publisher.publish(Some(s)).await;
+
+            // Ensure this source has an MPRIS player, then publish
+            if let Some(publisher) = players.ensure_player(&source_id, cmd_tx).await {
+                if let Some(state) = registry.get(&source_id) {
+                    publisher.publish(Some(state)).await;
                 }
             }
         }
@@ -225,63 +229,13 @@ async fn handle_extension_message(
         ExtMessage::Remove { source_id } => {
             debug!("Source removed: {source_id}");
             registry.remove(&source_id);
+            players.remove_player(&source_id);
         }
-    }
-}
-
-async fn handle_mpris_command(
-    cmd: MprisCommand,
-    registry: &SourceRegistry,
-    stdout: &mut impl Write,
-) {
-    let active_id = match registry.active_source_id() {
-        Some(id) => id.to_string(),
-        None => { trace!("No active source for {cmd:?}"); return; }
-    };
-
-    let bridge_cmd = match cmd {
-        MprisCommand::PlayPause => protocol::CommandKind::PlayPause,
-        MprisCommand::Next => protocol::CommandKind::Next,
-        MprisCommand::Previous => protocol::CommandKind::Previous,
-
-        MprisCommand::Seek(offset_us) => {
-            let msg = BridgeMessage::Command {
-                source_id: active_id,
-                command: protocol::CommandKind::Seek,
-                position_ms: Some((offset_us / 1000) as u64),
-            };
-            let _ = send_message(stdout, &msg);
-            return;
-        }
-        MprisCommand::SetPosition(pos_us) => {
-            let msg = BridgeMessage::Command {
-                source_id: active_id,
-                command: protocol::CommandKind::SetPosition,
-                position_ms: Some((pos_us / 1000) as u64),
-            };
-            let _ = send_message(stdout, &msg);
-            return;
-        }
-        MprisCommand::Play | MprisCommand::Pause | MprisCommand::Stop => {
-            protocol::CommandKind::PlayPause
-        }
-    };
-
-    let msg = BridgeMessage::Command {
-        source_id: active_id,
-        command: bridge_cmd,
-        position_ms: None,
-    };
-    if let Err(e) = send_message(stdout, &msg) {
-        warn!("Failed to send command: {e}");
     }
 }
 
 // ─── Install / Uninstall / Doctor ────────────────────────────────
 
-/// Detect which browsers are available and write native messaging host manifests.
-/// The manifest tells the browser where the bridge binary is and which extension
-/// is allowed to connect.
 async fn cmd_install(browsers: Vec<String>) {
     let requested = |name: &str| browsers.is_empty() || browsers.iter().any(|b| b == name);
     let binary = std::env::current_exe()
@@ -337,10 +291,6 @@ fn install_chromium_manifest(binary: &std::path::Path) {
         "allowed_extensions": [EXTENSION_ID],
     });
 
-    // Chromium also supports "allowed_origins" instead of "allowed_extensions".
-    // For local development, we use allowed_extensions with the extension ID.
-    // When published to the Chrome Web Store, switch to allowed_origins.
-
     std::fs::create_dir_all(&dir).expect("create NativeMessagingHosts dir");
     std::fs::write(&path, serde_json::to_string_pretty(&manifest).unwrap())
         .expect("write Chromium native messaging manifest");
@@ -374,14 +324,12 @@ async fn cmd_uninstall(browsers: Vec<String>) {
 async fn cmd_doctor() {
     println!("🧑‍⚕️ mprisence-web-bridge doctor\n");
 
-    // 1. Binary path
     let binary = std::env::current_exe().ok();
     match &binary {
         Some(p) => println!("✓ Binary: {}", p.display()),
         None => println!("✗ Binary: could not resolve"),
     }
 
-    // 2. Native messaging manifests
     for (browser, dir_fn) in [("Firefox", manifest_dir_firefox as fn() -> std::path::PathBuf),
                                ("Chromium", manifest_dir_chromium as fn() -> std::path::PathBuf)] {
         let dir = dir_fn();
@@ -410,16 +358,12 @@ async fn cmd_doctor() {
         }
     }
 
-    // 3. D-Bus session bus
     let dbus_ok = std::env::var("DBUS_SESSION_BUS_ADDRESS").is_ok();
     if dbus_ok {
         println!("✓ D-Bus session bus: available");
     } else {
         println!("✗ D-Bus session bus: DBUS_SESSION_BUS_ADDRESS not set");
     }
-
-    // 4. MPRIS
-    println!("  MPRIS: test with `playerctl -l | grep mprisence` after connecting");
 }
 
 // ─── Debug Fake Player ────────────────────────────────────────────
@@ -427,14 +371,11 @@ async fn cmd_doctor() {
 async fn debug_fake_player(mpris_name: String) {
     info!("Starting fake test player: {mpris_name}");
 
-    let (cmd_tx, mut _cmd_rx) = mpsc::channel::<MprisCommand>(64);
-    let publisher = match MprisPublisher::new(&mpris_name, cmd_tx).await {
-        Ok(p) => p,
-        Err(e) => { error!("Failed: {e}"); return; }
-    };
+    let (cmd_tx, mut _cmd_rx) = mpsc::channel::<TaggedCommand>(64);
 
-    let mpris_run = publisher.run_task();
-    pin!(mpris_run);
+    let publisher = MprisPublisher::new(&mpris_name, "debug:fake:1", cmd_tx).await.unwrap();
+    let run_task = publisher.run_task();
+    let _handle = tokio::task::spawn_local(run_task);
 
     use protocol::*;
     let fake_source = SourceState {
@@ -475,12 +416,4 @@ async fn debug_fake_player(mpris_name: String) {
     publisher.publish(Some(&fake_source)).await;
     info!("Fake player published! Check with: playerctl metadata");
     info!("Running...");
-
-    let mut timer = tokio::time::interval(Duration::from_secs(60));
-    loop {
-        tokio::select! {
-            _ = &mut mpris_run => break,
-            _ = timer.tick() => {}
-        }
-    }
 }

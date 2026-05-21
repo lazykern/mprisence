@@ -156,9 +156,132 @@ var YouTubeMusicProvider = class {
   }
 };
 
+// src/providers/youtube.ts
+var YouTubeProvider = class {
+  origin = "https://www.youtube.com";
+  videoIdRe = /\/vi\/([a-zA-Z0-9_-]+)\//;
+  matches(url) {
+    return url.origin === this.origin;
+  }
+  extract() {
+    const mainPlayer = document.querySelector("#movie_player");
+    const video = mainPlayer?.querySelector("video");
+    if (!video || !mainPlayer) return null;
+    const dur = video.duration;
+    if (!dur || !isFinite(dur)) return null;
+    const ct = video.currentTime;
+    const isPaused = video.paused;
+    const isWatchPage = location.pathname === "/watch";
+    let msTitle;
+    let msArtist;
+    let msArtwork;
+    let videoId;
+    if ("mediaSession" in navigator) {
+      const ms = navigator.mediaSession;
+      const md = ms?.metadata;
+      if (md) {
+        if (md.title) msTitle = md.title;
+        if (md.artist) msArtist = md.artist;
+        if (md.artwork?.length > 0) {
+          const best = md.artwork.reduce(
+            (a, b) => {
+              const aSize = parseInt(a.sizes) || 0;
+              const bSize = parseInt(b.sizes) || 0;
+              return aSize > bSize ? a : b;
+            }
+          );
+          msArtwork = best.src || void 0;
+          const m = (msArtwork || "").match(this.videoIdRe);
+          if (m) videoId = m[1];
+        }
+      }
+    }
+    let title;
+    if (isWatchPage) {
+      const titleEl = document.querySelector(
+        "#title h1.ytd-watch-metadata, h1.title.ytd-video-primary-info-renderer"
+      );
+      title = titleEl?.textContent?.trim() || void 0;
+    }
+    if (!title && msTitle) title = msTitle;
+    if (!title) {
+      const cleaned = document.title.replace(" - YouTube", "").trim();
+      if (cleaned) title = cleaned;
+    }
+    let channelName;
+    if (isWatchPage) {
+      const channelEl = document.querySelector(
+        "#owner #channel-name #text-container, #owner yt-formatted-string.ytd-channel-name"
+      );
+      channelName = (channelEl?.textContent?.trim() || "").replace(/\s*-\s*Topic$/, "") || void 0;
+    }
+    if (!channelName && msArtist) {
+      channelName = msArtist.replace(/\s*-\s*Topic$/, "") || void 0;
+    }
+    let artUrl = msArtwork;
+    if (!artUrl) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const vid = urlParams.get("v") || videoId;
+      if (vid) {
+        artUrl = `https://i.ytimg.com/vi/${vid}/maxresdefault.jpg`;
+      }
+    }
+    if (artUrl) {
+      if (artUrl.includes("yt3.googleusercontent.com")) {
+        artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
+      } else if (artUrl.includes("ytimg.com")) {
+        artUrl = artUrl.replace(/\/[a-z]+default\./g, "/maxresdefault.");
+      }
+    }
+    const status = isPaused ? "paused" : "playing";
+    let watchUrl;
+    if (videoId) {
+      watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    }
+    const metadata = {
+      title,
+      artist: channelName ? [channelName] : [],
+      album: void 0,
+      album_artist: [],
+      art_url: artUrl
+    };
+    const playback = {
+      status,
+      position_ms: Math.floor(ct * 1e3),
+      duration_ms: Math.floor(dur * 1e3),
+      rate: video.playbackRate || 1
+    };
+    const capabilities = {
+      play_pause: true,
+      next: false,
+      previous: false,
+      seek: true,
+      set_position: true,
+      raise: true
+    };
+    return {
+      metadata,
+      playback,
+      capabilities,
+      confidence: "provider",
+      pageUrl: watchUrl || void 0
+    };
+  }
+  async command(cmd) {
+    if (cmd === "play_pause") {
+      const btn = document.querySelector(
+        ".ytp-play-button"
+      );
+      btn?.click();
+      return;
+    }
+  }
+};
+
 // src/content.ts
 var providers = [
   new YouTubeMusicProvider(),
+  new YouTubeProvider(),
   new GenericMediaProvider()
 ];
 var lastSourceId = "";
@@ -166,6 +289,7 @@ var lastTitle = "";
 var lastArtist = "";
 var lastState = "";
 var lastArtUrl = "";
+var lastPageUrl = "";
 var lastSentTime = 0;
 var FORCE_RESEND_INTERVAL = 5e3;
 var browser = detectBrowser();
@@ -226,12 +350,12 @@ function stopPolling() {
 }
 function sendUpdate(result) {
   const sourceId = `${sourceIdBase}:frame`;
-  const url = window.location.href;
+  const url = result.pageUrl || window.location.href;
   const origin = window.location.origin;
   const now = Date.now();
   const titleKey = result.metadata.title ?? "";
   const artistKey = result.metadata.artist.join(",");
-  const unchanged = lastSourceId === sourceId && lastTitle === titleKey && lastArtist === artistKey && lastState === result.playback.status && lastArtUrl === (result.metadata.art_url ?? "");
+  const unchanged = lastSourceId === sourceId && lastTitle === titleKey && lastArtist === artistKey && lastState === result.playback.status && lastArtUrl === (result.metadata.art_url ?? "") && lastPageUrl === url;
   if (unchanged && now - lastSentTime < FORCE_RESEND_INTERVAL) {
     return;
   }
@@ -240,6 +364,7 @@ function sendUpdate(result) {
   lastArtist = artistKey;
   lastState = result.playback.status;
   lastArtUrl = result.metadata.art_url ?? "";
+  lastPageUrl = url;
   lastSentTime = now;
   const urlObj = new URL(url);
   const site = providers.find((p) => p.matches(urlObj))?.constructor.name.replace("Provider", "").replace(/([A-Z])/g, "_$1").toLowerCase().replace(/^_/, "").replace(/^generic$/, "generic") ?? "generic";

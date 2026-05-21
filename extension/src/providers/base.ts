@@ -10,6 +10,8 @@ export interface ProviderResult {
   playback: PlaybackState;
   capabilities: Capabilities;
   confidence: ConfidenceLevel;
+  /** Override the page URL sent in ExtMessage (e.g. mini player watch URL) */
+  pageUrl?: string;
 }
 
 /**

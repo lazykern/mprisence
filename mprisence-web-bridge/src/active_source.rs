@@ -99,16 +99,21 @@ impl SourceRegistry {
 
     fn find_best_playing(&self) -> Option<(&String, &SourceState)> {
         let now = Instant::now();
+        // Loyalty bonus (5s) for the currently active source to prevent flickering
+        // when multiple tabs are playing simultaneously.
+        const LOYALTY_BONUS_MS: u64 = 5000;
+
         self.sources
             .iter()
             .filter(|(_, s)| s.is_playing())
-            .max_by_key(|(_, s)| {
-                // Prefer sources with recent heartbeats and updates
-                let recent = s.last_seen;
-                let staleness = now.duration_since(recent);
-                // Negate staleness so "less stale" = "higher key"
-                // We use saturating_sub to avoid overflow if called from test context with simulated time
-                u64::MAX.saturating_sub(staleness.as_millis() as u64)
+            .max_by_key(|(id, s)| {
+                let staleness = now.duration_since(s.last_seen);
+                let mut effective = staleness.as_millis() as u64;
+                // Give the currently active source a head start
+                if self.active_source_id.as_deref() == Some(*id) {
+                    effective = effective.saturating_sub(LOYALTY_BONUS_MS);
+                }
+                u64::MAX.saturating_sub(effective)
             })
     }
 
@@ -130,6 +135,16 @@ impl SourceRegistry {
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.sources.is_empty()
+    }
+
+    /// Iterate over all non-stale sources.
+    pub fn sources(&self) -> impl Iterator<Item = (&str, &SourceState)> {
+        self.sources.iter().map(|(id, s)| (id.as_str(), s))
+    }
+
+    /// Get a specific source by ID.
+    pub fn get(&self, source_id: &str) -> Option<&SourceState> {
+        self.sources.get(source_id)
     }
 }
 
