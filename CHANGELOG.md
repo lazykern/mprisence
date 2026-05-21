@@ -2,21 +2,21 @@
 
 ## [1.7.0-beta.1] - 2026-05-20 (pre-release)
 
-_This is a pre-release. Not published to crates.io.
-Install from the attached assets, or build from source:_
+This is a pre-release. Not published to crates.io.
+Install from the attached assets, or build from source:
 
 ```sh
 cargo install --git https://github.com/lazykern/mprisence --tag v1.7.0-beta.1
 ```
 
-_Or clone and build manually:_
+Or clone and build manually:
 
 ```sh
 git clone https://github.com/lazykern/mprisence.git
 cd mprisence
 git checkout v1.7.0-beta.1
 cargo build --release  # binary at target/release/mprisence
-```_
+```
 
 ### Changed
 
@@ -57,7 +57,6 @@ cargo build --release  # binary at target/release/mprisence
   > **Tested on:** Arch Linux (KDE Plasma).
 - Infer website from title suffix when `xesam:url` is absent (e.g. `"… | YouTube Music"`).
 - Add `name` field to player and website configs for CLI display.
-- Add `cmus` player support.
 - Surface URL and website match in `mprisence list` detailed view.
 
 ### Fixed
