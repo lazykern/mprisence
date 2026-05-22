@@ -17,6 +17,7 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
 - **Streaming**: YouTube Music, Spotify (disabled by default)
 - **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
 - **Websites (overlays on top of any browser)**: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Spotify Web (disabled by default). When `xesam:url` matches a website's `match_pattern`, the website's icon and Discord application replace the browser's, so Discord shows e.g. *Listening to YouTube Music* instead of *Firefox*. See [Website Overrides](#website-overrides) below.
+- **Web Player Integration** (in development): Bridge browser media players directly into MPRIS via a native messaging host + browser extension, unlocking MPRIS controls (play/pause/seek) and Discord presence for web media players. See [Web Player Integration](#web-player-integration).
 
 Note: MPD frontends (e.g., Euphonica) will also show MPD rich presence in Discord; you can disable the MPD entry in your config (see [Configuration Reference](#configuration-reference)
 
@@ -32,6 +33,55 @@ Feel free to create a new issue if you want your player name+icon to be recogniz
 - **Smart activity type**: “Listening” / “Watching” / etc. based on content (configurable)
 - **Per-player overrides**: app IDs, icons, status, and more
 - **Rich metadata**: access detailed fields (including technical audio info) inside templates
+
+---
+
+## Web Player Integration
+
+> **Status: In development.**
+
+Browser extension + native messaging host (`mprisence-web-bridge`) bridge web media players into MPRIS. The extension reads playback metadata from page DOM (YouTube Music, YouTube, SoundCloud), the bridge publishes per-tab MPRIS players on D-Bus, and mprisence discovers them normally.
+
+### Build & Install
+
+```bash
+# Bridge
+cargo build --release -p mprisence-web-bridge
+./target/release/mprisence-web-bridge install   # registers native messaging manifests
+./target/release/mprisence-web-bridge doctor    # verify setup
+
+# Extension (from extension/)
+npm install
+npm run build:firefox   # or build:chromium
+```
+
+**Load in Firefox:** `about:debugging` → Load Temporary Add-on → `dist/firefox/manifest.json`
+**Load in Chromium:** `chrome://extensions` → Developer mode → Load unpacked → `dist/chromium/`
+
+### Run
+
+1. Start `mprisence` (daemon)
+2. The browser auto-launches the bridge when the extension connects
+3. Visit a supported site and play media
+
+Logs: `tail -f /tmp/bridge-stderr.log`
+
+### Test
+
+```bash
+playerctl -l | grep mprisence_web
+playerctl -p mprisence_web.youtube_music.* play-pause
+playerctl -p mprisence_web.youtube_music.* position 30+
+```
+
+### Uninstall
+
+```bash
+./target/release/mprisence-web-bridge uninstall
+# Then remove the extension from the browser
+```
+
+---
 
 ## Prerequisites
 
