@@ -958,6 +958,166 @@ var TidalProvider = class {
   }
 };
 
+// src/providers/apple-music.ts
+var AppleMusicProvider = class {
+  siteKey = "apple_music";
+  matches(url) {
+    return url.hostname === "music.apple.com";
+  }
+  extract() {
+    const audio = document.querySelector("audio");
+    if (!audio) return null;
+    if (!isFinite(audio.duration) || audio.duration <= 0) return null;
+    const meta = {
+      title: void 0,
+      artist: [],
+      album: void 0,
+      album_artist: [],
+      art_url: void 0,
+      track_id: void 0
+    };
+    let confidence = "dom";
+    let pageUrl;
+    try {
+      const ms = navigator.mediaSession;
+      if (ms?.metadata) {
+        const md = ms.metadata;
+        const hasContent = !!(md.title || md.artist || md.album);
+        if (hasContent) {
+          if (md.title) meta.title = md.title;
+          if (md.artist) meta.artist = [md.artist];
+          if (md.album) meta.album = md.album;
+          if (md.artwork?.length > 0) {
+            const best = md.artwork.reduce((a, b) => {
+              const aSize = parseInt(a.sizes) || 0;
+              const bSize = parseInt(b.sizes) || 0;
+              return aSize > bSize ? a : b;
+            });
+            meta.art_url = this.resolveArtwork(best.src || void 0);
+          }
+          confidence = "provider";
+        }
+      }
+    } catch {
+    }
+    if (!meta.title) {
+      meta.title = document.title.replace(/ — Apple Music$/, "").replace(/^(.+?) — (.+)$/, "$1").trim() || void 0;
+    }
+    if (meta.artist.length === 0) {
+      const titleMatch = document.title.match(/^.+? — (.+?) — Apple Music$/);
+      if (titleMatch) {
+        meta.artist = [titleMatch[1]];
+      }
+    }
+    const urlParams = new URLSearchParams(window.location.search);
+    const trackId = urlParams.get("i");
+    if (trackId) {
+      meta.track_id = `am:${trackId}`;
+      pageUrl = window.location.href.split("?")[0] + `?i=${trackId}`;
+    }
+    if (!meta.title) return null;
+    const isPaused = audio.paused;
+    const status = isPaused ? "paused" : "playing";
+    const playback = {
+      status,
+      position_ms: Math.floor((audio.currentTime || 0) * 1e3),
+      duration_ms: Math.floor(audio.duration * 1e3),
+      rate: audio.playbackRate ?? 1
+    };
+    const playBtn = document.querySelector(
+      'button[aria-label="Play"], button[data-testid="play"]'
+    );
+    const nextBtn = document.querySelector(
+      'button[aria-label="Next"], button[data-testid="next"]'
+    );
+    const prevBtn = document.querySelector(
+      'button[aria-label="Previous"], button[data-testid="previous"]'
+    );
+    const capabilities = {
+      play_pause: !!playBtn || !!audio,
+      next: nextBtn ? !nextBtn.disabled : false,
+      previous: prevBtn ? !prevBtn.disabled : false,
+      seek: true,
+      set_position: true,
+      raise: true
+    };
+    return {
+      metadata: meta,
+      playback,
+      capabilities,
+      confidence,
+      pageUrl
+    };
+  }
+  async command(cmd, positionMs) {
+    switch (cmd) {
+      case "play_pause":
+      case "play":
+      case "pause": {
+        const audio = document.querySelector("audio");
+        if (!audio) break;
+        const isPlaying = !audio.paused;
+        if (cmd === "play" && isPlaying) break;
+        if (cmd === "pause" && !isPlaying) break;
+        if (isPlaying) {
+          audio.pause();
+          this.clickBtn('button[aria-label="Pause"]');
+        } else {
+          await audio.play().catch(() => {
+          });
+          this.clickBtn('button[aria-label="Play"]');
+        }
+        break;
+      }
+      case "next": {
+        const btn = document.querySelector(
+          'button[aria-label="Next"], button[data-testid="next"]'
+        );
+        if (btn && !btn.disabled) btn.click();
+        break;
+      }
+      case "previous": {
+        const btn = document.querySelector(
+          'button[aria-label="Previous"], button[data-testid="previous"]'
+        );
+        if (btn && !btn.disabled) btn.click();
+        break;
+      }
+      case "set_position":
+      case "seek": {
+        if (typeof positionMs === "number" && isFinite(positionMs)) {
+          const audio = document.querySelector("audio");
+          if (audio) {
+            audio.currentTime = Math.max(0, positionMs / 1e3);
+          }
+        }
+        break;
+      }
+    }
+  }
+  // ── Helpers ──────────────────────────────────────────────────
+  clickBtn(selector) {
+    const btn = document.querySelector(selector);
+    if (btn && !btn.disabled) btn.click();
+  }
+  /**
+   * Upgrade Apple Music artwork to higher resolution.
+   *
+   * Apple CDN URL pattern:
+   *   https://is{1-5}-ssl.mzstatic.com/image/thumb/Music{id}/{uuid}/{name}.{w}x{h}bb.{ext}
+   *
+   * MediaSession typically provides small sizes (50x50, 100x100, 200x200).
+   * Upgrade to 600x600bb for good quality without being too large.
+   */
+  resolveArtwork(url) {
+    if (!url) return void 0;
+    if (url.includes("mzstatic.com")) {
+      url = url.replace(/\d+x\d+bb(?=\.[a-z]+)/i, "600x600bb");
+    }
+    return url;
+  }
+};
+
 // src/content.ts
 var providers = [
   new YouTubeMusicProvider(),
@@ -965,6 +1125,7 @@ var providers = [
   new SoundCloudProvider(),
   new BandcampProvider(),
   new TidalProvider(),
+  new AppleMusicProvider(),
   new GenericMediaProvider()
 ];
 var lastSourceId = "";
@@ -1135,7 +1296,7 @@ function sendUpdate(result, force = false) {
     capabilities: result.capabilities,
     confidence: result.confidence,
     canonical_url: canonicalUrl || void 0,
-    _ext_fingerprint: true ? "def50b8-dirty" : void 0
+    _ext_fingerprint: true ? "7f58329-dirty" : void 0
   };
   chrome.runtime.sendMessage(msg).catch(() => {
   });
