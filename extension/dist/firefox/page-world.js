@@ -122,11 +122,15 @@
   let lastYtmVideoId = "";
   let cachedSquareArt = {};
   let pendingFetch = {};
+  let dispatchedVideos = {};
   const INNERTUBE_KEY = "AIzaSyC9XL3ZjB78yOKadE1T3dT4iSfB9l6stUU";
   const INNERTUBE_CLIENT = "WEB_REMIX";
   const INNERTUBE_VER = "1.20250521.00.00";
   async function fetchSquareArt(videoId) {
-    if (cachedSquareArt[videoId]) return cachedSquareArt[videoId];
+    if (cachedSquareArt[videoId]) {
+      dispatchSquareArt(videoId, cachedSquareArt[videoId]);
+      return cachedSquareArt[videoId];
+    }
     if (pendingFetch[videoId]) return null;
     pendingFetch[videoId] = true;
     try {
@@ -157,6 +161,7 @@
         if (best?.url && best.url.indexOf(".googleusercontent.com") > -1) {
           var url = best.url.replace(/=[a-z0-9-]+$/, "=w544-h544-l90-rj");
           cachedSquareArt[videoId] = url;
+          dispatchSquareArt(videoId, url);
           return url;
         }
       }
@@ -167,45 +172,47 @@
       delete pendingFetch[videoId];
     }
   }
-  function checkYtmAndDispatch() {
+  function dispatchSquareArt(videoId, artUrl) {
+    if (dispatchedVideos[videoId]) return;
+    dispatchedVideos[videoId] = true;
+    dispatch({
+      type: "media-state",
+      metadata: {
+        artist: [],
+        art_url: artUrl
+      },
+      playback: {
+        status: "playing",
+        position_ms: 0,
+        duration_ms: 0,
+        rate: 1
+      },
+      capabilities: {
+        play_pause: true,
+        next: false,
+        previous: false,
+        seek: false,
+        set_position: false,
+        raise: true
+      },
+      confidence: "provider"
+    });
+  }
+  function checkYtmVideoId() {
     if (window.location.hostname !== "music.youtube.com") return;
     var params = new URLSearchParams(window.location.search);
     var videoId = params.get("v") || "";
     if (!videoId) return;
     if (videoId !== lastYtmVideoId) {
       lastYtmVideoId = videoId;
+      delete dispatchedVideos[videoId];
       fetchSquareArt(videoId);
-    }
-    var artUrl = cachedSquareArt[videoId];
-    if (artUrl) {
-      dispatch({
-        type: "media-state",
-        metadata: {
-          artist: [],
-          art_url: artUrl
-        },
-        playback: {
-          status: "playing",
-          position_ms: 0,
-          duration_ms: 0,
-          rate: 1
-        },
-        capabilities: {
-          play_pause: true,
-          next: false,
-          previous: false,
-          seek: false,
-          set_position: false,
-          raise: true
-        },
-        confidence: "provider"
-      });
     }
   }
   setInterval(function() {
-    checkYtmAndDispatch();
+    checkYtmVideoId();
   }, 1e3);
   dispatch(collectState());
-  checkYtmAndDispatch();
+  checkYtmVideoId();
 })();
 //# sourceMappingURL=page-world.js.map

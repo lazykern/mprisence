@@ -187,6 +187,7 @@
   let lastYtmVideoId = "";
   let cachedSquareArt: Record<string, string> = {};
   let pendingFetch: Record<string, true> = {};
+  let dispatchedVideos: Record<string, true> = {};
 
   const INNERTUBE_KEY = "AIzaSyC9XL3ZjB78yOKadE1T3dT4iSfB9l6stUU";
   const INNERTUBE_CLIENT = "WEB_REMIX";
@@ -194,7 +195,11 @@
 
   /** Fetch square cover art for a YTM video ID via InnerTube API */
   async function fetchSquareArt(videoId: string): Promise<string | null> {
-    if (cachedSquareArt[videoId]) return cachedSquareArt[videoId];
+    if (cachedSquareArt[videoId]) {
+      // Already fetched — just dispatch the cached art
+      dispatchSquareArt(videoId, cachedSquareArt[videoId]);
+      return cachedSquareArt[videoId];
+    }
     if (pendingFetch[videoId]) return null;
     pendingFetch[videoId] = true;
 
@@ -228,6 +233,8 @@
           // Upgrade to 544px JPEG (good quality, small size)
           var url = best.url.replace(/=[a-z0-9-]+$/, "=w544-h544-l90-rj");
           cachedSquareArt[videoId] = url;
+          // Dispatch immediately when fetch resolves
+          dispatchSquareArt(videoId, url);
           return url;
         }
       }
@@ -239,8 +246,40 @@
     }
   }
 
-  /** YTM: detect video ID changes from page URL, fetch square art */
-  function checkYtmAndDispatch(): void {
+  /** Dispatch square art to content script via CustomEvent */
+  function dispatchSquareArt(videoId: string, artUrl: string): void {
+    // Only dispatch once per video — prevents flapping with the YTM
+    // provider's DOM poll (which keeps sending maxresdefault from the
+    // img element every second).
+    if (dispatchedVideos[videoId]) return;
+    dispatchedVideos[videoId] = true;
+
+    dispatch({
+      type: "media-state",
+      metadata: {
+        artist: [],
+        art_url: artUrl,
+      },
+      playback: {
+        status: "playing",
+        position_ms: 0,
+        duration_ms: 0,
+        rate: 1.0,
+      },
+      capabilities: {
+        play_pause: true,
+        next: false,
+        previous: false,
+        seek: false,
+        set_position: false,
+        raise: true,
+      },
+      confidence: "provider",
+    });
+  }
+
+  /** YTM: detect video ID changes from page URL, trigger fetch */
+  function checkYtmVideoId(): void {
     if (window.location.hostname !== "music.youtube.com") return;
 
     var params = new URLSearchParams(window.location.search);
@@ -249,45 +288,19 @@
 
     if (videoId !== lastYtmVideoId) {
       lastYtmVideoId = videoId;
-      // Kick off InnerTube fetch (async, stores result in cache)
+      delete dispatchedVideos[videoId]; // Allow dispatch for new track
+      // Kick off InnerTube fetch — dispatches on resolve
       fetchSquareArt(videoId);
-    }
-
-    // If we have cached square art for current video, dispatch
-    var artUrl = cachedSquareArt[videoId];
-    if (artUrl) {
-      dispatch({
-        type: "media-state",
-        metadata: {
-          artist: [],
-          art_url: artUrl,
-        },
-        playback: {
-          status: "playing",
-          position_ms: 0,
-          duration_ms: 0,
-          rate: 1.0,
-        },
-        capabilities: {
-          play_pause: true,
-          next: false,
-          previous: false,
-          seek: false,
-          set_position: false,
-          raise: true,
-        },
-        confidence: "provider",
-      });
     }
   }
 
   // Poll for YTM video ID changes (1s interval alongside MediaSession check)
   setInterval(function () {
-    checkYtmAndDispatch();
+    checkYtmVideoId();
   }, 1000);
 
   // Initial dispatch
   dispatch(collectState());
   // Also trigger initial YTM check
-  checkYtmAndDispatch();
+  checkYtmVideoId();
 })();
