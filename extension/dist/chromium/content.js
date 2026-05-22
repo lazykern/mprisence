@@ -111,20 +111,36 @@ var YouTubeMusicProvider = class {
     if (!titleEl && !video) return null;
     const title = titleEl?.textContent?.trim() || document.title.replace(" - YouTube Music", "").trim() || void 0;
     const byline = artistEl?.textContent?.trim() || "";
-    const artist = byline.split("\u2022")[0]?.trim() || "";
+    const parts = byline.split("\u2022").map((s) => s.trim()).filter(Boolean);
+    const artist = parts[0] || "";
+    let album = void 0;
+    if (parts.length >= 3) {
+      const mid = parts[1];
+      if (mid && !/\b(view|like)s?\b/i.test(mid)) {
+        album = mid;
+      }
+    }
+    const thumbSrc = artImg?.src || "";
+    let videoId = (thumbSrc.match(this.videoIdRegex) || [])[1] || "";
+    if (!videoId) {
+      videoId = new URLSearchParams(window.location.search).get("v") || "";
+    }
+    const trackId = videoId ? `ytm:${videoId}` : void 0;
     let artUrl = artImg?.src || void 0;
     if (artUrl && artUrl.startsWith("data:")) artUrl = void 0;
     if (artUrl) {
       if (artUrl.includes("yt3.googleusercontent.com")) {
-        artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
+        if (videoId) {
+          artUrl = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+        } else {
+          artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
+        }
       } else {
         artUrl = artUrl.replace(/\/[a-z]+default\./g, "/maxresdefault.");
       }
+    } else if (videoId) {
+      artUrl = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
     }
-    const thumbSrc = artImg?.src || "";
-    const videoIdMatch = thumbSrc.match(this.videoIdRegex);
-    const videoId = videoIdMatch?.[1] || "";
-    const trackId = videoId ? `ytm:${videoId}` : void 0;
     const isPaused = video?.paused ?? true;
     const progressBar = this.qs("#progress-bar");
     const progressNow = progressBar ? parseFloat(progressBar.getAttribute("aria-valuenow") ?? "") : NaN;
@@ -144,8 +160,8 @@ var YouTubeMusicProvider = class {
     const metadata = {
       title,
       artist: artist ? [artist] : [],
-      album: void 0,
-      // YTM byline has no album info
+      album,
+      // extracted from byline when present
       album_artist: [],
       art_url: artUrl,
       track_id: trackId
@@ -275,14 +291,12 @@ var YouTubeProvider = class {
       const urlParams = new URLSearchParams(window.location.search);
       const vid = urlParams.get("v") || videoId;
       if (vid) {
-        artUrl = `https://i.ytimg.com/vi/${vid}/maxresdefault.jpg`;
+        artUrl = `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
       }
     }
     if (artUrl) {
       if (artUrl.includes("yt3.googleusercontent.com")) {
         artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
-      } else if (artUrl.includes("ytimg.com")) {
-        artUrl = artUrl.replace(/\/[a-z]+default\./g, "/maxresdefault.");
       }
     }
     const status = isPaused ? "paused" : "playing";
@@ -535,11 +549,583 @@ function parseMmSsDuration(text) {
   return 0;
 }
 
+// src/providers/bandcamp.ts
+var BandcampProvider = class {
+  siteKey = "bandcamp";
+  trackIdParam = /track_id=(\d+)/;
+  matches(url) {
+    const host = url.hostname;
+    return host === "bandcamp.com" || host.endsWith(".bandcamp.com");
+  }
+  extract() {
+    const carouselResult = this.extractCarousel();
+    if (carouselResult) return carouselResult;
+    const inlineResult = this.extractInline();
+    if (inlineResult) return inlineResult;
+    return null;
+  }
+  async command(cmd, positionMs) {
+    if (document.querySelector(".carousel-player.show")) {
+      await this.commandCarousel(cmd, positionMs);
+      return;
+    }
+    if (document.querySelector(".inline_player")) {
+      await this.commandInline(cmd, positionMs);
+      return;
+    }
+  }
+  // ── Carousel player (collection pages) ────────────────────────
+  extractCarousel() {
+    const player = this.qs(".carousel-player.show");
+    if (!player) return null;
+    const trackTitleEl = this.qs(
+      ".carousel-player .info-progress .info .title span:last-child"
+    );
+    const trackTitle = trackTitleEl?.textContent?.trim() || "";
+    const albumTitle = this.qsText(
+      ".carousel-player .now-playing .title"
+    );
+    const title = trackTitle || albumTitle;
+    if (!title) return null;
+    const meta = {
+      title,
+      artist: [],
+      album: void 0,
+      album_artist: [],
+      art_url: void 0,
+      track_id: void 0
+    };
+    if (albumTitle && albumTitle !== title) {
+      meta.album = albumTitle;
+    }
+    const artistRaw = this.qsText(
+      ".carousel-player .now-playing .artist"
+    );
+    if (artistRaw) {
+      const cleaned = artistRaw.replace(/^by\s+/i, "").trim();
+      if (cleaned) meta.artist = [cleaned];
+    }
+    meta.art_url = this.resolveArtwork(
+      this.qs(".carousel-player .now-playing img")?.src
+    );
+    const audio = document.querySelector("audio");
+    const srcMatch = audio?.getAttribute("src")?.match(this.trackIdParam);
+    if (srcMatch) meta.track_id = `bc:${srcMatch[1]}`;
+    const isPlaying = audio ? !audio.paused : false;
+    let positionMs = 0;
+    let durationMs = 0;
+    const posDur = this.qs(".carousel-player .pos-dur");
+    if (posDur) {
+      const spans = posDur.querySelectorAll("span");
+      if (spans.length >= 2) {
+        positionMs = parseTimeSpan(spans[0]?.textContent);
+        durationMs = parseTimeSpan(spans[1]?.textContent);
+      }
+    }
+    if (durationMs === 0 && audio && isFinite(audio.duration) && audio.duration > 0) {
+      durationMs = Math.floor(audio.duration * 1e3);
+      positionMs = Math.floor((audio.currentTime || 0) * 1e3);
+    }
+    if (durationMs === 0) return null;
+    const playback = {
+      status: isPlaying ? "playing" : "paused",
+      position_ms: positionMs,
+      duration_ms: durationMs,
+      rate: audio?.playbackRate ?? 1
+    };
+    const prevIcon = this.qs(
+      ".carousel-player .prev-icon"
+    );
+    const nextIcon = this.qs(
+      ".carousel-player .next-icon"
+    );
+    const capabilities = {
+      play_pause: true,
+      next: nextIcon ? !nextIcon.classList.contains("disabled") : false,
+      previous: prevIcon ? !prevIcon.classList.contains("disabled") : false,
+      seek: true,
+      set_position: true,
+      raise: false
+    };
+    return { metadata: meta, playback, capabilities, confidence: "provider" };
+  }
+  async commandCarousel(cmd, positionMs) {
+    switch (cmd) {
+      case "play_pause":
+      case "play":
+      case "pause": {
+        const a = document.querySelector("audio");
+        if (!a) break;
+        const isPlaying = !a.paused;
+        if (cmd === "play" && isPlaying) break;
+        if (cmd === "pause" && !isPlaying) break;
+        if (isPlaying) {
+          a.pause();
+        } else {
+          a.play().catch(() => {
+          });
+        }
+        break;
+      }
+      case "next": {
+        const btn = this.qs(
+          ".carousel-player .next .next-icon"
+        );
+        if (btn && !btn.classList.contains("disabled")) btn.click();
+        break;
+      }
+      case "previous": {
+        const btn = this.qs(
+          ".carousel-player .prev .prev-icon"
+        );
+        if (btn && !btn.classList.contains("disabled")) btn.click();
+        break;
+      }
+      case "set_position":
+      case "seek": {
+        if (typeof positionMs === "number" && isFinite(positionMs)) {
+          const a = document.querySelector("audio");
+          if (a) a.currentTime = Math.max(0, positionMs / 1e3);
+        }
+        break;
+      }
+    }
+  }
+  // ── Inline player (album/track pages) ─────────────────────────
+  extractInline() {
+    const player = this.qs(".inline_player");
+    if (!player) return null;
+    const audio = document.querySelector("audio");
+    if (!audio || !isFinite(audio.duration) || audio.duration <= 0) return null;
+    const meta = {
+      title: void 0,
+      artist: [],
+      album: void 0,
+      album_artist: [],
+      art_url: void 0,
+      track_id: void 0
+    };
+    meta.title = this.qsText(".inline_player .title_link .title") || this.qsText(".inline_player .title") || void 0;
+    if (!meta.title) return null;
+    const pageArtist = this.qsText("#name-section h3 a") || this.qsText("#name-section span") || this.qsText('.detail_item a[href*="/music"]');
+    if (pageArtist) meta.artist = [pageArtist.trim()];
+    meta.album = this.qsText("h2.trackTitle") || this.qsText(".trackTitle") || void 0;
+    meta.art_url = this.resolveArtwork(
+      document.querySelector(
+        "#tralbumArt img, a.popupImage img"
+      )?.src
+    );
+    const srcMatch = audio.getAttribute("src")?.match(this.trackIdParam);
+    if (srcMatch) meta.track_id = `bc:${srcMatch[1]}`;
+    const isPlaying = !audio.paused;
+    let positionMs = Math.floor((audio.currentTime || 0) * 1e3);
+    let durationMs = Math.floor(audio.duration * 1e3);
+    if (positionMs === 0 && durationMs > 0) {
+      const elapsed = this.qsText(".inline_player .time_elapsed");
+      if (elapsed) positionMs = parseTimeSpan(elapsed);
+    }
+    const playback = {
+      status: isPlaying ? "playing" : "paused",
+      position_ms: positionMs,
+      duration_ms: durationMs,
+      rate: audio.playbackRate ?? 1
+    };
+    const capabilities = {
+      play_pause: true,
+      next: !!this.qs(".inline_player .nextbutton"),
+      previous: !!this.qs(".inline_player .prevbutton"),
+      seek: true,
+      set_position: true,
+      raise: false
+    };
+    return { metadata: meta, playback, capabilities, confidence: "provider" };
+  }
+  async commandInline(cmd, positionMs) {
+    switch (cmd) {
+      case "play_pause":
+      case "play":
+      case "pause": {
+        const a = document.querySelector("audio");
+        if (!a) break;
+        const isPlaying = !a.paused;
+        if (cmd === "play" && isPlaying) break;
+        if (cmd === "pause" && !isPlaying) break;
+        if (isPlaying) {
+          a.pause();
+        } else {
+          a.play().catch(() => {
+          });
+        }
+        break;
+      }
+      case "next": {
+        const btn = this.qs(".inline_player .nextbutton");
+        btn?.click();
+        break;
+      }
+      case "previous": {
+        const btn = this.qs(".inline_player .prevbutton");
+        btn?.click();
+        break;
+      }
+      case "set_position":
+      case "seek": {
+        if (typeof positionMs === "number" && isFinite(positionMs)) {
+          const a = document.querySelector("audio");
+          if (a) a.currentTime = Math.max(0, positionMs / 1e3);
+        }
+        break;
+      }
+    }
+  }
+  // ── Helpers ──────────────────────────────────────────────────
+  qs(selector) {
+    return document.querySelector(selector);
+  }
+  qsText(selector) {
+    return document.querySelector(selector)?.textContent?.trim() || "";
+  }
+  /**
+   * Upgrade Bandcamp artwork to highest available resolution.
+   * _16 = 700×700, _10 = 1200×1200, _2 = 350×350
+   */
+  resolveArtwork(url) {
+    if (!url) return void 0;
+    if (url.includes("bcbits.com")) {
+      url = url.replace(/_16\./, "_10.");
+      url = url.replace(/_2\./, "_10.");
+    }
+    return url;
+  }
+};
+function parseTimeSpan(text) {
+  if (!text) return 0;
+  const parts = text.trim().split(":");
+  if (parts.length === 2) {
+    const mins = parseInt(parts[0], 10) || 0;
+    const secs = parseInt(parts[1], 10) || 0;
+    return (mins * 60 + secs) * 1e3;
+  }
+  if (parts.length === 3) {
+    const hrs = parseInt(parts[0], 10) || 0;
+    const mins = parseInt(parts[1], 10) || 0;
+    const secs = parseInt(parts[2], 10) || 0;
+    return (hrs * 3600 + mins * 60 + secs) * 1e3;
+  }
+  return 0;
+}
+
+// src/providers/tidal.ts
+var TidalProvider = class {
+  siteKey = "tidal";
+  matches(url) {
+    return url.hostname === "tidal.com" || url.hostname.endsWith(".tidal.com");
+  }
+  extract() {
+    const video = document.querySelector("video");
+    if (!video) return null;
+    if (!isFinite(video.duration) || video.duration <= 0) return null;
+    const meta = {
+      title: void 0,
+      artist: [],
+      album: void 0,
+      album_artist: [],
+      art_url: void 0,
+      track_id: void 0
+    };
+    let confidence = "dom";
+    try {
+      const ms = navigator.mediaSession;
+      if (ms?.metadata) {
+        const md = ms.metadata;
+        if (md.title) meta.title = md.title;
+        if (md.artist) meta.artist = [md.artist];
+        if (md.album) meta.album = md.album;
+        if (md.artwork?.length > 0) {
+          const best = md.artwork.reduce((a, b) => {
+            const aSize = parseInt(a.sizes) || 0;
+            const bSize = parseInt(b.sizes) || 0;
+            return aSize > bSize ? a : b;
+          });
+          meta.art_url = this.resolveArtwork(best.src || void 0);
+        }
+        confidence = "provider";
+      }
+    } catch {
+    }
+    if (!meta.title) {
+      meta.title = document.title.replace(/ \| TIDAL$/, "").trim() || void 0;
+    }
+    if (!meta.title) return null;
+    const isPaused = video.paused;
+    const status = isPaused ? "paused" : "playing";
+    let positionMs = Math.floor((video.currentTime || 0) * 1e3);
+    let durationMs = Math.floor(video.duration * 1e3);
+    const progressSlider = document.querySelector(
+      '[role="slider"][aria-label="Progress bar"]'
+    );
+    if (progressSlider) {
+      const now = parseFloat(progressSlider.getAttribute("aria-valuenow") ?? "");
+      const max = parseFloat(progressSlider.getAttribute("aria-valuemax") ?? "");
+      if (isFinite(now) && isFinite(max) && max > 0) {
+        positionMs = Math.floor(now * 1e3);
+        durationMs = Math.floor(max * 1e3);
+      }
+    }
+    const playback = {
+      status,
+      position_ms: positionMs,
+      duration_ms: durationMs,
+      rate: video.playbackRate ?? 1
+    };
+    const nextBtn = document.querySelector(
+      'button[aria-label="Next"]'
+    );
+    const prevBtn = document.querySelector(
+      'button[aria-label="Previous"]'
+    );
+    const capabilities = {
+      play_pause: true,
+      next: nextBtn ? !nextBtn.disabled : false,
+      previous: prevBtn ? !prevBtn.disabled : false,
+      seek: !!progressSlider,
+      set_position: !!progressSlider,
+      raise: false
+    };
+    return {
+      metadata: meta,
+      playback,
+      capabilities,
+      confidence
+    };
+  }
+  async command(cmd, positionMs) {
+    switch (cmd) {
+      case "play_pause":
+      case "play":
+      case "pause": {
+        const video = document.querySelector("video");
+        if (!video) break;
+        const isPlaying = !video.paused;
+        if (cmd === "play" && isPlaying) break;
+        if (cmd === "pause" && !isPlaying) break;
+        if (isPlaying) {
+          video.pause();
+        } else {
+          video.play().catch(() => {
+          });
+        }
+        break;
+      }
+      case "next": {
+        const btn = document.querySelector(
+          'button[aria-label="Next"]'
+        );
+        if (btn && !btn.disabled) btn.click();
+        break;
+      }
+      case "previous": {
+        const btn = document.querySelector(
+          'button[aria-label="Previous"]'
+        );
+        if (btn && !btn.disabled) btn.click();
+        break;
+      }
+      case "set_position":
+      case "seek": {
+        if (typeof positionMs === "number" && isFinite(positionMs)) {
+          const video = document.querySelector("video");
+          if (video) {
+            video.currentTime = Math.max(0, positionMs / 1e3);
+          }
+        }
+        break;
+      }
+    }
+  }
+  // ── Helpers ──────────────────────────────────────────────────
+  /**
+   * Upgrade Tidal CDN artwork to higher resolution.
+   * Pattern: resources.tidal.com/images/<uuid>/<size>.jpg
+   * Available sizes: 80x80, 320x320, 640x640, 1080x1080, 1280x1280
+   */
+  resolveArtwork(url) {
+    if (!url) return void 0;
+    if (url.includes("resources.tidal.com")) {
+      url = url.replace(/\/\d+x\d+\./g, "/1280x1280.");
+    }
+    return url;
+  }
+};
+
+// src/providers/apple-music.ts
+var AppleMusicProvider = class {
+  siteKey = "apple_music";
+  matches(url) {
+    return url.hostname === "music.apple.com";
+  }
+  extract() {
+    const audio = document.querySelector("audio");
+    if (!audio) return null;
+    if (!isFinite(audio.duration) || audio.duration <= 0) return null;
+    const meta = {
+      title: void 0,
+      artist: [],
+      album: void 0,
+      album_artist: [],
+      art_url: void 0,
+      track_id: void 0
+    };
+    let confidence = "dom";
+    let pageUrl;
+    try {
+      const ms = navigator.mediaSession;
+      if (ms?.metadata) {
+        const md = ms.metadata;
+        const hasContent = !!(md.title || md.artist || md.album);
+        if (hasContent) {
+          if (md.title) meta.title = md.title;
+          if (md.artist) meta.artist = [md.artist];
+          if (md.album) meta.album = md.album;
+          if (md.artwork?.length > 0) {
+            const best = md.artwork.reduce((a, b) => {
+              const aSize = parseInt(a.sizes) || 0;
+              const bSize = parseInt(b.sizes) || 0;
+              return aSize > bSize ? a : b;
+            });
+            meta.art_url = this.resolveArtwork(best.src || void 0);
+          }
+          confidence = "provider";
+        }
+      }
+    } catch {
+    }
+    if (!meta.title) {
+      meta.title = document.title.replace(/ — Apple Music$/, "").replace(/^(.+?) — (.+)$/, "$1").trim() || void 0;
+    }
+    if (meta.artist.length === 0) {
+      const titleMatch = document.title.match(/^.+? — (.+?) — Apple Music$/);
+      if (titleMatch) {
+        meta.artist = [titleMatch[1]];
+      }
+    }
+    const urlParams = new URLSearchParams(window.location.search);
+    const trackId = urlParams.get("i");
+    if (trackId) {
+      meta.track_id = `am:${trackId}`;
+      pageUrl = window.location.href.split("?")[0] + `?i=${trackId}`;
+    }
+    if (!meta.title) return null;
+    const isPaused = audio.paused;
+    const status = isPaused ? "paused" : "playing";
+    const playback = {
+      status,
+      position_ms: Math.floor((audio.currentTime || 0) * 1e3),
+      duration_ms: Math.floor(audio.duration * 1e3),
+      rate: audio.playbackRate ?? 1
+    };
+    const playBtn = document.querySelector(
+      'button[aria-label="Play"], button[data-testid="play"]'
+    );
+    const nextBtn = document.querySelector(
+      'button[aria-label="Next"], button[data-testid="next"]'
+    );
+    const prevBtn = document.querySelector(
+      'button[aria-label="Previous"], button[data-testid="previous"]'
+    );
+    const capabilities = {
+      play_pause: !!playBtn || !!audio,
+      next: nextBtn ? !nextBtn.disabled : false,
+      previous: prevBtn ? !prevBtn.disabled : false,
+      seek: true,
+      set_position: true,
+      raise: true
+    };
+    return {
+      metadata: meta,
+      playback,
+      capabilities,
+      confidence,
+      pageUrl
+    };
+  }
+  async command(cmd, positionMs) {
+    switch (cmd) {
+      case "play_pause":
+      case "play":
+      case "pause": {
+        const audio = document.querySelector("audio");
+        if (!audio) break;
+        const isPlaying = !audio.paused;
+        if (cmd === "play" && isPlaying) break;
+        if (cmd === "pause" && !isPlaying) break;
+        if (isPlaying) {
+          audio.pause();
+          this.clickBtn('button[aria-label="Pause"]');
+        } else {
+          await audio.play().catch(() => {
+          });
+          this.clickBtn('button[aria-label="Play"]');
+        }
+        break;
+      }
+      case "next": {
+        const btn = document.querySelector(
+          'button[aria-label="Next"], button[data-testid="next"]'
+        );
+        if (btn && !btn.disabled) btn.click();
+        break;
+      }
+      case "previous": {
+        const btn = document.querySelector(
+          'button[aria-label="Previous"], button[data-testid="previous"]'
+        );
+        if (btn && !btn.disabled) btn.click();
+        break;
+      }
+      case "set_position":
+      case "seek": {
+        if (typeof positionMs === "number" && isFinite(positionMs)) {
+          const audio = document.querySelector("audio");
+          if (audio) {
+            audio.currentTime = Math.max(0, positionMs / 1e3);
+          }
+        }
+        break;
+      }
+    }
+  }
+  // ── Helpers ──────────────────────────────────────────────────
+  clickBtn(selector) {
+    const btn = document.querySelector(selector);
+    if (btn && !btn.disabled) btn.click();
+  }
+  /**
+   * Upgrade Apple Music artwork to higher resolution.
+   *
+   * Apple CDN URL pattern:
+   *   https://is{1-5}-ssl.mzstatic.com/image/thumb/Music{id}/{uuid}/{name}.{w}x{h}bb.{ext}
+   *
+   * MediaSession typically provides small sizes (50x50, 100x100, 200x200).
+   * Upgrade to 600x600bb for good quality without being too large.
+   */
+  resolveArtwork(url) {
+    if (!url) return void 0;
+    if (url.includes("mzstatic.com")) {
+      url = url.replace(/\d+x\d+bb(?=\.[a-z]+)/i, "600x600bb");
+    }
+    return url;
+  }
+};
+
 // src/content.ts
 var providers = [
   new YouTubeMusicProvider(),
   new YouTubeProvider(),
   new SoundCloudProvider(),
+  new BandcampProvider(),
+  new TidalProvider(),
+  new AppleMusicProvider(),
   new GenericMediaProvider()
 ];
 var lastSourceId = "";
@@ -579,6 +1165,14 @@ window.addEventListener("mprisence-media-state", ((event) => {
     };
     const pwTitle = result.metadata.title ?? "";
     const pwArtist = result.metadata.artist.join(",");
+    const pwArtUrl = result.metadata.art_url ?? "";
+    const isArtOnly = !pwTitle && !pwArtist && !!pwArtUrl && lastProviderMetadata !== null;
+    if (isArtOnly) {
+      result.metadata = {
+        ...lastProviderMetadata,
+        art_url: pwArtUrl
+      };
+    }
     const isNewTrack = lastPageWorldMeta !== null && (pwTitle !== lastPageWorldMeta.title || pwArtist !== lastPageWorldMeta.artist);
     if (!isNewTrack) {
       if (lastPageWorldMeta && !result.metadata.track_id) {
@@ -603,6 +1197,7 @@ window.addEventListener("mprisence-media-state", ((event) => {
 }));
 var lastPageWorldMeta = null;
 var lastCanonicalUrlPageWorld = "";
+var lastProviderMetadata = null;
 function extractFromProviders() {
   const url = new URL(window.location.href);
   for (const provider of providers) {
@@ -670,6 +1265,9 @@ function sendUpdate(result, force = false) {
   if (!force && unchanged) {
     return;
   }
+  if (titleKey) {
+    lastProviderMetadata = result.metadata;
+  }
   lastSourceId = sourceId;
   lastTitle = titleKey;
   lastArtist = artistKey;
@@ -698,7 +1296,7 @@ function sendUpdate(result, force = false) {
     capabilities: result.capabilities,
     confidence: result.confidence,
     canonical_url: canonicalUrl || void 0,
-    _ext_fingerprint: true ? "e3520d1-dirty" : void 0
+    _ext_fingerprint: true ? "d09ad49-dirty" : void 0
   };
   chrome.runtime.sendMessage(msg).catch(() => {
   });

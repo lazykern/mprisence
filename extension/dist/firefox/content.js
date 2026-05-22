@@ -1296,7 +1296,7 @@ function sendUpdate(result, force = false) {
     capabilities: result.capabilities,
     confidence: result.confidence,
     canonical_url: canonicalUrl || void 0,
-    _ext_fingerprint: true ? "7f58329-dirty" : void 0
+    _ext_fingerprint: true ? "d09ad49-dirty" : void 0
   };
   chrome.runtime.sendMessage(msg).catch(() => {
   });

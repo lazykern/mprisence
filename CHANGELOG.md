@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.7.0-beta.2] - 2026-05-23 (pre-release)
+
+This is a pre-release. Not published to crates.io.
+Install from the attached assets, or build from source:
+
+```sh
+cargo install --git https://github.com/lazykern/mprisence --tag v1.7.0-beta.2
+```
+
+Or clone and build manually:
+
+```sh
+git clone https://github.com/lazykern/mprisence.git
+cd mprisence
+git checkout v1.7.0-beta.2
+cargo build --release  # binary at target/release/mprisence
+```
+
+### Added
+
+- **Apple Music provider**: listen to Apple Music in browser and get Discord presence with album art
+- **Bandcamp provider**: track detection for Bandcamp album/artist pages and inline player
+- **Tidal provider**: Tidal web player integration
+- **Config wizard**: interactive CLI setup (`mprisence config wizard`)
+- **Website overrides**: rich icon + app ID per website (YTM, Apple Music, SoundCloud, etc.) without browser MPRIS needing to be active
+- **Cover art improvements**: InnerTube API for square cover art thumbnails, bar-free YTM thumbnails, anti-flapping logic for art_url
+- **Extension fingerprint**: stable source ID per extension instance so bridge can track tabs across reloads
+
+### Changed
+
+- Default config removes Spotify web (disabled by default to reduce noise)
+
+### Fixed
+
+- YTM art_url flapping between square and maxres thumbnails — now stable
+- YTM position > duration bug: clamp position to duration in bridge
+- Bridge D-Bus run task abort on player remove
+- YouTube cover art 404s handled gracefully
+- Extension background runtime error on tab-close cleanup
+- Bridge player staying in Discord after tab close (stale-connection guard)
+- URL flapping between canonical and playlist-param URLs
+- Bridge D-Bus name collision when tab IDs start with digit
+- Discovery: exclude bridge players from URL merge, keep native browser tabs unbridge
+
 ## [1.7.0-beta.1] - 2026-05-20 (pre-release)
 
 This is a pre-release. Not published to crates.io.
@@ -67,6 +111,7 @@ cargo build --release  # binary at target/release/mprisence
 - Skip MusicBrainz lookup when artist metadata is empty.
 - Reject non-URL responses from catbox/litterbox uploads.
 
+[1.7.0-beta.2]: https://github.com/lazykern/mprisence/releases/tag/v1.7.0-beta.2
 [1.7.0-beta.1]: https://github.com/lazykern/mprisence/releases/tag/v1.7.0-beta.1
 
 ## [1.6.0](https://github.com/lazykern/mprisence/compare/v1.5.2...v1.6.0)
