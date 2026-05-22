@@ -82,8 +82,16 @@ export class YouTubeMusicProvider implements Provider {
 
     // ── Playback state via video element ───────────────────────
     const currentSec = video?.currentTime || 0;
-    const totalSec = video?.duration || 0;
     const isPaused = video?.paused ?? true;
+
+    // Video element on search pages spans entire autoplay queue;
+    // use the progress-bar aria-valuemax for the real track duration.
+    // Falls back to video.duration on /watch pages where it's accurate.
+    const progressBar = this.qs<HTMLElement>("#progress-bar");
+    const progressMax = progressBar ? parseFloat(progressBar.getAttribute("aria-valuemax") ?? "") : NaN;
+    const totalSec = (isFinite(progressMax) && progressMax > 0)
+      ? progressMax
+      : (video?.duration || 0);
 
     // If video exists but duration is invalid (NaN/0/Infinity), skip -
     // metadata hasn't loaded yet. We'll retry on next poll.
