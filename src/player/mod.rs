@@ -475,7 +475,6 @@ struct GroupSnapshot {
     norm_id: SmolStr,
     max_richness: u8,
     urls: Vec<String>,
-    is_bridge: bool,
 }
 
 /// Returns the scheme+host origin of a URL, e.g. `"https://www.youtube.com"`.
@@ -498,28 +497,27 @@ fn is_origin_only(url_str: &str) -> bool {
 }
 
 /// Pure: given a per-group snapshot, return the (from, into) merges to apply.
-/// Iteration order is deterministic — exact URL matches prefer bridge groups,
-/// then richer metadata, then norm_id asc — so the merge target is stable
-/// across ticks regardless of the caller's `HashMap` iteration order.
+/// Iteration order is deterministic — richer metadata first, then norm_id asc —
+/// so the merge target is stable across ticks regardless of `HashMap` order.
 ///
-/// In addition to exact URL matches, this also merges same-kind groups where
-/// one reports only an origin-level URL (e.g. `https://www.youtube.com/`) and
-/// another reports a specific URL on the same origin. This handles plasma-
-/// browser-integration without collapsing bridge/native players that merely
-/// share an origin.
+/// In addition to exact URL matches, this merges groups where one reports only
+/// an origin-level URL (e.g. `https://www.youtube.com/`) and another reports a
+/// specific URL on the same origin (plasma-browser-integration behaviour).
+///
+/// Bridge players are excluded by the caller, so this only ever sees native
+/// players.
 fn compute_url_merges(groups: &[GroupSnapshot]) -> Vec<(SmolStr, SmolStr)> {
     let mut sorted: Vec<&GroupSnapshot> = groups.iter().collect();
     sorted.sort_by(|a, b| {
-        b.is_bridge
-            .cmp(&a.is_bridge)
-            .then_with(|| b.max_richness.cmp(&a.max_richness))
+        b.max_richness
+            .cmp(&a.max_richness)
             .then_with(|| a.norm_id.cmp(&b.norm_id))
     });
 
-    let mut url_to_norm: HashMap<String, (SmolStr, bool)> = HashMap::new();
-    // Maps `"https://example.com"` → (norm_id, is_bridge) for groups registered
-    // via an origin-only URL. Only populated by origin-only entries.
-    let mut origin_to_norm: HashMap<String, (SmolStr, bool)> = HashMap::new();
+    let mut url_to_norm: HashMap<String, SmolStr> = HashMap::new();
+    // Maps `"https://example.com"` -> norm_id for groups registered via an
+    // origin-only URL. Only populated by origin-only entries.
+    let mut origin_to_norm: HashMap<String, SmolStr> = HashMap::new();
     let mut merges: Vec<(SmolStr, SmolStr)> = Vec::new();
 
     'group: for group in sorted {
@@ -528,9 +526,8 @@ fn compute_url_merges(groups: &[GroupSnapshot]) -> Vec<(SmolStr, SmolStr)> {
                 continue;
             }
 
-            // Exact URL match. Sorting picks the preferred target first
-            // (bridge > richer metadata > stable name).
-            if let Some((existing, _existing_is_bridge)) = url_to_norm.get(url.as_str()) {
+            // Exact URL match. Sorting picks the preferred target first.
+            if let Some(existing) = url_to_norm.get(url.as_str()) {
                 if existing != &group.norm_id {
                     merges.push((group.norm_id.clone(), existing.clone()));
                     break 'group;
@@ -542,48 +539,44 @@ fn compute_url_merges(groups: &[GroupSnapshot]) -> Vec<(SmolStr, SmolStr)> {
 
             if is_origin_only(url) {
                 if let Some(ref origin_str) = origin {
-                    // Another same-kind origin-only group already claimed this origin.
-                    if let Some((existing, existing_is_bridge)) =
-                        origin_to_norm.get(origin_str.as_str())
-                    {
-                        if *existing_is_bridge == group.is_bridge && existing != &group.norm_id {
+                    // Another origin-only group already claimed this origin.
+                    if let Some(existing) = origin_to_norm.get(origin_str.as_str()) {
+                        if existing != &group.norm_id {
                             merges.push((group.norm_id.clone(), existing.clone()));
                             break 'group;
                         }
                     }
-                    // A richer same-kind group with a specific URL on this origin was
+                    // A richer group with a specific URL on this origin was
                     // registered before us — merge into it.
                     if let Some(existing) = url_to_norm
                         .iter()
-                        .find(|(k, (v, existing_is_bridge))| {
-                            *existing_is_bridge == group.is_bridge
-                                && *v != group.norm_id
+                        .find(|(k, v)| {
+                            *v != &group.norm_id
                                 && origin_of(k).as_deref() == Some(origin_str)
                         })
-                        .map(|(_, (v, _))| v.clone())
+                        .map(|(_, v)| v.clone())
                     {
                         merges.push((group.norm_id.clone(), existing));
                         break 'group;
                     }
                 }
                 // No match: register in both maps.
-                url_to_norm.insert(url.clone(), (group.norm_id.clone(), group.is_bridge));
+                url_to_norm.insert(url.clone(), group.norm_id.clone());
                 if let Some(origin_str) = origin {
-                    origin_to_norm.insert(origin_str, (group.norm_id.clone(), group.is_bridge));
+                    origin_to_norm.insert(origin_str, group.norm_id.clone());
                 }
             } else {
-                // Specific URL: check if a same-kind origin-only group already claimed this origin.
+                // Specific URL: check if an origin-only group already claimed
+                // this origin.
                 if let Some(ref origin_str) = origin {
-                    if let Some((existing, existing_is_bridge)) =
-                        origin_to_norm.get(origin_str.as_str())
-                    {
-                        if *existing_is_bridge == group.is_bridge && existing != &group.norm_id {
+                    if let Some(existing) = origin_to_norm.get(origin_str.as_str()) {
+                        if existing != &group.norm_id {
                             merges.push((group.norm_id.clone(), existing.clone()));
                             break 'group;
                         }
                     }
                 }
-                url_to_norm.insert(url.clone(), (group.norm_id.clone(), group.is_bridge));
+                url_to_norm.insert(url.clone(), group.norm_id.clone());
             }
         }
     }
@@ -593,11 +586,9 @@ fn compute_url_merges(groups: &[GroupSnapshot]) -> Vec<(SmolStr, SmolStr)> {
 
 /// Merge identity groups that share the same xesam:url.
 ///
-/// Handles cases like plasma-browser-integration and the native browser MPRIS
-/// endpoint both exposing the same tab. The merge target is the bridge group
-/// when bridge/native exact URLs match, otherwise the richest group (with
-/// norm_id alphabetical as final tiebreaker), so the choice is stable across
-/// discovery ticks even though `HashMap` iteration order is not.
+/// Handles plasma-browser-integration and the native browser MPRIS endpoint
+/// both exposing the same tab. Bridge players are one-per-tab and are never
+/// merged — they pass through untouched.
 pub fn merge_url_duplicates(
     mut candidates: HashMap<SmolStr, Vec<Player>>,
 ) -> HashMap<SmolStr, Vec<Player>> {
@@ -607,6 +598,11 @@ pub fn merge_url_duplicates(
 
     let snapshots: Vec<GroupSnapshot> = candidates
         .iter()
+        .filter(|(_, players)| {
+            !players
+                .iter()
+                .any(|p| is_mprisence_web_bridge_bus(p.bus_name()))
+        })
         .map(|(norm_id, players)| {
             let max_richness = players.iter().map(metadata_richness).max().unwrap_or(0);
             let urls = players
@@ -618,14 +614,10 @@ pub fn merge_url_duplicates(
                         .unwrap_or_default()
                 })
                 .collect();
-            let is_bridge = players
-                .iter()
-                .any(|p| is_mprisence_web_bridge_bus(p.bus_name()));
             GroupSnapshot {
                 norm_id: norm_id.clone(),
                 max_richness,
                 urls,
-                is_bridge,
             }
         })
         .collect();
@@ -634,7 +626,6 @@ pub fn merge_url_duplicates(
         if from == into {
             continue;
         }
-
         if let Some(players) = candidates.remove(&from) {
             trace!(
                 "Merging duplicate player group '{}' into '{}' (same URL or origin)",
@@ -793,16 +784,6 @@ mod tests {
             norm_id: SmolStr::new(norm_id),
             max_richness: richness,
             urls: urls.iter().map(|s| (*s).to_string()).collect(),
-            is_bridge: false,
-        }
-    }
-
-    fn bridge_snap(norm_id: &str, richness: u8, urls: &[&str]) -> GroupSnapshot {
-        GroupSnapshot {
-            norm_id: SmolStr::new(norm_id),
-            max_richness: richness,
-            urls: urls.iter().map(|s| (*s).to_string()).collect(),
-            is_bridge: true,
         }
     }
 
@@ -897,29 +878,6 @@ mod tests {
         let a = snap("a", 5, &["https://www.youtube.com/watch?v=aaa"]);
         let b = snap("b", 5, &["https://www.youtube.com/watch?v=bbb"]);
         assert!(compute_url_merges(&[a, b]).is_empty());
-    }
-
-    #[test]
-    fn exact_bridge_native_url_merges_into_bridge_even_when_native_is_richer() {
-        let bridge = bridge_snap("youtube_music", 3, &["https://music.youtube.com/watch?v=abc"]);
-        let native = snap("mozilla_zen", 8, &["https://music.youtube.com/watch?v=abc"]);
-
-        let order1 = compute_url_merges(&[bridge.clone(), native.clone()]);
-        let order2 = compute_url_merges(&[native, bridge]);
-
-        assert_eq!(order1, order2);
-        assert_eq!(order1.len(), 1);
-        assert_eq!(order1[0].0.as_str(), "mozilla_zen");
-        assert_eq!(order1[0].1.as_str(), "youtube_music");
-    }
-
-    #[test]
-    fn bridge_native_origin_only_same_origin_does_not_merge() {
-        let bridge = bridge_snap("youtube_music", 8, &["https://music.youtube.com/watch?v=abc"]);
-        let native = snap("mozilla_zen", 3, &["https://music.youtube.com/"]);
-
-        assert!(compute_url_merges(&[bridge.clone(), native.clone()]).is_empty());
-        assert!(compute_url_merges(&[native, bridge]).is_empty());
     }
 
     fn bucket(norm_id: &str, buses: &[&str], winner: &str) -> BucketSummary {
