@@ -70,7 +70,17 @@ enum BridgeCommand {
 /// Single-threaded tokio runtime — mpris_server::Player returns !Send
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    env_logger::init();
+    // Log to /tmp/bridge-stderr.log so we can debug multi-player issues.
+    // Firefox discards native host stderr.
+    let _ = std::fs::create_dir_all("/tmp");
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/bridge-stderr.log")
+        .expect("open bridge log file");
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"))
+        .target(env_logger::Target::Pipe(Box::new(log_file)))
+        .init();
 
     let cli = Cli::parse();
 
@@ -222,9 +232,20 @@ async fn handle_extension_message(
             registry.upsert(state);
 
             // Ensure this source has an MPRIS player, then publish.
-            if let Some(publisher) = players.ensure_player(&source_id, &site_for_player, cmd_tx).await {
-                if let Some(state) = registry.get(&source_id) {
-                    publisher.publish(Some(state)).await;
+            let had_player_before = players.has_player(&source_id);
+            let current_count = players.player_count();
+            debug!("ensuring player for {source_id} site={site_for_player} (had={had_player_before} total_players={current_count})");
+            match players.ensure_player(&source_id, &site_for_player, cmd_tx).await {
+                Some(publisher) => {
+                    if !had_player_before {
+                        info!("PlayerManager: new player created for {source_id}, bus={}", publisher.bus_name());
+                    }
+                    if let Some(state) = registry.get(&source_id) {
+                        publisher.publish(Some(state)).await;
+                    }
+                }
+                None => {
+                    warn!("No MPRIS player for {source_id} (ensure_player returned None)");
                 }
             }
         }

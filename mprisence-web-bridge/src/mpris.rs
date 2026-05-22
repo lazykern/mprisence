@@ -117,6 +117,7 @@ impl PlayerManager {
             Entry::Occupied(entry) => Some(&entry.into_mut().publisher),
             Entry::Vacant(entry) => {
                 let suffix = make_player_suffix(source_id, site);
+                debug!("PlayerManager: creating new player for {source_id} (suffix={suffix})");
                 match MprisPublisher::new(&suffix, source_id, cmd_tx.clone()).await {
                     Ok(publisher) => {
                         let run_task = publisher.run_task();
@@ -125,7 +126,7 @@ impl PlayerManager {
                         Some(&entry.insert(PlayerEntry { publisher, _handle: handle }).publisher)
                     }
                     Err(e) => {
-                        warn!("Failed to create MPRIS player for {source_id}: {e}");
+                        warn!("Failed to create MPRIS player for {source_id} (suffix={suffix}): {e}");
                         None
                     }
                 }
@@ -138,6 +139,18 @@ impl PlayerManager {
         if self.players.remove(source_id).is_some() {
             debug!("Removed MPRIS player for {source_id}");
         }
+    }
+
+    pub fn player_count(&self) -> usize {
+        self.players.len()
+    }
+
+    pub fn has_player(&self, source_id: &str) -> bool {
+        self.players.contains_key(source_id)
+    }
+
+    pub fn list_bus_names(&self) -> Vec<String> {
+        self.players.values().map(|e| e.publisher.bus_name().to_string()).collect()
     }
 }
 
@@ -155,7 +168,9 @@ fn simple_hash(input: &str) -> String {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     input.hash(&mut hasher);
-    format!("{:08x}", hasher.finish())
+    // D-Bus well-known name elements must not start with a digit.
+    // Prefix with 'p' so the hash always starts with a letter.
+    format!("p{:016x}", hasher.finish())
 }
 
 /// Returns the MPRIS bus suffix for a bridge player.
@@ -193,6 +208,7 @@ impl MprisPublisher {
         let full_suffix = format!("mprisence_{bus_name_suffix}");
         let bus_name = format!("org.mpris.MediaPlayer2.{full_suffix}");
 
+        debug!("MprisPublisher::new: building player for {source_id} with suffix={full_suffix}");
         let player = Player::builder(&full_suffix)
             .can_play(true)
             .can_pause(true)
