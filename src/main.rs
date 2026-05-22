@@ -211,28 +211,8 @@ impl Mprisence {
                 .config
                 .get_player_config(&id.identity, &id.player_bus_name);
             if player_config.ignore {
-                // Before skipping, check if a website override un-ignores this player
-                // (e.g. SoundCloud in a browser that is ignored by default).
-                let meta = player.get_metadata().ok();
-                let url = meta.as_ref().and_then(|m| m.url().map(|s| s.to_string()));
-                let title = meta.as_ref().and_then(|m| m.title().map(|s| s.to_string()));
-                let (effective_config, _suffix) =
-                    self.config.get_player_config_with_title_fallback(
-                        &id.identity,
-                        &id.player_bus_name,
-                        url.as_deref(),
-                        title.as_deref(),
-                    );
-                if effective_config.ignore {
-                    trace!("Skipping ignored player: {}", id.identity);
-                    continue;
-                }
-                trace!(
-                    "Player '{}' ignored at player level but un-ignored by website override (url: {:?}, title: {:?})",
-                    id.identity,
-                    url,
-                    title,
-                );
+                trace!("Skipping ignored player: {}", id.identity);
+                continue;
             }
 
             // Bridge players are one-per-tab: their canonical bus name
