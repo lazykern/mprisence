@@ -159,7 +159,7 @@ function onContentMessage(
       source_id: sourceIdForSender(msg.source_id, sender),
     };
     console.log(
-      `[mprisence] ← Update from tab ${tabId}: source=${bridgeMsg.source_id} site=${bridgeMsg.site} "${bridgeMsg.metadata.title ?? "?"}" status=${bridgeMsg.playback.status} pos=${bridgeMsg.playback.position_ms} dur=${bridgeMsg.playback.duration_ms} ext=${EXT_FINGERPRINT}`
+      `[mprisence] ← Update from tab ${tabId}: source=${bridgeMsg.source_id} site=${bridgeMsg.site} "${bridgeMsg.metadata.title ?? "?"}" status=${bridgeMsg.playback.status} pos=${bridgeMsg.playback.position_ms} dur=${bridgeMsg.playback.duration_ms}`
     );
     if (tabId !== undefined) {
       activeTabs.set(tabId, bridgeMsg.source_id);
@@ -255,7 +255,7 @@ async function init(): Promise<void> {
     for (const rel of FILES) {
       parts.push(enc.encode(rel));
       parts.push(new Uint8Array([0]));
-      const text = await fetch(browser.runtime.getURL(rel)).then((r) => r.text());
+      const text = await fetch(chrome.runtime.getURL(rel)).then((r) => r.text());
       parts.push(enc.encode(text));
       parts.push(new Uint8Array([0]));
     }

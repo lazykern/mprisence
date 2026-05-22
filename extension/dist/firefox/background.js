@@ -193,7 +193,7 @@ function onContentMessage(msg, sender) {
       source_id: sourceIdForSender(msg.source_id, sender)
     };
     console.log(
-      `[mprisence] \u2190 Update from tab ${tabId}: source=${bridgeMsg.source_id} site=${bridgeMsg.site} "${bridgeMsg.metadata.title ?? "?"}" status=${bridgeMsg.playback.status} pos=${bridgeMsg.playback.position_ms} dur=${bridgeMsg.playback.duration_ms} ext=${EXT_FINGERPRINT}`
+      `[mprisence] \u2190 Update from tab ${tabId}: source=${bridgeMsg.source_id} site=${bridgeMsg.site} "${bridgeMsg.metadata.title ?? "?"}" status=${bridgeMsg.playback.status} pos=${bridgeMsg.playback.position_ms} dur=${bridgeMsg.playback.duration_ms}`
     );
     if (tabId !== void 0) {
       activeTabs.set(tabId, bridgeMsg.source_id);
@@ -221,7 +221,7 @@ nativePort.send({
   browser,
   extension_version: chrome.runtime.getManifest().version,
   protocol: PROTOCOL_VERSION,
-  git_sha: true ? "cb33982-dirty" : void 0
+  git_sha: true ? "28657cd-dirty" : void 0
 });
 chrome.runtime.onMessage.addListener(
   (msg, sender) => {
@@ -260,7 +260,7 @@ async function init() {
     for (const rel of FILES) {
       parts.push(enc.encode(rel));
       parts.push(new Uint8Array([0]));
-      const text = await fetch(browser.runtime.getURL(rel)).then((r) => r.text());
+      const text = await fetch(chrome.runtime.getURL(rel)).then((r) => r.text());
       parts.push(enc.encode(text));
       parts.push(new Uint8Array([0]));
     }
@@ -280,7 +280,7 @@ async function init() {
     browser,
     extension_version: chrome.runtime.getManifest().version,
     protocol: PROTOCOL_VERSION,
-    git_sha: true ? "cb33982-dirty" : void 0,
+    git_sha: true ? "28657cd-dirty" : void 0,
     extension_fingerprint: extFingerprint
   });
   chrome.runtime.onMessage.addListener(

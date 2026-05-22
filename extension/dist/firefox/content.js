@@ -700,7 +700,7 @@ function sendUpdate(result, force = false) {
     capabilities: result.capabilities,
     confidence: result.confidence,
     canonical_url: canonicalUrl || void 0,
-    _ext_fingerprint: true ? "cb33982-dirty" : void 0
+    _ext_fingerprint: true ? "28657cd-dirty" : void 0
   };
   chrome.runtime.sendMessage(msg).catch(() => {
   });
