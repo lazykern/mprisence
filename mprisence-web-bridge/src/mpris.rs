@@ -135,9 +135,14 @@ impl PlayerManager {
     }
 
     /// Remove a player when its source is gone.
+    /// Aborts the D-Bus run task so the player bus name is unregistered.
     pub fn remove_player(&mut self, source_id: &str) {
-        if self.players.remove(source_id).is_some() {
-            debug!("Removed MPRIS player for {source_id}");
+        if let Some(entry) = self.players.remove(source_id) {
+            // Abort the spawned run() task — without this the D-Bus server
+            // keeps running even after the Publisher is dropped, leaving a
+            // stale player visible to playerctl and Discord presence.
+            entry._handle.abort();
+            debug!("Removed MPRIS player for {source_id} (handle aborted)");
         }
     }
 
