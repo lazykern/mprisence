@@ -1575,18 +1575,57 @@ impl Presence {
                 }
             }
         } else {
-            playback_status = None;
-            // Non-TrackChanged: snapshot existing art_decision.
-            let current_track = self
+            playback_status = self
                 .player
-                .get_metadata()
-                .ok()
-                .as_ref()
-                .map(health::TrackFingerprint::from_mpris);
-            art_decision = current_track
-                .as_ref()
-                .map(|t| self.health.lock().art_decision(t))
-                .unwrap_or_default();
+                .get_playback_status()
+                .ok();
+            // Non-TrackChanged events: skip Discord push if nothing
+            // changed since the last tick (same guard as the polling
+            // path in update()). Without this, the bridge's MPRIS
+            // signals (e.g. TrackMetadataChanged from each DOM poll,
+            // or Playing/Paused from YouTube ad breaks) push to
+            // Discord every 1-3 seconds.
+            let metadata = match self.player.get_metadata() {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!("Failed to get metadata for significant_change check in handle_event: {}", e);
+                    return Ok(EventOutcome::Continue);
+                }
+            };
+            let new_state = PlaybackState::from_with_status(
+                &self.player,
+                playback_status.unwrap_or(PlaybackStatus::Stopped),
+                &metadata,
+            );
+            let effective_interval = if self.config.event_driven() {
+                self.config.fallback_poll_interval()
+            } else {
+                self.config.interval()
+            };
+            {
+                let previous_state = self.last_player_state.as_ref();
+                if let Some(prev) = previous_state {
+                    let has_sig = new_state.has_significant_changes(prev)
+                        || new_state.has_position_jump(
+                            prev,
+                            Duration::from_millis(effective_interval),
+                            Duration::ZERO,
+                        );
+                    if !has_sig {
+                        trace!(
+                            "Skipping Discord push from event - no significant changes for {}",
+                            self.player.identity()
+                        );
+                        self.last_player_state = Some(new_state);
+                        return Ok(EventOutcome::Continue);
+                    }
+                }
+            }
+            self.last_player_state = Some(new_state);
+
+            // Snapshot existing art_decision for the push.
+            let current_track = health::TrackFingerprint::from_mpris(&metadata);
+            art_decision = self.health.lock().art_decision(&current_track);
         }
         if let Err(err) = self.update_activity(generation, art_decision, playback_status).await {
             if matches!(err, DiscordError::ActivityError(_)) {

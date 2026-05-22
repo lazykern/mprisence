@@ -56,6 +56,27 @@ impl PublishDecision {
 
 /// Pure diff: compare the desired snapshot against the last published one.
 fn compute_publish_decision(prev: &PublishedSnapshot, next: &PublishedSnapshot) -> PublishDecision {
+    if prev.meta != next.meta {
+        let MetaSnapshot {
+            track_id: pt, title: pti, artists: pa, album: pal, album_artists: paa,
+            art_url: pau, length_us: pl, url: pu
+        } = &prev.meta;
+        let MetaSnapshot {
+            track_id: nt, title: nti, artists: na, album: nal, album_artists: naa,
+            art_url: nau, length_us: nl, url: nu
+        } = &next.meta;
+        if pt != nt { debug!("     meta.track_id: {:?} -> {:?}", pt, nt); }
+        if pti != nti { debug!("     meta.title: {:?} -> {:?}", pti, nti); }
+        if pa != na { debug!("     meta.artists: {:?} -> {:?}", pa, na); }
+        if pal != nal { debug!("     meta.album: {:?} -> {:?}", pal, nal); }
+        if paa != naa { debug!("     meta.album_artists: {:?} -> {:?}", paa, naa); }
+        if pau != nau { debug!("     meta.art_url: {:?} -> {:?}", pau, nau); }
+        if pl != nl { debug!("     meta.length_us: {} -> {}", pl, nl); }
+        if pu != nu { debug!("     meta.url: {:?} -> {:?}", pu, nu); }
+    }
+    if prev.caps != next.caps {
+        debug!("     caps: {:?} -> {:?}", prev.caps, next.caps);
+    }
     PublishDecision {
         identity: prev.identity != next.identity,
         status: prev.status != next.status,
