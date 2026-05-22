@@ -69,6 +69,12 @@ export class YouTubeProvider implements Provider {
       }
     }
 
+    // Fallback: extract videoId from page URL params when artwork not loaded yet
+    if (!videoId && isWatchPage) {
+      const urlParams = new URLSearchParams(window.location.search);
+      videoId = urlParams.get("v") || undefined;
+    }
+
     // ── Title ───────────────────────────────────────────────────
     let title: string | undefined;
     if (isWatchPage) {
