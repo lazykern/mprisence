@@ -8,6 +8,63 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
+/// Metadata fields that feed the D-Bus `Metadata` property. Compared as a unit:
+/// any difference means the whole `Metadata` is rebuilt and re-emitted.
+#[derive(Debug, Default, Clone, PartialEq)]
+struct MetaSnapshot {
+    track_id: String,
+    title: String,
+    artists: Vec<String>,
+    album: String,
+    album_artists: Vec<String>,
+    art_url: String,
+    length_us: i64,
+    url: String,
+}
+
+/// Capability flags (`CanPlay`, `CanGoNext`, ...).
+#[derive(Debug, Default, Clone, PartialEq)]
+struct CapsSnapshot {
+    can_play_pause: bool,
+    can_next: bool,
+    can_previous: bool,
+    can_seek: bool,
+}
+
+/// Exact MPRIS state last pushed to D-Bus for one player.
+#[derive(Debug, Default, Clone)]
+struct PublishedSnapshot {
+    identity: String,
+    status: Option<Status>,
+    meta: MetaSnapshot,
+    caps: CapsSnapshot,
+}
+
+/// Which MPRIS property groups changed between two snapshots.
+#[derive(Debug, Default, PartialEq)]
+struct PublishDecision {
+    identity: bool,
+    status: bool,
+    metadata: bool,
+    caps: bool,
+}
+
+impl PublishDecision {
+    fn any(&self) -> bool {
+        self.identity || self.status || self.metadata || self.caps
+    }
+}
+
+/// Pure diff: compare the desired snapshot against the last published one.
+fn compute_publish_decision(prev: &PublishedSnapshot, next: &PublishedSnapshot) -> PublishDecision {
+    PublishDecision {
+        identity: prev.identity != next.identity,
+        status: prev.status != next.status,
+        metadata: prev.meta != next.meta,
+        caps: prev.caps != next.caps,
+    }
+}
+
 /// Commands received from MPRIS clients (user pressing play/pause in their desktop).
 #[derive(Debug, Clone)]
 pub enum MprisCommand {
@@ -441,4 +498,70 @@ fn make_track_id(s: &SourceState, meta: &MediaMetadata) -> String {
     // 4. Fallback: source_id + title hash
     let hash_input = format!("{}+{}", s.source_id, meta.title.as_deref().unwrap_or(""));
     format!("/mprisence/track/{}", simple_hash(&hash_input))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snap() -> PublishedSnapshot {
+        PublishedSnapshot {
+            identity: "YouTube".into(),
+            status: Some(Status::Playing),
+            meta: MetaSnapshot {
+                track_id: "/mprisence/track/abc".into(),
+                title: "Song".into(),
+                artists: vec!["Artist".into()],
+                album: "Album".into(),
+                album_artists: vec![],
+                art_url: "https://x/a.jpg".into(),
+                length_us: 200_000_000,
+                url: "https://x/watch?v=abc".into(),
+            },
+            caps: CapsSnapshot {
+                can_play_pause: true,
+                can_next: false,
+                can_previous: false,
+                can_seek: false,
+            },
+        }
+    }
+
+    #[test]
+    fn identical_snapshots_decide_nothing() {
+        let d = compute_publish_decision(&snap(), &snap());
+        assert!(!d.any());
+    }
+
+    #[test]
+    fn status_change_decides_status_only() {
+        let mut next = snap();
+        next.status = Some(Status::Paused);
+        let d = compute_publish_decision(&snap(), &next);
+        assert_eq!(d, PublishDecision { status: true, ..Default::default() });
+    }
+
+    #[test]
+    fn title_change_decides_metadata_only() {
+        let mut next = snap();
+        next.meta.title = "Different".into();
+        let d = compute_publish_decision(&snap(), &next);
+        assert_eq!(d, PublishDecision { metadata: true, ..Default::default() });
+    }
+
+    #[test]
+    fn caps_change_decides_caps_only() {
+        let mut next = snap();
+        next.caps.can_next = true;
+        let d = compute_publish_decision(&snap(), &next);
+        assert_eq!(d, PublishDecision { caps: true, ..Default::default() });
+    }
+
+    #[test]
+    fn identity_change_decides_identity_only() {
+        let mut next = snap();
+        next.identity = "SoundCloud".into();
+        let d = compute_publish_decision(&snap(), &next);
+        assert_eq!(d, PublishDecision { identity: true, ..Default::default() });
+    }
 }
