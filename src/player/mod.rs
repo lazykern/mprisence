@@ -151,6 +151,7 @@ pub fn is_mprisence_web_bridge_bus(raw_bus_name: &str) -> bool {
 pub const BRIDGE_CONFIG_KEY: &str = "mprisence_web";
 
 /// Returns true if MPRIS metadata contains the bridge marker.
+#[allow(dead_code)]
 pub fn has_bridge_metadata_marker(metadata: &mpris::Metadata) -> bool {
     metadata
         .get("mprisence:bridge")
@@ -161,6 +162,7 @@ pub fn has_bridge_metadata_marker(metadata: &mpris::Metadata) -> bool {
 
 /// Extracts the group key from bridge MPRIS metadata.
 /// Returns the value of `mprisence:group` (the site), or None if not a bridge player.
+#[allow(dead_code)]
 pub fn bridge_group_key(metadata: &mpris::Metadata) -> Option<String> {
     if !has_bridge_metadata_marker(metadata) {
         return None;
@@ -172,6 +174,7 @@ pub fn bridge_group_key(metadata: &mpris::Metadata) -> Option<String> {
 }
 
 /// Extracts the site from bridge MPRIS metadata.
+#[allow(dead_code)]
 pub fn bridge_site(metadata: &mpris::Metadata) -> Option<String> {
     metadata
         .get("mprisence:site")
@@ -236,7 +239,7 @@ pub(crate) fn metadata_richness(player: &Player) -> u8 {
 /// Scoring ensures playing always beats active+paused within the same
 /// heartbeat window (~2s). Only when the playing tab goes stale (>60s
 /// without update) can active+paused overtake.
-pub(crate) fn select_bridge_winner(
+pub fn select_bridge_winner(
     players: &[Player],
     current_bus: Option<&str>,
 ) -> usize {
