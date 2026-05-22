@@ -52,32 +52,59 @@ export class YouTubeMusicProvider implements Provider {
       document.title.replace(" - YouTube Music", "").trim() ||
       undefined;
 
-    // ── Artist (first part of byline before "•") ───────────────
+    // ── Artist & Album from byline ───────────────────────────
+    // Format: "Artist • Album • Year" or "Artist • ## views • ## likes"
     const byline = artistEl?.textContent?.trim() || "";
-    const artist = byline.split("•")[0]?.trim() || "";
-    // Album is NOT in YTM byline — leave empty (bridge can infer)
-
-    // ── Album art (HTTPS URL, no blob: issues) ─────────────────
-    let artUrl = artImg?.src || undefined;
-    // Skip 1×1 placeholder GIFs
-    if (artUrl && artUrl.startsWith("data:")) artUrl = undefined;
-    // Upgrade thumbnails — only for channel avatars (safe to strip size params).
-    // Do NOT upgrade video thumbnails to maxresdefault: YouTube only serves
-    // maxresdefault.jpg for 720p+ uploads; older/lower-res videos return 404.
-    // YouTube's thumb HTML already provides the correct size.
-    if (artUrl) {
-      if (artUrl.includes("yt3.googleusercontent.com")) {
-        // Channel avatar: strip size params to get default 512x512.
-        // Use =s800-c-k-no for 800x800 if needed.
-        artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
+    const parts = byline.split("•").map(s => s.trim()).filter(Boolean);
+    const artist = parts[0] || "";
+    // Album is the middle segment if it doesn't look like a view/like count
+    let album: string | undefined = undefined;
+    if (parts.length >= 3) {
+      const mid = parts[1];
+      if (mid && !/\b(view|like)s?\b/i.test(mid)) {
+        album = mid;
       }
     }
 
-    // ── Video ID from thumbnail URL ────────────────────────────
+    // ── Video ID from thumbnail URL or page URL ────────────────
     const thumbSrc = artImg?.src || "";
-    const videoIdMatch = thumbSrc.match(this.videoIdRegex);
-    const videoId = videoIdMatch?.[1] || "";
+    let videoId = (thumbSrc.match(this.videoIdRegex) || [])[1] || "";
+    // Fallback: extract videoId from page URL params.
+    // YTM's <img> sometimes shows a channel avatar (yt3 URL) instead
+    // of a video thumbnail — the regex won't match, so we need the
+    // page URL as a fallback to construct proper cover art.
+    if (!videoId) {
+      videoId = new URLSearchParams(window.location.search).get("v") || "";
+    }
     const trackId = videoId ? `ytm:${videoId}` : undefined;
+
+    // ── Album art ──────────────────────────────────────────────
+    let artUrl = artImg?.src || undefined;
+    // Skip 1×1 placeholder GIFs
+    if (artUrl && artUrl.startsWith("data:")) artUrl = undefined;
+
+    if (artUrl) {
+      if (artUrl.includes("yt3.googleusercontent.com")) {
+        // Channel avatar — not the track's cover art.
+        // Prefer video thumbnail constructed from video ID.
+        // Only keep channel avatar if we have no video ID.
+        if (videoId) {
+          artUrl = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+        } else {
+          // Strip size params to get default 512x512.
+          artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
+        }
+      } else {
+        // i.ytimg.com thumbnail — upgrade to maxresdefault.
+        // hqdefault/sddefault are 4:3 and often include top/bottom
+        // black bars; maxresdefault is 16:9 and clean when available.
+        artUrl = artUrl.replace(/\/[a-z]+default\./g, "/maxresdefault.");
+      }
+    } else if (videoId) {
+      // No img element src but we have a video ID — construct
+      // thumbnail URL using maxresdefault to avoid black bars.
+      artUrl = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+    }
 
     // ── Playback state ─────────────────────────────────────────
     const isPaused = video?.paused ?? true;
@@ -116,7 +143,7 @@ export class YouTubeMusicProvider implements Provider {
     const metadata: MediaMetadata = {
       title,
       artist: artist ? [artist] : [],
-      album: undefined, // YTM byline has no album info
+      album, // extracted from byline when present
       album_artist: [],
       art_url: artUrl,
       track_id: trackId,

@@ -111,18 +111,36 @@ var YouTubeMusicProvider = class {
     if (!titleEl && !video) return null;
     const title = titleEl?.textContent?.trim() || document.title.replace(" - YouTube Music", "").trim() || void 0;
     const byline = artistEl?.textContent?.trim() || "";
-    const artist = byline.split("\u2022")[0]?.trim() || "";
+    const parts = byline.split("\u2022").map((s) => s.trim()).filter(Boolean);
+    const artist = parts[0] || "";
+    let album = void 0;
+    if (parts.length >= 3) {
+      const mid = parts[1];
+      if (mid && !/\b(view|like)s?\b/i.test(mid)) {
+        album = mid;
+      }
+    }
+    const thumbSrc = artImg?.src || "";
+    let videoId = (thumbSrc.match(this.videoIdRegex) || [])[1] || "";
+    if (!videoId) {
+      videoId = new URLSearchParams(window.location.search).get("v") || "";
+    }
+    const trackId = videoId ? `ytm:${videoId}` : void 0;
     let artUrl = artImg?.src || void 0;
     if (artUrl && artUrl.startsWith("data:")) artUrl = void 0;
     if (artUrl) {
       if (artUrl.includes("yt3.googleusercontent.com")) {
-        artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
+        if (videoId) {
+          artUrl = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+        } else {
+          artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
+        }
+      } else {
+        artUrl = artUrl.replace(/\/[a-z]+default\./g, "/maxresdefault.");
       }
+    } else if (videoId) {
+      artUrl = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
     }
-    const thumbSrc = artImg?.src || "";
-    const videoIdMatch = thumbSrc.match(this.videoIdRegex);
-    const videoId = videoIdMatch?.[1] || "";
-    const trackId = videoId ? `ytm:${videoId}` : void 0;
     const isPaused = video?.paused ?? true;
     const progressBar = this.qs("#progress-bar");
     const progressNow = progressBar ? parseFloat(progressBar.getAttribute("aria-valuenow") ?? "") : NaN;
@@ -142,8 +160,8 @@ var YouTubeMusicProvider = class {
     const metadata = {
       title,
       artist: artist ? [artist] : [],
-      album: void 0,
-      // YTM byline has no album info
+      album,
+      // extracted from byline when present
       album_artist: [],
       art_url: artUrl,
       track_id: trackId
@@ -1105,7 +1123,7 @@ function sendUpdate(result, force = false) {
     capabilities: result.capabilities,
     confidence: result.confidence,
     canonical_url: canonicalUrl || void 0,
-    _ext_fingerprint: true ? "4acc843-dirty" : void 0
+    _ext_fingerprint: true ? "74ca367-dirty" : void 0
   };
   chrome.runtime.sendMessage(msg).catch(() => {
   });
