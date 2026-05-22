@@ -318,27 +318,11 @@ icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overri
 allow_streaming = true
 ignore = false
 
-[website.pocket_casts]
-match_patterns = ["pocketcasts.com", "play.pocketcasts.com"]
-name = "Pocket Casts"
-app_id = "1291170916952309782"
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/pocket-casts.png"
-allow_streaming = true
-ignore = false
-
 [website.yandex_music]
 match_patterns = ["music.yandex.com", "music.yandex.ru"]
 name = "Yandex Music"
 app_id = "1295649755535511592"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/yandex-music.png"
-allow_streaming = true
-ignore = false
-
-[website.podurama]
-match_pattern = "podurama.com"
-name = "Podurama"
-app_id = "1300521928309735476"
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/podurama.png"
 allow_streaming = true
 ignore = false
 
@@ -350,14 +334,6 @@ app_id = "1301894190904639559"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/youtube.png"
 allow_streaming = true
 ignore = true
-
-[website.apple_podcasts]
-match_pattern = "podcasts.apple.com"
-name = "Apple Podcasts"
-app_id = "1308949234829234228"
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/apple-podcasts.png"
-allow_streaming = true
-ignore = false
 
 # Spotify Web mirrors the [player.spotify] ignore policy — users override
 # `ignore = false` in their own config to enable it.

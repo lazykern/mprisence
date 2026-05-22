@@ -290,15 +290,12 @@ status_display_type = "details"
 #   youtube         youtube.com, youtu.be
 #   soundcloud      soundcloud.com, snd.sc
 #   apple_music     music.apple.com
-#   apple_podcasts  podcasts.apple.com
 #   bandcamp        bandcamp.com
 #   tidal           tidal.com, listen.tidal.com, listen.stage.tidal.com
 #   deezer          deezer.com
 #   qobuz           qobuz.com, play.qobuz.com, open.qobuz.com
 #   amazon_music    music.amazon.* (all regions)
 #   yandex_music    music.yandex.com, music.yandex.ru
-#   pocket_casts    play.pocketcasts.com
-#   podurama        podurama.com
 #   spotify_web     open.spotify.com  (ignore = true by default)
 #
 # Inspect resolved entries with `mprisence config`.
