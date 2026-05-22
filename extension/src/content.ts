@@ -65,22 +65,6 @@ function getTabId(): number | undefined {
   return undefined;
 }
 
-// ─── Page-world script injection ─────────────────────────────────
-
-/**
- * Inject a static script into page world that observes media state
- * and dispatches it via CustomEvent.
- *
- * This approach is CSP-safe: the script is loaded as a static resource,
- * not generated inline.
- */
-function injectPageWorldScript(): void {
-  const script = document.createElement("script");
-  script.src = chrome.runtime.getURL("page-world.js");
-  script.onload = () => script.remove();
-  (document.head || document.documentElement).appendChild(script);
-}
-
 // Listen for CustomEvent from page-world script
 window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
   const data = event.detail;
