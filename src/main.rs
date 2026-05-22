@@ -207,11 +207,23 @@ impl Mprisence {
                 continue;
             }
 
-            let player_config = self
-                .config
-                .get_player_config(&id.identity, &id.player_bus_name);
+            let metadata = player.get_metadata().ok();
+            let url = metadata.as_ref().and_then(|m| m.url().map(|s| s.to_string()));
+            let title = metadata
+                .as_ref()
+                .and_then(|m| m.title().map(|s| s.to_string()));
+            let (player_config, _) = self.config.get_player_config_with_title_fallback(
+                &id.identity,
+                &id.player_bus_name,
+                url.as_deref(),
+                title.as_deref(),
+            );
             if player_config.ignore {
-                trace!("Skipping ignored player: {}", id.identity);
+                trace!(
+                    "Skipping ignored player: {} ({})",
+                    id.identity,
+                    url.as_deref().unwrap_or("no URL")
+                );
                 continue;
             }
 
@@ -232,28 +244,39 @@ impl Mprisence {
         // endpoint exposing the same tab are tracked as one logical player.
         let candidates = merge_url_duplicates(candidates);
 
-        // Phase 1.6a: when a browser has a live bridge player, suppress that
-        // browser's own native MPRIS endpoint so its tabs are not double-counted.
-        let bridged_browsers: Vec<String> = candidates
+        // Phase 1.6a: when a native browser MPRIS endpoint exposes the same
+        // tab as a live bridge player, suppress the native endpoint so the tab
+        // is not double-counted. Keep unrelated native browser entries (e.g.
+        // SoundCloud in the browser when only YouTube tabs are bridged).
+        let bridged_sources: Vec<(String, String)> = candidates
             .values()
             .flatten()
             .filter(|p| is_mprisence_web_bridge_bus(p.bus_name()))
             // A D-Bus metadata error silently skips the player for this scan cycle.
-            .filter_map(|p| p.get_metadata().ok().and_then(|m| bridge_browser(&m)))
+            .filter_map(|p| {
+                let metadata = p.get_metadata().ok()?;
+                let browser = bridge_browser(&metadata)?;
+                let url = metadata.url().map(|s| s.to_string())?;
+                Some((browser, url))
+            })
             .collect();
-        let candidates: HashMap<SmolStr, Vec<mpris::Player>> = if bridged_browsers.is_empty() {
+        let candidates: HashMap<SmolStr, Vec<mpris::Player>> = if bridged_sources.is_empty() {
             candidates
         } else {
             candidates
                 .into_iter()
                 // A post-merge candidate group holds players of a single kind
                 // (bridge groups are keyed per-tab and never URL-merged), so a
-                // group is dropped only when every player in it is a
-                // suppressed native browser bus.
+                // group is dropped only when every player in it is a native
+                // browser bus already represented by a bridge player.
                 .filter(|(_, players)| {
                     !players.iter().all(|p| {
                         let canon = canonical_player_bus_name(p.bus_name());
-                        should_suppress_native(&canon, &bridged_browsers)
+                        let native_url = p
+                            .get_metadata()
+                            .ok()
+                            .and_then(|m| m.url().map(|s| s.to_string()));
+                        should_suppress_native(&canon, native_url.as_deref(), &bridged_sources)
                     })
                 })
                 .collect()

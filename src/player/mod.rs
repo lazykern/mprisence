@@ -168,14 +168,36 @@ pub fn native_browser_of(canonical_bus_name: &str) -> Option<&'static str> {
         .map(|(_, browser)| *browser)
 }
 
-/// Pure: should this native browser bus be suppressed because its browser has
-/// a live bridge player? `plasma` matches when any browser is bridged, since
-/// plasma-browser-integration cannot be attributed to a specific browser.
-pub fn should_suppress_native(canonical_bus_name: &str, bridged_browsers: &[String]) -> bool {
+/// Pure: should this native browser bus be suppressed because it exposes the
+/// same URL as a live bridge player? `plasma` matches any browser because KDE's
+/// proxy cannot be attributed to a specific browser.
+pub fn should_suppress_native(
+    canonical_bus_name: &str,
+    native_url: Option<&str>,
+    bridged_sources: &[(String, String)],
+) -> bool {
+    let Some(native_url) = native_url.filter(|u| !u.is_empty()) else {
+        return false;
+    };
+
     match native_browser_of(canonical_bus_name) {
-        Some("plasma") => !bridged_browsers.is_empty(),
-        Some(browser) => bridged_browsers.iter().any(|b| b == browser),
+        Some("plasma") => bridged_sources
+            .iter()
+            .any(|(_, bridged_url)| same_url_or_origin(native_url, bridged_url)),
+        Some(browser) => bridged_sources.iter().any(|(bridged_browser, bridged_url)| {
+            bridged_browser == browser && same_url_or_origin(native_url, bridged_url)
+        }),
         None => false,
+    }
+}
+
+fn same_url_or_origin(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    match (origin_of(a), origin_of(b)) {
+        (Some(origin_a), Some(origin_b)) => origin_a == origin_b && (is_origin_only(a) || is_origin_only(b)),
+        _ => false,
     }
 }
 
@@ -1009,8 +1031,6 @@ mod bridge_tests {
 
     #[test]
     fn suppresses_native_browser_when_bridge_present() {
-        // bridged browsers: firefox
-        let bridged = ["firefox".to_string()];
         assert!(native_browser_of("firefox.instance_1_5376").is_some());
         assert!(native_browser_of("plasma-browser-integration").is_some());
         assert!(native_browser_of("spotify").is_none());
@@ -1020,14 +1040,39 @@ mod bridge_tests {
         assert_eq!(native_browser_of("chromium.instance_2"), Some("chromium"));
         assert_eq!(native_browser_of("spotify"), None);
 
-        // firefox native bus suppressed because firefox is bridged
-        assert!(should_suppress_native("firefox.instance_1_5376", &bridged));
-        // chromium native bus kept because chromium is not bridged
-        assert!(!should_suppress_native("chromium.instance_2", &bridged));
+        let bridged_sources = [("firefox".to_string(), "https://www.youtube.com/watch?v=abc".to_string())];
 
-        // plasma-browser-integration is suppressed when ANY browser is bridged
+        // firefox native bus suppressed only when it exposes a bridged URL
+        assert!(should_suppress_native(
+            "firefox.instance_1_5376",
+            Some("https://www.youtube.com/watch?v=abc"),
+            &bridged_sources
+        ));
+        // firefox native bus kept when it exposes a different browser tab
+        assert!(!should_suppress_native(
+            "firefox.instance_1_5376",
+            Some("https://soundcloud.com/discover"),
+            &bridged_sources
+        ));
+        // chromium native bus kept because chromium is not bridged
+        assert!(!should_suppress_native(
+            "chromium.instance_2",
+            Some("https://www.youtube.com/watch?v=abc"),
+            &bridged_sources
+        ));
+
+        // plasma-browser-integration is suppressed when it exposes a bridged URL
         // (it cannot be attributed to a specific browser).
-        assert!(should_suppress_native("plasma-browser-integration", &bridged));
-        assert!(!should_suppress_native("plasma-browser-integration", &[] as &[String]));
+        assert!(should_suppress_native(
+            "plasma-browser-integration",
+            Some("https://www.youtube.com/watch?v=abc"),
+            &bridged_sources
+        ));
+        assert!(!should_suppress_native(
+            "plasma-browser-integration",
+            Some("https://soundcloud.com/discover"),
+            &bridged_sources
+        ));
+        assert!(!should_suppress_native("plasma-browser-integration", Some("https://x"), &[]));
     }
 }
