@@ -16,16 +16,16 @@
       "matches": ["<all_urls>"],
       "js": ["content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["page-world.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
     }
   ],
   "permissions": [
     "nativeMessaging"
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["page-world.js"],
-      "matches": ["<all_urls>"]
-    }
   ],
   "host_permissions": [
     "*://music.youtube.com/*",
@@ -36,5 +36,5 @@
     "*://tidal.com/*",
     "*://music.apple.com/*"
   ],
-  "minimum_chrome_version": "96"
+  "minimum_chrome_version": "111"
 }
