@@ -617,6 +617,27 @@ pub fn merge_url_duplicates(
         if from == into {
             continue;
         }
+
+        // Don't merge bridge players with non-bridge players.
+        // Bridge carries richer metadata (mprisence:* custom keys) that would
+        // be lost by merging into a native browser MPRIS player, and
+        // select_bridge_winner needs the metadata to pick the best tab.
+        let from_is_bridge = candidates.get(&from)
+            .and_then(|players| players.first())
+            .map(|p| is_mprisence_web_bridge_bus(p.bus_name()))
+            .unwrap_or(false);
+        let into_is_bridge = candidates.get(&into)
+            .and_then(|players| players.first())
+            .map(|p| is_mprisence_web_bridge_bus(p.bus_name()))
+            .unwrap_or(false);
+        if from_is_bridge != into_is_bridge {
+            trace!(
+                "Skipping URL-merge of bridge player '{}' into non-bridge '{}' (different types)",
+                from, into
+            );
+            continue;
+        }
+
         if let Some(players) = candidates.remove(&from) {
             trace!(
                 "Merging duplicate player group '{}' into '{}' (same URL or origin)",
