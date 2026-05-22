@@ -127,12 +127,8 @@ export class BandcampProvider implements Provider {
     const srcMatch = audio?.getAttribute("src")?.match(this.trackIdParam);
     if (srcMatch) meta.track_id = `bc:${srcMatch[1]}`;
 
-    // Playing state: .playpause .pause visible = playing
-    const pauseEl = this.qs<HTMLElement>(
-      ".carousel-player .playpause .pause"
-    );
-    const isPlaying =
-      pauseEl && pauseEl.style.display !== "none";
+    // Playing state: from audio element (native API)
+    const isPlaying = audio ? !audio.paused : false;
 
     // Position/duration from .pos-dur spans (formatted time)
     let positionMs = 0;
@@ -182,15 +178,12 @@ export class BandcampProvider implements Provider {
       case "play_pause":
       case "play":
       case "pause": {
-        const pauseEl = this.qs<HTMLElement>(
-          ".carousel-player .playpause .pause"
-        );
-        const isPlaying =
-          pauseEl && pauseEl.style.display !== "none";
+        const a = document.querySelector<HTMLAudioElement>("audio");
+        if (!a) break;
+        const isPlaying = !a.paused;
         if (cmd === "play" && isPlaying) break;
         if (cmd === "pause" && !isPlaying) break;
-
-        this.qs<HTMLElement>(".carousel-player .playpause")?.click();
+        if (isPlaying) { a.pause(); } else { a.play().catch(() => {}); }
         break;
       }
       case "next": {
@@ -268,9 +261,8 @@ export class BandcampProvider implements Provider {
     const srcMatch = audio.getAttribute("src")?.match(this.trackIdParam);
     if (srcMatch) meta.track_id = `bc:${srcMatch[1]}`;
 
-    // Playing state: .playbutton.playing class
-    const playBtn = this.qs<HTMLElement>(".inline_player .playbutton");
-    const isPlaying = playBtn?.classList.contains("playing") ?? false;
+    // Playing state: audio element
+    const isPlaying = !audio.paused;
 
     // Position/duration from audio (most reliable) or time spans
     let positionMs = Math.floor((audio.currentTime || 0) * 1000);
@@ -306,26 +298,22 @@ export class BandcampProvider implements Provider {
       case "play_pause":
       case "play":
       case "pause": {
-        const btn = this.qs<HTMLElement>(".inline_player .playbutton");
-        const isPlaying = btn?.classList.contains("playing") ?? false;
+        const a = document.querySelector<HTMLAudioElement>("audio");
+        if (!a) break;
+        const isPlaying = !a.paused;
         if (cmd === "play" && isPlaying) break;
         if (cmd === "pause" && !isPlaying) break;
-        // Click the parent <a> role="button" which has the handler
-        const playAnchor = btn?.closest("a[role='button']") as HTMLElement | null;
-        if (playAnchor) playAnchor.click();
-        else btn?.click();
+        if (isPlaying) { a.pause(); } else { a.play().catch(() => {}); }
         break;
       }
       case "next": {
-        const next = this.qs<HTMLElement>(".inline_player .nextbutton");
-        const anchor = next?.closest("a[role='button']") as HTMLElement | null;
-        if (anchor) anchor.click();
+        const btn = this.qs<HTMLElement>(".inline_player .nextbutton");
+        btn?.click();
         break;
       }
       case "previous": {
-        const prev = this.qs<HTMLElement>(".inline_player .prevbutton");
-        const anchor = prev?.closest("a[role='button']") as HTMLElement | null;
-        if (anchor) anchor.click();
+        const btn = this.qs<HTMLElement>(".inline_player .prevbutton");
+        btn?.click();
         break;
       }
       case "set_position":

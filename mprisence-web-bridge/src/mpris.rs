@@ -540,7 +540,12 @@ fn make_track_id(s: &SourceState, meta: &MediaMetadata) -> String {
             if tid.starts_with('/') {
                 return tid.clone();
             }
-            return format!("/mprisence/track/{tid}");
+            // D-Bus ObjectPath only allows [A-Za-z0-9_]
+            let safe: String = tid
+                .chars()
+                .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+                .collect();
+            return format!("/mprisence/track/{safe}");
         }
     }
     // 2. Canonical URL (stable across page navigations)

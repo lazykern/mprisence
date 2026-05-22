@@ -593,10 +593,7 @@ var BandcampProvider = class {
     const audio = document.querySelector("audio");
     const srcMatch = audio?.getAttribute("src")?.match(this.trackIdParam);
     if (srcMatch) meta.track_id = `bc:${srcMatch[1]}`;
-    const pauseEl = this.qs(
-      ".carousel-player .playpause .pause"
-    );
-    const isPlaying = pauseEl && pauseEl.style.display !== "none";
+    const isPlaying = audio ? !audio.paused : false;
     let positionMs = 0;
     let durationMs = 0;
     const posDur = this.qs(".carousel-player .pos-dur");
@@ -639,13 +636,17 @@ var BandcampProvider = class {
       case "play_pause":
       case "play":
       case "pause": {
-        const pauseEl = this.qs(
-          ".carousel-player .playpause .pause"
-        );
-        const isPlaying = pauseEl && pauseEl.style.display !== "none";
+        const a = document.querySelector("audio");
+        if (!a) break;
+        const isPlaying = !a.paused;
         if (cmd === "play" && isPlaying) break;
         if (cmd === "pause" && !isPlaying) break;
-        this.qs(".carousel-player .playpause")?.click();
+        if (isPlaying) {
+          a.pause();
+        } else {
+          a.play().catch(() => {
+          });
+        }
         break;
       }
       case "next": {
@@ -698,8 +699,7 @@ var BandcampProvider = class {
     );
     const srcMatch = audio.getAttribute("src")?.match(this.trackIdParam);
     if (srcMatch) meta.track_id = `bc:${srcMatch[1]}`;
-    const playBtn = this.qs(".inline_player .playbutton");
-    const isPlaying = playBtn?.classList.contains("playing") ?? false;
+    const isPlaying = !audio.paused;
     let positionMs = Math.floor((audio.currentTime || 0) * 1e3);
     let durationMs = Math.floor(audio.duration * 1e3);
     if (positionMs === 0 && durationMs > 0) {
@@ -727,25 +727,27 @@ var BandcampProvider = class {
       case "play_pause":
       case "play":
       case "pause": {
-        const btn = this.qs(".inline_player .playbutton");
-        const isPlaying = btn?.classList.contains("playing") ?? false;
+        const a = document.querySelector("audio");
+        if (!a) break;
+        const isPlaying = !a.paused;
         if (cmd === "play" && isPlaying) break;
         if (cmd === "pause" && !isPlaying) break;
-        const playAnchor = btn?.closest("a[role='button']");
-        if (playAnchor) playAnchor.click();
-        else btn?.click();
+        if (isPlaying) {
+          a.pause();
+        } else {
+          a.play().catch(() => {
+          });
+        }
         break;
       }
       case "next": {
-        const next = this.qs(".inline_player .nextbutton");
-        const anchor = next?.closest("a[role='button']");
-        if (anchor) anchor.click();
+        const btn = this.qs(".inline_player .nextbutton");
+        btn?.click();
         break;
       }
       case "previous": {
-        const prev = this.qs(".inline_player .prevbutton");
-        const anchor = prev?.closest("a[role='button']");
-        if (anchor) anchor.click();
+        const btn = this.qs(".inline_player .prevbutton");
+        btn?.click();
         break;
       }
       case "set_position":
@@ -795,12 +797,156 @@ function parseTimeSpan(text) {
   return 0;
 }
 
+// src/providers/tidal.ts
+var TidalProvider = class {
+  siteKey = "tidal";
+  matches(url) {
+    return url.hostname === "tidal.com" || url.hostname.endsWith(".tidal.com");
+  }
+  extract() {
+    const video = document.querySelector("video");
+    if (!video) return null;
+    if (!isFinite(video.duration) || video.duration <= 0) return null;
+    const meta = {
+      title: void 0,
+      artist: [],
+      album: void 0,
+      album_artist: [],
+      art_url: void 0,
+      track_id: void 0
+    };
+    let confidence = "dom";
+    try {
+      const ms = navigator.mediaSession;
+      if (ms?.metadata) {
+        const md = ms.metadata;
+        if (md.title) meta.title = md.title;
+        if (md.artist) meta.artist = [md.artist];
+        if (md.album) meta.album = md.album;
+        if (md.artwork?.length > 0) {
+          const best = md.artwork.reduce((a, b) => {
+            const aSize = parseInt(a.sizes) || 0;
+            const bSize = parseInt(b.sizes) || 0;
+            return aSize > bSize ? a : b;
+          });
+          meta.art_url = this.resolveArtwork(best.src || void 0);
+        }
+        confidence = "provider";
+      }
+    } catch {
+    }
+    if (!meta.title) {
+      meta.title = document.title.replace(/ \| TIDAL$/, "").trim() || void 0;
+    }
+    if (!meta.title) return null;
+    const isPaused = video.paused;
+    const status = isPaused ? "paused" : "playing";
+    let positionMs = Math.floor((video.currentTime || 0) * 1e3);
+    let durationMs = Math.floor(video.duration * 1e3);
+    const progressSlider = document.querySelector(
+      '[role="slider"][aria-label="Progress bar"]'
+    );
+    if (progressSlider) {
+      const now = parseFloat(progressSlider.getAttribute("aria-valuenow") ?? "");
+      const max = parseFloat(progressSlider.getAttribute("aria-valuemax") ?? "");
+      if (isFinite(now) && isFinite(max) && max > 0) {
+        positionMs = Math.floor(now * 1e3);
+        durationMs = Math.floor(max * 1e3);
+      }
+    }
+    const playback = {
+      status,
+      position_ms: positionMs,
+      duration_ms: durationMs,
+      rate: video.playbackRate ?? 1
+    };
+    const nextBtn = document.querySelector(
+      'button[aria-label="Next"]'
+    );
+    const prevBtn = document.querySelector(
+      'button[aria-label="Previous"]'
+    );
+    const capabilities = {
+      play_pause: true,
+      next: nextBtn ? !nextBtn.disabled : false,
+      previous: prevBtn ? !prevBtn.disabled : false,
+      seek: !!progressSlider,
+      set_position: !!progressSlider,
+      raise: false
+    };
+    return {
+      metadata: meta,
+      playback,
+      capabilities,
+      confidence
+    };
+  }
+  async command(cmd, positionMs) {
+    switch (cmd) {
+      case "play_pause":
+      case "play":
+      case "pause": {
+        const video = document.querySelector("video");
+        if (!video) break;
+        const isPlaying = !video.paused;
+        if (cmd === "play" && isPlaying) break;
+        if (cmd === "pause" && !isPlaying) break;
+        if (isPlaying) {
+          video.pause();
+        } else {
+          video.play().catch(() => {
+          });
+        }
+        break;
+      }
+      case "next": {
+        const btn = document.querySelector(
+          'button[aria-label="Next"]'
+        );
+        if (btn && !btn.disabled) btn.click();
+        break;
+      }
+      case "previous": {
+        const btn = document.querySelector(
+          'button[aria-label="Previous"]'
+        );
+        if (btn && !btn.disabled) btn.click();
+        break;
+      }
+      case "set_position":
+      case "seek": {
+        if (typeof positionMs === "number" && isFinite(positionMs)) {
+          const video = document.querySelector("video");
+          if (video) {
+            video.currentTime = Math.max(0, positionMs / 1e3);
+          }
+        }
+        break;
+      }
+    }
+  }
+  // ── Helpers ──────────────────────────────────────────────────
+  /**
+   * Upgrade Tidal CDN artwork to higher resolution.
+   * Pattern: resources.tidal.com/images/<uuid>/<size>.jpg
+   * Available sizes: 80x80, 320x320, 640x640, 1080x1080, 1280x1280
+   */
+  resolveArtwork(url) {
+    if (!url) return void 0;
+    if (url.includes("resources.tidal.com")) {
+      url = url.replace(/\/\d+x\d+\./g, "/1280x1280.");
+    }
+    return url;
+  }
+};
+
 // src/content.ts
 var providers = [
   new YouTubeMusicProvider(),
   new YouTubeProvider(),
   new SoundCloudProvider(),
   new BandcampProvider(),
+  new TidalProvider(),
   new GenericMediaProvider()
 ];
 var lastSourceId = "";
@@ -959,7 +1105,7 @@ function sendUpdate(result, force = false) {
     capabilities: result.capabilities,
     confidence: result.confidence,
     canonical_url: canonicalUrl || void 0,
-    _ext_fingerprint: true ? "d9dd001-dirty" : void 0
+    _ext_fingerprint: true ? "4acc843-dirty" : void 0
   };
   chrome.runtime.sendMessage(msg).catch(() => {
   });

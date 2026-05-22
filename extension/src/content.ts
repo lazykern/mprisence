@@ -23,6 +23,7 @@ import { YouTubeMusicProvider } from "./providers/youtube-music";
 import { YouTubeProvider } from "./providers/youtube";
 import { SoundCloudProvider } from "./providers/soundcloud";
 import { BandcampProvider } from "./providers/bandcamp";
+import { TidalProvider } from "./providers/tidal";
 
 // ─── Provider registry ───────────────────────────────────────────
 
@@ -31,6 +32,7 @@ const providers = [
   new YouTubeProvider(),
   new SoundCloudProvider(),
   new BandcampProvider(),
+  new TidalProvider(),
   new GenericMediaProvider(),
 ];
 
