@@ -235,7 +235,15 @@ impl Mprisence {
                 );
             }
 
-            let norm_id = SmolStr::new(utils::normalize_player_identity(&id.identity));
+            // Bridge players are one-per-tab: their canonical bus name
+            // (`mprisence_web.<site>.<hash>`) is unique per tab, so key by it.
+            // Native players are keyed by normalized identity so multiple bus
+            // names for the same player still collapse to one.
+            let norm_id = if is_mprisence_web_bridge_bus(&id.player_bus_name) {
+                id.player_bus_name.clone()
+            } else {
+                SmolStr::new(utils::normalize_player_identity(&id.identity))
+            };
             candidates.entry(norm_id).or_default().push(player);
         }
 
