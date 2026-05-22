@@ -335,11 +335,3 @@ icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overri
 allow_streaming = true
 ignore = true
 
-# Spotify Web mirrors the [player.spotify] ignore policy — users override
-# `ignore = false` in their own config to enable it.
-[website.spotify_web]
-match_pattern = "open.spotify.com"
-name = "Spotify"
-app_id = "1247651846936596540"
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/spotify.png"
-ignore = true
