@@ -311,6 +311,17 @@ impl MprisPublisher {
     }
 }
 
+/// Convert a media duration in milliseconds to an MPRIS length in
+/// microseconds. Returns `None` for zero/absent or implausibly large
+/// durations (> 24h) so callers omit `mpris:length` rather than emit garbage.
+fn duration_to_length_us(duration_ms: u64) -> Option<i64> {
+    if duration_ms > 0 && duration_ms < 86_400_000 {
+        Some((duration_ms * 1000) as i64)
+    } else {
+        None
+    }
+}
+
 fn format_site_name(site: &str) -> String {
     match site {
         "youtube_music" => "YouTube Music".into(),
@@ -349,10 +360,7 @@ fn build_snapshot(source: Option<&SourceState>) -> PublishedSnapshot {
         return PublishedSnapshot::default();
     };
     let meta = &s.metadata;
-    let length_us = {
-        let d = s.playback.duration_ms;
-        if d > 0 && d < 86_400_000 { (d * 1000) as i64 } else { 0 }
-    };
+    let length_us = duration_to_length_us(s.playback.duration_ms).unwrap_or(0);
     let art_url = meta
         .art_url
         .clone()
@@ -436,11 +444,8 @@ fn build_metadata(source: Option<&SourceState>) -> Metadata {
         }
 
         // Length: only publish when finite and > 0 (avoid garbage like 0 or NaN).
-        let dur_ms = s.playback.duration_ms;
-        if dur_ms > 0 && dur_ms < 86_400_000 {
-            // cap at 24h to avoid overflow
-            let length_us = dur_ms * 1000;
-            builder = builder.length(Time::from_micros(length_us as i64));
+        if let Some(length_us) = duration_to_length_us(s.playback.duration_ms) {
+            builder = builder.length(Time::from_micros(length_us));
         }
 
         // URL: prefer canonical URL, then page URL, but never blob:
