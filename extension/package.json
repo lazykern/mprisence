@@ -7,7 +7,7 @@
   "scripts": {
     "build:firefox": "node build.mjs firefox",
     "build:chromium": "node build.mjs chromium",
-    "build:all": "node build.mjs firefox chromium",
+    "build:all": "node build.mjs firefox && node build.mjs chromium",
     "watch:firefox": "node build.mjs firefox --watch",
     "watch:chromium": "node build.mjs chromium --watch"
   },

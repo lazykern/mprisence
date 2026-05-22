@@ -2,13 +2,14 @@
  * Content script for mprisence browser extension.
  *
  * Architecture:
- *   content.ts (injected by manifest)
- *     └─ Injects a static <script> into page world for DOM access
- *        └─ Provider dispatcher runs in page world
- *           └─ Sends results via CustomEvent to content script
+ *   content.ts (isolated world, injected by manifest)
+ *     ├─ observes media elements and SPA DOM changes directly
+ *     └─ receives optional page-world provider results via CustomEvent
+ *   page-world.ts (MAIN world, injected by manifest) → CustomEvent
  *   content.ts → chrome.runtime.sendMessage → background.ts → native host
  *
- * CSP-safe: uses static injection + CustomEvent, not dynamic eval.
+ * CSP-safe: both scripts are manifest-declared content scripts; no runtime
+ * injection or dynamic eval.
  */
 
 import { detectBrowser, makeSourceId } from "./utils/browser-detect";
