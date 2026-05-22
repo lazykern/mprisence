@@ -94,9 +94,16 @@ function detectBrowser() {
   console.warn("[mprisence] Unknown browser, assuming chromium");
   return "chromium";
 }
+function makeSourceId(browser2, tabId, frameId) {
+  return `${browser2}:tab:${tabId ?? 0}:${frameId ?? 0}`;
+}
+
+// src/types.ts
+var PROTOCOL_VERSION = 1;
 
 // src/background.ts
 var nativePort = new NativeMessagingPort();
+var browser = detectBrowser();
 var activeTabs = /* @__PURE__ */ new Map();
 function onBridgeMessage(msg) {
   switch (msg.type) {
@@ -104,8 +111,19 @@ function onBridgeMessage(msg) {
       console.log(
         `[mprisence] Bridge connected: v${msg.bridge_version}, protocol ${msg.protocol}`
       );
+      if (msg.protocol !== PROTOCOL_VERSION) {
+        console.warn(
+          `[mprisence] Protocol MISMATCH: extension=${PROTOCOL_VERSION}, bridge=${msg.protocol}`
+        );
+      }
+      if (msg.git_sha) {
+        console.log(`[mprisence] Bridge git SHA: ${msg.git_sha}`);
+      }
       break;
     case "command":
+      console.log(
+        `[mprisence] \u2190 Command from bridge: ${msg.command} source=${msg.source_id}`
+      );
       forwardCommandToTab(msg);
       break;
     case "heartbeat":
@@ -116,16 +134,22 @@ function onBridgeDisconnect() {
   console.log("[mprisence] Bridge disconnected");
 }
 function forwardCommandToTab(msg) {
-  const parts = msg.source_id.split(":");
-  const tabIdStr = parts[2];
-  const tabId = parseInt(tabIdStr, 10);
-  if (isNaN(tabId)) {
-    for (const [tid] of activeTabs) {
-      sendCommandToTab(tid, msg.command, msg.position_ms);
+  for (const [tabId2, sourceId] of activeTabs) {
+    if (sourceId === msg.source_id) {
+      sendCommandToTab(tabId2, msg.command, msg.position_ms);
+      return;
     }
+  }
+  const parts = msg.source_id.split(":");
+  const tabId = parseInt(parts[2] ?? "", 10);
+  if (!isNaN(tabId) && tabId > 0) {
+    sendCommandToTab(tabId, msg.command, msg.position_ms);
     return;
   }
-  sendCommandToTab(tabId, msg.command, msg.position_ms);
+  console.debug(`[mprisence] No tab match for source_id="${msg.source_id}", broadcasting`);
+  for (const [tid] of activeTabs) {
+    sendCommandToTab(tid, msg.command, msg.position_ms);
+  }
 }
 function sendCommandToTab(tabId, command, positionMs) {
   chrome.tabs.sendMessage(
@@ -143,35 +167,87 @@ function sendCommandToTab(tabId, command, positionMs) {
     }
   );
 }
+function sourceIdForSender(originalSourceId, sender) {
+  const tabId = sender.tab?.id;
+  if (tabId === void 0) return originalSourceId;
+  const frameId = sender.frameId ?? 0;
+  return `${makeSourceId(browser, tabId, frameId)}:frame`;
+}
+function sendRemoveForTab(tabId, reason) {
+  const sourceId = activeTabs.get(tabId);
+  if (!sourceId) return;
+  console.log(`[mprisence] \u2190 Remove from tab ${tabId}: source=${sourceId} (${reason})`);
+  activeTabs.delete(tabId);
+  chrome.action?.setBadgeText({ tabId, text: "" });
+  nativePort.send({
+    type: "remove",
+    source_id: sourceId
+  });
+}
 function onContentMessage(msg, sender) {
   if (!msg || !msg.type) return;
   if (msg.type === "update") {
     const tabId = sender.tab?.id;
+    const bridgeMsg = {
+      ...msg,
+      source_id: sourceIdForSender(msg.source_id, sender)
+    };
+    console.log(
+      `[mprisence] \u2190 Update from tab ${tabId}: source=${bridgeMsg.source_id} site=${bridgeMsg.site} "${bridgeMsg.metadata.title ?? "?"}" status=${bridgeMsg.playback.status} pos=${bridgeMsg.playback.position_ms} dur=${bridgeMsg.playback.duration_ms}`
+    );
     if (tabId !== void 0) {
-      activeTabs.set(tabId, msg.source_id);
+      activeTabs.set(tabId, bridgeMsg.source_id);
     }
-    nativePort.send(msg);
+    setBadge(bridgeMsg.site, tabId);
+    nativePort.send(bridgeMsg);
   }
   if (msg.type === "remove") {
     const tabId = sender.tab?.id;
+    const bridgeMsg = {
+      ...msg,
+      source_id: sourceIdForSender(msg.source_id, sender)
+    };
+    console.log(`[mprisence] \u2190 Remove from tab ${tabId}: source=${bridgeMsg.source_id}`);
     if (tabId !== void 0) {
       activeTabs.delete(tabId);
+      chrome.action?.setBadgeText({ tabId, text: "" });
     }
-    nativePort.send(msg);
+    nativePort.send(bridgeMsg);
   }
 }
 nativePort.connect(onBridgeMessage, onBridgeDisconnect);
-var browser = detectBrowser();
 nativePort.send({
   type: "hello",
   browser,
-  extension_version: chrome.runtime.getManifest().version
+  extension_version: chrome.runtime.getManifest().version,
+  protocol: PROTOCOL_VERSION,
+  git_sha: true ? "cb33982-dirty" : void 0
 });
 chrome.runtime.onMessage.addListener(
   (msg, sender) => {
     onContentMessage(msg, sender);
   }
 );
+chrome.tabs?.onRemoved?.addListener((tabId) => {
+  sendRemoveForTab(tabId, "tab closed");
+});
+var BADGE_COLORS = {
+  youtube_music: [255, 0, 0],
+  // red
+  generic: [100, 100, 100]
+  // gray
+};
+function setBadge(site, tabId) {
+  const text = site === "youtube_music" ? "YTM" : site === "generic" ? "MED" : site.slice(0, 4).toUpperCase();
+  const color = BADGE_COLORS[site] ?? [0, 150, 0];
+  if (tabId !== void 0) {
+    chrome.action?.setBadgeText({ tabId, text });
+    chrome.action?.setBadgeBackgroundColor({ tabId, color: `rgb(${color[0]},${color[1]},${color[2]})` });
+  } else {
+    chrome.action?.setBadgeText({ text });
+    chrome.action?.setBadgeBackgroundColor({ color: `rgb(${color[0]},${color[1]},${color[2]})` });
+  }
+}
 self.addEventListener("unload", () => {
   nativePort.disconnect();
 });

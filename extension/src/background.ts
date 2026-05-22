@@ -132,6 +132,19 @@ function sourceIdForSender(
   return `${makeSourceId(browser, tabId, frameId)}:frame`;
 }
 
+function sendRemoveForTab(tabId: number, reason: string): void {
+  const sourceId = activeTabs.get(tabId);
+  if (!sourceId) return;
+
+  console.log(`[mprisence] ← Remove from tab ${tabId}: source=${sourceId} (${reason})`);
+  activeTabs.delete(tabId);
+  chrome.action?.setBadgeText({ tabId, text: "" });
+  nativePort.send({
+    type: "remove",
+    source_id: sourceId,
+  });
+}
+
 function onContentMessage(
   msg: ExtMessage,
   sender: chrome.runtime.MessageSender
@@ -146,7 +159,7 @@ function onContentMessage(
       source_id: sourceIdForSender(msg.source_id, sender),
     };
     console.log(
-      `[mprisence] ← Update from tab ${tabId}: source=${bridgeMsg.source_id} site=${bridgeMsg.site} "${bridgeMsg.metadata.title ?? "?"}" status=${bridgeMsg.playback.status} pos=${bridgeMsg.playback.position_ms} dur=${bridgeMsg.playback.duration_ms}`
+      `[mprisence] ← Update from tab ${tabId}: source=${bridgeMsg.source_id} site=${bridgeMsg.site} "${bridgeMsg.metadata.title ?? "?"}" status=${bridgeMsg.playback.status} pos=${bridgeMsg.playback.position_ms} dur=${bridgeMsg.playback.duration_ms} ext=${EXT_FINGERPRINT}`
     );
     if (tabId !== undefined) {
       activeTabs.set(tabId, bridgeMsg.source_id);
@@ -168,6 +181,7 @@ function onContentMessage(
     console.log(`[mprisence] ← Remove from tab ${tabId}: source=${bridgeMsg.source_id}`);
     if (tabId !== undefined) {
       activeTabs.delete(tabId);
+      chrome.action?.setBadgeText({ tabId, text: "" });
     }
 
     nativePort.send(bridgeMsg);
@@ -195,6 +209,13 @@ chrome.runtime.onMessage.addListener(
   }
 );
 
+// Content-script beforeunload messages are not reliable during tab close.
+// Background owns tab lifecycle and removes bridge players immediately when
+// a known media tab closes, instead of waiting for bridge stale-prune.
+chrome.tabs?.onRemoved?.addListener((tabId) => {
+  sendRemoveForTab(tabId, "tab closed");
+});
+
 // ─── Badge ────────────────────────────────────────────────────────
 
 const BADGE_COLORS: Record<string, [number, number, number]> = {
@@ -218,10 +239,59 @@ function clearBadge(): void {
   chrome.action?.setBadgeText({ text: "" });
 }
 
-// ─── Clean up ─────────────────────────────────────────────────────
-
 self.addEventListener("unload", () => {
   nativePort.disconnect();
 });
 
-console.log("[mprisence] Background script started");
+// ─── Init ─────────────────────────────────────────────────────────
+
+async function init(): Promise<void> {
+  // SHA-256 of built files. Same approach as zenctl's computeFingerprint().
+  let extFingerprint: string | undefined;
+  try {
+    const FILES = ["background.js", "content.js", "page-world.js", "manifest.json"];
+    const enc = new TextEncoder();
+    const parts: Uint8Array[] = [];
+    for (const rel of FILES) {
+      parts.push(enc.encode(rel));
+      parts.push(new Uint8Array([0]));
+      const text = await fetch(browser.runtime.getURL(rel)).then((r) => r.text());
+      parts.push(enc.encode(text));
+      parts.push(new Uint8Array([0]));
+    }
+    const total = parts.reduce((s, p) => s + p.length, 0);
+    const merged = new Uint8Array(total);
+    let off = 0;
+    for (const p of parts) merged.set(p, off), (off += p.length);
+    const hash = await crypto.subtle.digest("SHA-256", merged);
+    extFingerprint = Array.from(new Uint8Array(hash))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    console.log(`[mprisence] extension fingerprint ${extFingerprint.slice(0, 12)}…`);
+  } catch (e) {
+    console.warn("[mprisence] fingerprint failed:", e?.message ?? e);
+  }
+
+  nativePort.connect(onBridgeMessage, onBridgeDisconnect);
+
+  nativePort.send({
+    type: "hello",
+    browser,
+    extension_version: chrome.runtime.getManifest().version,
+    protocol: PROTOCOL_VERSION,
+    git_sha: (typeof __GIT_SHA__ !== "undefined" ? __GIT_SHA__ : undefined) as string | undefined,
+    extension_fingerprint: extFingerprint,
+  });
+
+  chrome.runtime.onMessage.addListener(
+    (msg: ExtMessage, sender: chrome.runtime.MessageSender) => {
+      onContentMessage(msg, sender);
+    }
+  );
+
+  chrome.tabs?.onRemoved?.addListener((tabId) => {
+    sendRemoveForTab(tabId, "tab closed");
+  });
+}
+
+init();

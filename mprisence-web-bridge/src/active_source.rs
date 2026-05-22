@@ -1,5 +1,5 @@
 use crate::protocol::SourceState;
-use log::trace;
+use log::{debug, trace};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -42,7 +42,7 @@ impl SourceRegistry {
         let mut removed = Vec::new();
         self.sources.retain(|id, state| {
             if state.is_stale(STALE_TIMEOUT) {
-                trace!("source {id}: stale ({}s), removing", STALE_TIMEOUT.as_secs());
+                debug!("source {id}: stale ({}s), removing", STALE_TIMEOUT.as_secs());
                 removed.push(id.clone());
                 false
             } else {

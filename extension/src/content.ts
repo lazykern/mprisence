@@ -12,6 +12,9 @@
  * injection or dynamic eval.
  */
 
+// Injected by esbuild define at build time
+declare var __GIT_SHA__: string | undefined;
+
 import { detectBrowser, makeSourceId } from "./utils/browser-detect";
 import type { ConfidenceLevel, ExtMessage, Capabilities, PlaybackState, MediaMetadata } from "./types";
 import type { ProviderResult } from "./providers/base";
@@ -301,6 +304,7 @@ function sendUpdate(result: ProviderResult, force = false): void {
     capabilities: result.capabilities,
     confidence: result.confidence,
     canonical_url: canonicalUrl || undefined,
+    _ext_fingerprint: typeof __GIT_SHA__ !== "undefined" ? __GIT_SHA__ : undefined,
   };
 
   chrome.runtime.sendMessage(msg).catch(() => {

@@ -129,7 +129,11 @@ var YouTubeMusicProvider = class {
     const isPaused = video?.paused ?? true;
     const progressBar = this.qs("#progress-bar");
     const progressMax = progressBar ? parseFloat(progressBar.getAttribute("aria-valuemax") ?? "") : NaN;
-    const totalSec = isFinite(progressMax) && progressMax > 0 ? progressMax : video?.duration || 0;
+    const trackDurationSec = isFinite(progressMax) && progressMax > 0 ? progressMax : void 0;
+    const totalSec = trackDurationSec ?? (video?.duration || 0);
+    if (!trackDurationSec && video && video.duration > 600) {
+      return null;
+    }
     if (video && (totalSec === 0 || !isFinite(totalSec))) {
       return null;
     }
@@ -542,6 +546,7 @@ var lastArtist = "";
 var lastState = "";
 var lastArtUrl = "";
 var lastPageUrl = "";
+var lastCanonicalUrl = "";
 var lastPositionSec = -1;
 var lastDurationMs = -1;
 var lastAlbum = "";
@@ -549,8 +554,6 @@ var lastAlbumArtist = "";
 var lastTrackId = "";
 var lastRate = 1;
 var lastConfidence = "";
-var lastSentTime = 0;
-var FORCE_RESEND_INTERVAL = 5e3;
 var browser = detectBrowser();
 var tabId = getTabId();
 var sourceIdBase = makeSourceId(browser, tabId, 0);
@@ -563,12 +566,6 @@ function getTabId() {
   }
   return void 0;
 }
-function injectPageWorldScript() {
-  const script = document.createElement("script");
-  script.src = chrome.runtime.getURL("page-world.js");
-  script.onload = () => script.remove();
-  (document.head || document.documentElement).appendChild(script);
-}
 window.addEventListener("mprisence-media-state", ((event) => {
   const data = event.detail;
   if (data?.type === "media-state") {
@@ -578,9 +575,32 @@ window.addEventListener("mprisence-media-state", ((event) => {
       capabilities: data.capabilities || { play_pause: true, next: false, previous: false, seek: false, set_position: false, raise: false },
       confidence: data.confidence || "dom"
     };
+    const pwTitle = result.metadata.title ?? "";
+    const pwArtist = result.metadata.artist.join(",");
+    const isNewTrack = lastPageWorldMeta !== null && (pwTitle !== lastPageWorldMeta.title || pwArtist !== lastPageWorldMeta.artist);
+    if (!isNewTrack) {
+      if (lastPageWorldMeta && !result.metadata.track_id) {
+        result.metadata.track_id = lastPageWorldMeta.track_id;
+      }
+      if (!result.canonicalUrl) {
+        result.canonicalUrl = lastCanonicalUrlPageWorld;
+      }
+    }
     sendUpdate(result);
+    lastPageWorldMeta = {
+      title: result.metadata.title ?? "",
+      artist: result.metadata.artist.join(","),
+      album: result.metadata.album ?? "",
+      art_url: result.metadata.art_url ?? "",
+      track_id: result.metadata.track_id
+    };
+    if (result.canonicalUrl) {
+      lastCanonicalUrlPageWorld = result.canonicalUrl;
+    }
   }
 }));
+var lastPageWorldMeta = null;
+var lastCanonicalUrlPageWorld = "";
 function extractFromProviders() {
   const url = new URL(window.location.href);
   for (const provider of providers) {
@@ -591,35 +611,62 @@ function extractFromProviders() {
   }
   return null;
 }
-var pollInterval = null;
-function startPolling() {
-  if (pollInterval) return;
-  pollInterval = setInterval(() => {
-    const result = extractFromProviders();
-    if (result) {
-      sendUpdate(result);
-    }
-  }, 1e3);
+function triggerUpdate(force = false) {
+  const result = extractFromProviders();
+  if (result) sendUpdate(result, force);
 }
-function stopPolling() {
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
-  }
-}
-function sendUpdate(result) {
-  const sourceId = `${sourceIdBase}:frame`;
-  const url = result.pageUrl || window.location.href;
-  const origin = window.location.origin;
+var MEDIA_EVENTS = [
+  "play",
+  "pause",
+  "ended",
+  "ratechange",
+  "seeked",
+  "loadedmetadata",
+  "durationchange"
+];
+var lastTimeupdate = 0;
+function onTimeupdate() {
   const now = Date.now();
+  if (now - lastTimeupdate < 900) return;
+  lastTimeupdate = now;
+  triggerUpdate();
+}
+function debounce(fn, ms) {
+  let timer = null;
+  return ((...args) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      fn(...args);
+    }, ms);
+  });
+}
+var keepaliveInterval = null;
+function startObserving() {
+  for (const ev of MEDIA_EVENTS) {
+    document.addEventListener(ev, () => triggerUpdate(), true);
+  }
+  document.addEventListener("timeupdate", onTimeupdate, true);
+  const onMutation = debounce(() => triggerUpdate(), 500);
+  const observer = new MutationObserver(() => onMutation());
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+  keepaliveInterval = setInterval(() => triggerUpdate(true), 3e4);
+}
+function sendUpdate(result, force = false) {
+  const sourceId = `${sourceIdBase}:frame`;
+  const clampedDurationMs = Math.max(result.playback.duration_ms, result.playback.position_ms);
   const titleKey = result.metadata.title ?? "";
   const artistKey = result.metadata.artist.join(",");
+  const identityChanged = lastTitle !== titleKey || lastArtist !== artistKey;
+  const url = result.pageUrl || !identityChanged && lastPageUrl || window.location.href;
+  const canonicalUrl = result.canonicalUrl || lastCanonicalUrl;
+  const origin = window.location.origin;
   const positionSec = Math.floor(result.playback.position_ms / 1e3);
   const albumKey = result.metadata.album ?? "";
   const albumArtistKey = result.metadata.album_artist.join(",");
   const trackIdKey = result.metadata.track_id ?? "";
-  const unchanged = lastSourceId === sourceId && lastTitle === titleKey && lastArtist === artistKey && lastState === result.playback.status && lastArtUrl === (result.metadata.art_url ?? "") && lastPageUrl === url && lastPositionSec === positionSec && lastDurationMs === result.playback.duration_ms && lastAlbum === albumKey && lastAlbumArtist === albumArtistKey && lastTrackId === trackIdKey && lastRate === result.playback.rate && lastConfidence === result.confidence;
-  if (unchanged && now - lastSentTime < FORCE_RESEND_INTERVAL) {
+  const unchanged = lastSourceId === sourceId && lastTitle === titleKey && lastArtist === artistKey && lastState === result.playback.status && lastArtUrl === (result.metadata.art_url ?? "") && lastPageUrl === url && lastCanonicalUrl === (canonicalUrl ?? "") && lastPositionSec === positionSec && lastDurationMs === clampedDurationMs && lastAlbum === albumKey && lastAlbumArtist === albumArtistKey && lastTrackId === trackIdKey && lastRate === result.playback.rate && lastConfidence === result.confidence;
+  if (!force && unchanged) {
     return;
   }
   lastSourceId = sourceId;
@@ -628,9 +675,9 @@ function sendUpdate(result) {
   lastState = result.playback.status;
   lastArtUrl = result.metadata.art_url ?? "";
   lastPageUrl = url;
+  lastCanonicalUrl = canonicalUrl ?? lastCanonicalUrl;
   lastPositionSec = positionSec;
-  lastDurationMs = result.playback.duration_ms;
-  lastSentTime = now;
+  lastDurationMs = clampedDurationMs;
   lastAlbum = albumKey;
   lastAlbumArtist = albumArtistKey;
   lastTrackId = trackIdKey;
@@ -645,11 +692,15 @@ function sendUpdate(result) {
     url,
     origin,
     site,
-    playback: result.playback,
+    playback: {
+      ...result.playback,
+      duration_ms: clampedDurationMs
+    },
     metadata: result.metadata,
     capabilities: result.capabilities,
     confidence: result.confidence,
-    canonical_url: result.canonicalUrl
+    canonical_url: canonicalUrl || void 0,
+    _ext_fingerprint: true ? "cb33982-dirty" : void 0
   };
   chrome.runtime.sendMessage(msg).catch(() => {
   });
@@ -669,10 +720,10 @@ chrome.runtime.onMessage.addListener(
     return true;
   }
 );
-startPolling();
-injectPageWorldScript();
+startObserving();
+triggerUpdate();
 window.addEventListener("beforeunload", () => {
-  stopPolling();
+  if (keepaliveInterval) clearInterval(keepaliveInterval);
   const msg = {
     type: "remove",
     source_id: `${sourceIdBase}:frame`

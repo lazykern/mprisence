@@ -14,6 +14,8 @@ pub enum ExtMessage {
         extension_version: String,
         protocol: u32,
         git_sha: Option<String>,
+        #[serde(default)]
+        extension_fingerprint: Option<String>,
     },
     #[serde(rename = "update")]
     Update {
@@ -30,6 +32,9 @@ pub enum ExtMessage {
         /// Takes priority over `url` for MPRIS `xesam:url` and website matching.
         #[serde(default)]
         canonical_url: Option<String>,
+        /// Build fingerprint from extension content script.
+        #[serde(default)]
+        _ext_fingerprint: Option<String>,
     },
     #[serde(rename = "remove")]
     Remove {

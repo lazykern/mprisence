@@ -173,6 +173,17 @@ function sourceIdForSender(originalSourceId, sender) {
   const frameId = sender.frameId ?? 0;
   return `${makeSourceId(browser, tabId, frameId)}:frame`;
 }
+function sendRemoveForTab(tabId, reason) {
+  const sourceId = activeTabs.get(tabId);
+  if (!sourceId) return;
+  console.log(`[mprisence] \u2190 Remove from tab ${tabId}: source=${sourceId} (${reason})`);
+  activeTabs.delete(tabId);
+  chrome.action?.setBadgeText({ tabId, text: "" });
+  nativePort.send({
+    type: "remove",
+    source_id: sourceId
+  });
+}
 function onContentMessage(msg, sender) {
   if (!msg || !msg.type) return;
   if (msg.type === "update") {
@@ -182,7 +193,7 @@ function onContentMessage(msg, sender) {
       source_id: sourceIdForSender(msg.source_id, sender)
     };
     console.log(
-      `[mprisence] \u2190 Update from tab ${tabId}: source=${bridgeMsg.source_id} site=${bridgeMsg.site} "${bridgeMsg.metadata.title ?? "?"}" status=${bridgeMsg.playback.status} pos=${bridgeMsg.playback.position_ms} dur=${bridgeMsg.playback.duration_ms}`
+      `[mprisence] \u2190 Update from tab ${tabId}: source=${bridgeMsg.source_id} site=${bridgeMsg.site} "${bridgeMsg.metadata.title ?? "?"}" status=${bridgeMsg.playback.status} pos=${bridgeMsg.playback.position_ms} dur=${bridgeMsg.playback.duration_ms} ext=${EXT_FINGERPRINT}`
     );
     if (tabId !== void 0) {
       activeTabs.set(tabId, bridgeMsg.source_id);
@@ -199,6 +210,7 @@ function onContentMessage(msg, sender) {
     console.log(`[mprisence] \u2190 Remove from tab ${tabId}: source=${bridgeMsg.source_id}`);
     if (tabId !== void 0) {
       activeTabs.delete(tabId);
+      chrome.action?.setBadgeText({ tabId, text: "" });
     }
     nativePort.send(bridgeMsg);
   }
@@ -209,13 +221,16 @@ nativePort.send({
   browser,
   extension_version: chrome.runtime.getManifest().version,
   protocol: PROTOCOL_VERSION,
-  git_sha: true ? "8ef7e65-dirty" : void 0
+  git_sha: true ? "cb33982-dirty" : void 0
 });
 chrome.runtime.onMessage.addListener(
   (msg, sender) => {
     onContentMessage(msg, sender);
   }
 );
+chrome.tabs?.onRemoved?.addListener((tabId) => {
+  sendRemoveForTab(tabId, "tab closed");
+});
 var BADGE_COLORS = {
   youtube_music: [255, 0, 0],
   // red
@@ -236,5 +251,46 @@ function setBadge(site, tabId) {
 self.addEventListener("unload", () => {
   nativePort.disconnect();
 });
-console.log("[mprisence] Background script started");
+async function init() {
+  let extFingerprint;
+  try {
+    const FILES = ["background.js", "content.js", "page-world.js", "manifest.json"];
+    const enc = new TextEncoder();
+    const parts = [];
+    for (const rel of FILES) {
+      parts.push(enc.encode(rel));
+      parts.push(new Uint8Array([0]));
+      const text = await fetch(browser.runtime.getURL(rel)).then((r) => r.text());
+      parts.push(enc.encode(text));
+      parts.push(new Uint8Array([0]));
+    }
+    const total = parts.reduce((s, p) => s + p.length, 0);
+    const merged = new Uint8Array(total);
+    let off = 0;
+    for (const p of parts) merged.set(p, off), off += p.length;
+    const hash = await crypto.subtle.digest("SHA-256", merged);
+    extFingerprint = Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    console.log(`[mprisence] extension fingerprint ${extFingerprint.slice(0, 12)}\u2026`);
+  } catch (e) {
+    console.warn("[mprisence] fingerprint failed:", e?.message ?? e);
+  }
+  nativePort.connect(onBridgeMessage, onBridgeDisconnect);
+  nativePort.send({
+    type: "hello",
+    browser,
+    extension_version: chrome.runtime.getManifest().version,
+    protocol: PROTOCOL_VERSION,
+    git_sha: true ? "cb33982-dirty" : void 0,
+    extension_fingerprint: extFingerprint
+  });
+  chrome.runtime.onMessage.addListener(
+    (msg, sender) => {
+      onContentMessage(msg, sender);
+    }
+  );
+  chrome.tabs?.onRemoved?.addListener((tabId) => {
+    sendRemoveForTab(tabId, "tab closed");
+  });
+}
+init();
 //# sourceMappingURL=background.js.map

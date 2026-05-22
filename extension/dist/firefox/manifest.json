@@ -10,7 +10,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "mprisence-bridge@lazykern.github.io",
-      "strict_min_version": "115.0"
+      "strict_min_version": "128.0"
     }
   },
   "background": {
@@ -28,20 +28,20 @@
         "content.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "page-world.js"
+      ],
+      "run_at": "document_idle",
+      "world": "MAIN"
     }
   ],
   "permissions": [
     "nativeMessaging"
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "page-world.js"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
   ],
   "host_permissions": [
     "*://music.youtube.com/*",

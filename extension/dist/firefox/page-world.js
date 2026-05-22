@@ -78,39 +78,34 @@
       confidence
     };
   }
-  const dispatchDebounced = debounce(() => {
-    dispatch(collectState());
-  }, 500);
-  try {
+  let lastMeta = "";
+  function metaIdentity() {
     const ms = navigator.mediaSession;
-    if (ms?.metadata) {
-      setInterval(() => {
-        dispatchDebounced();
-      }, 1e3);
-    }
-  } catch {
+    if (!ms?.metadata) return "";
+    const md = ms.metadata;
+    return JSON.stringify({ t: md.title, a: md.artist, l: md.album, u: md.artwork?.[0]?.src });
   }
+  function checkMetadataAndDispatch() {
+    const id = metaIdentity();
+    if (id && id !== lastMeta) {
+      lastMeta = id;
+      dispatch(collectState());
+    }
+  }
+  setInterval(() => {
+    checkMetadataAndDispatch();
+  }, 1e3);
   const observer = new MutationObserver(() => {
-    const media = document.querySelector("video, audio");
-    if (media) {
-      dispatchDebounced();
+    if (document.querySelector("video, audio")) {
+      checkMetadataAndDispatch();
     }
   });
   observer.observe(document.body || document.documentElement, {
     childList: true,
     subtree: true
   });
-  document.addEventListener(
-    "timeupdate",
-    ((e) => {
-      const target = e.target;
-      if (target && (target.tagName === "VIDEO" || target.tagName === "AUDIO")) {
-        dispatchDebounced();
-      }
-    }),
-    true
-    // capture
-  );
+  document.addEventListener("playing", () => checkMetadataAndDispatch(), true);
+  document.addEventListener("loadedmetadata", () => checkMetadataAndDispatch(), true);
   function resolveArtworkUrl(url) {
     if (!url) return void 0;
     if (url.includes("sndcdn.com") || url.includes("soundcloud")) {

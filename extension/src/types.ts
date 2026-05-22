@@ -34,7 +34,7 @@ export interface Capabilities {
 
 // Extension → Bridge
 export type ExtMessage =
-  | { type: "hello"; browser: BrowserKind; extension_version: string; protocol: number; git_sha?: string }
+  | { type: "hello"; browser: BrowserKind; extension_version: string; protocol: number; git_sha?: string; extension_fingerprint?: string }
   | {
       type: "update";
       source_id: string;
@@ -46,6 +46,7 @@ export type ExtMessage =
       capabilities: Capabilities;
       confidence: ConfidenceLevel;
       canonical_url?: string;
+      _ext_fingerprint?: string;
     }
   | { type: "remove"; source_id: string };
 

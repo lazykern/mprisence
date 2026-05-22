@@ -84,14 +84,28 @@ export class YouTubeMusicProvider implements Provider {
     const currentSec = video?.currentTime || 0;
     const isPaused = video?.paused ?? true;
 
-    // Video element on search pages spans entire autoplay queue;
-    // use the progress-bar aria-valuemax for the real track duration.
-    // Falls back to video.duration on /watch pages where it's accurate.
+    // The progress-bar aria-valuemax holds the per-track duration.
+    // The <video> element spans the entire autoplay queue, so its
+    // .duration can be 10-30x longer. During initial load or track
+    // transitions aria-valuemax may be momentarily unavailable (NaN/0),
+    // causing a fallback to the queue-wide video.duration which yields
+    // garbage MPRIS length. Skip this update when the fallback fires
+    // on a suspiciously long value; the next poll (~1s) will get the
+    // correct track duration from a stable progress bar.
     const progressBar = this.qs<HTMLElement>("#progress-bar");
     const progressMax = progressBar ? parseFloat(progressBar.getAttribute("aria-valuemax") ?? "") : NaN;
-    const totalSec = (isFinite(progressMax) && progressMax > 0)
+    const trackDurationSec = (isFinite(progressMax) && progressMax > 0)
       ? progressMax
-      : (video?.duration || 0);
+      : undefined;
+    const totalSec = trackDurationSec ?? (video?.duration || 0);
+
+    // If aria-valuemax wasn't ready yet, the fallback to video.duration
+    // may be the queue length, not the track. Reject durations that
+    // exceed a generous per-track limit (600s = 10 min; YTM songs
+    // rarely exceed even 300s). Next poll will have the correct value.
+    if (!trackDurationSec && video && video.duration > 600) {
+      return null;
+    }
 
     // If video exists but duration is invalid (NaN/0/Infinity), skip -
     // metadata hasn't loaded yet. We'll retry on next poll.

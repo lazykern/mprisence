@@ -197,7 +197,7 @@ async fn handle_extension_message(
     cmd_tx: &mpsc::Sender<TaggedCommand>,
 ) {
     match msg {
-        ExtMessage::Hello { browser, extension_version, protocol, git_sha } => {
+        ExtMessage::Hello { browser, extension_version, protocol, git_sha, extension_fingerprint } => {
             info!("Extension connected: {browser:?} v{extension_version}");
 
             if protocol != protocol::PROTOCOL_VERSION {
@@ -208,6 +208,9 @@ async fn handle_extension_message(
             }
             if let Some(sha) = &git_sha {
                 info!("Extension git SHA: {sha}");
+            }
+            if let Some(fp) = &extension_fingerprint {
+                info!("Extension fingerprint: {fp}");
             }
 
             let hello = BridgeMessage::Hello {
@@ -220,7 +223,7 @@ async fn handle_extension_message(
             }
         }
 
-        ExtMessage::Update { source_id, url, origin, site, playback, metadata, capabilities, confidence, canonical_url } => {
+        ExtMessage::Update { source_id, url, origin, site, playback, metadata, capabilities, confidence, canonical_url, _ext_fingerprint } => {
             let site_for_player = site.clone();
             let state = SourceState {
                 source_id: source_id.clone(),
@@ -229,6 +232,11 @@ async fn handle_extension_message(
                 canonical_url,
                 last_seen: std::time::Instant::now(),
             };
+            // Log extension fingerprint for version-checking.
+            if let Some(fp) = &_ext_fingerprint {
+                trace!("ext fingerprint for {source_id}: {fp}");
+            }
+
             registry.upsert(state);
 
             // Ensure this source has an MPRIS player, then publish.
