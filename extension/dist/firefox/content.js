@@ -531,11 +531,276 @@ function parseMmSsDuration(text) {
   return 0;
 }
 
+// src/providers/bandcamp.ts
+var BandcampProvider = class {
+  siteKey = "bandcamp";
+  trackIdParam = /track_id=(\d+)/;
+  matches(url) {
+    const host = url.hostname;
+    return host === "bandcamp.com" || host.endsWith(".bandcamp.com");
+  }
+  extract() {
+    const carouselResult = this.extractCarousel();
+    if (carouselResult) return carouselResult;
+    const inlineResult = this.extractInline();
+    if (inlineResult) return inlineResult;
+    return null;
+  }
+  async command(cmd, positionMs) {
+    if (document.querySelector(".carousel-player.show")) {
+      await this.commandCarousel(cmd, positionMs);
+      return;
+    }
+    if (document.querySelector(".inline_player")) {
+      await this.commandInline(cmd, positionMs);
+      return;
+    }
+  }
+  // ── Carousel player (collection pages) ────────────────────────
+  extractCarousel() {
+    const player = this.qs(".carousel-player.show");
+    if (!player) return null;
+    const trackTitleEl = this.qs(
+      ".carousel-player .info-progress .info .title span:last-child"
+    );
+    const trackTitle = trackTitleEl?.textContent?.trim() || "";
+    const albumTitle = this.qsText(
+      ".carousel-player .now-playing .title"
+    );
+    const title = trackTitle || albumTitle;
+    if (!title) return null;
+    const meta = {
+      title,
+      artist: [],
+      album: void 0,
+      album_artist: [],
+      art_url: void 0,
+      track_id: void 0
+    };
+    if (albumTitle && albumTitle !== title) {
+      meta.album = albumTitle;
+    }
+    const artistRaw = this.qsText(
+      ".carousel-player .now-playing .artist"
+    );
+    if (artistRaw) {
+      const cleaned = artistRaw.replace(/^by\s+/i, "").trim();
+      if (cleaned) meta.artist = [cleaned];
+    }
+    meta.art_url = this.resolveArtwork(
+      this.qs(".carousel-player .now-playing img")?.src
+    );
+    const audio = document.querySelector("audio");
+    const srcMatch = audio?.getAttribute("src")?.match(this.trackIdParam);
+    if (srcMatch) meta.track_id = `bc:${srcMatch[1]}`;
+    const pauseEl = this.qs(
+      ".carousel-player .playpause .pause"
+    );
+    const isPlaying = pauseEl && pauseEl.style.display !== "none";
+    let positionMs = 0;
+    let durationMs = 0;
+    const posDur = this.qs(".carousel-player .pos-dur");
+    if (posDur) {
+      const spans = posDur.querySelectorAll("span");
+      if (spans.length >= 2) {
+        positionMs = parseTimeSpan(spans[0]?.textContent);
+        durationMs = parseTimeSpan(spans[1]?.textContent);
+      }
+    }
+    if (durationMs === 0 && audio && isFinite(audio.duration) && audio.duration > 0) {
+      durationMs = Math.floor(audio.duration * 1e3);
+      positionMs = Math.floor((audio.currentTime || 0) * 1e3);
+    }
+    if (durationMs === 0) return null;
+    const playback = {
+      status: isPlaying ? "playing" : "paused",
+      position_ms: positionMs,
+      duration_ms: durationMs,
+      rate: audio?.playbackRate ?? 1
+    };
+    const prevIcon = this.qs(
+      ".carousel-player .prev-icon"
+    );
+    const nextIcon = this.qs(
+      ".carousel-player .next-icon"
+    );
+    const capabilities = {
+      play_pause: true,
+      next: nextIcon ? !nextIcon.classList.contains("disabled") : false,
+      previous: prevIcon ? !prevIcon.classList.contains("disabled") : false,
+      seek: true,
+      set_position: true,
+      raise: false
+    };
+    return { metadata: meta, playback, capabilities, confidence: "provider" };
+  }
+  async commandCarousel(cmd, positionMs) {
+    switch (cmd) {
+      case "play_pause":
+      case "play":
+      case "pause": {
+        const pauseEl = this.qs(
+          ".carousel-player .playpause .pause"
+        );
+        const isPlaying = pauseEl && pauseEl.style.display !== "none";
+        if (cmd === "play" && isPlaying) break;
+        if (cmd === "pause" && !isPlaying) break;
+        this.qs(".carousel-player .playpause")?.click();
+        break;
+      }
+      case "next": {
+        const btn = this.qs(
+          ".carousel-player .next .next-icon"
+        );
+        if (btn && !btn.classList.contains("disabled")) btn.click();
+        break;
+      }
+      case "previous": {
+        const btn = this.qs(
+          ".carousel-player .prev .prev-icon"
+        );
+        if (btn && !btn.classList.contains("disabled")) btn.click();
+        break;
+      }
+      case "set_position":
+      case "seek": {
+        if (typeof positionMs === "number" && isFinite(positionMs)) {
+          const a = document.querySelector("audio");
+          if (a) a.currentTime = Math.max(0, positionMs / 1e3);
+        }
+        break;
+      }
+    }
+  }
+  // ── Inline player (album/track pages) ─────────────────────────
+  extractInline() {
+    const player = this.qs(".inline_player");
+    if (!player) return null;
+    const audio = document.querySelector("audio");
+    if (!audio || !isFinite(audio.duration) || audio.duration <= 0) return null;
+    const meta = {
+      title: void 0,
+      artist: [],
+      album: void 0,
+      album_artist: [],
+      art_url: void 0,
+      track_id: void 0
+    };
+    meta.title = this.qsText(".inline_player .title_link .title") || this.qsText(".inline_player .title") || void 0;
+    if (!meta.title) return null;
+    const pageArtist = this.qsText("#name-section h3 a") || this.qsText("#name-section span") || this.qsText('.detail_item a[href*="/music"]');
+    if (pageArtist) meta.artist = [pageArtist.trim()];
+    meta.album = this.qsText("h2.trackTitle") || this.qsText(".trackTitle") || void 0;
+    meta.art_url = this.resolveArtwork(
+      document.querySelector(
+        "#tralbumArt img, a.popupImage img"
+      )?.src
+    );
+    const srcMatch = audio.getAttribute("src")?.match(this.trackIdParam);
+    if (srcMatch) meta.track_id = `bc:${srcMatch[1]}`;
+    const playBtn = this.qs(".inline_player .playbutton");
+    const isPlaying = playBtn?.classList.contains("playing") ?? false;
+    let positionMs = Math.floor((audio.currentTime || 0) * 1e3);
+    let durationMs = Math.floor(audio.duration * 1e3);
+    if (positionMs === 0 && durationMs > 0) {
+      const elapsed = this.qsText(".inline_player .time_elapsed");
+      if (elapsed) positionMs = parseTimeSpan(elapsed);
+    }
+    const playback = {
+      status: isPlaying ? "playing" : "paused",
+      position_ms: positionMs,
+      duration_ms: durationMs,
+      rate: audio.playbackRate ?? 1
+    };
+    const capabilities = {
+      play_pause: true,
+      next: !!this.qs(".inline_player .nextbutton"),
+      previous: !!this.qs(".inline_player .prevbutton"),
+      seek: true,
+      set_position: true,
+      raise: false
+    };
+    return { metadata: meta, playback, capabilities, confidence: "provider" };
+  }
+  async commandInline(cmd, positionMs) {
+    switch (cmd) {
+      case "play_pause":
+      case "play":
+      case "pause": {
+        const btn = this.qs(".inline_player .playbutton");
+        const isPlaying = btn?.classList.contains("playing") ?? false;
+        if (cmd === "play" && isPlaying) break;
+        if (cmd === "pause" && !isPlaying) break;
+        const playAnchor = btn?.closest("a[role='button']");
+        if (playAnchor) playAnchor.click();
+        else btn?.click();
+        break;
+      }
+      case "next": {
+        const next = this.qs(".inline_player .nextbutton");
+        const anchor = next?.closest("a[role='button']");
+        if (anchor) anchor.click();
+        break;
+      }
+      case "previous": {
+        const prev = this.qs(".inline_player .prevbutton");
+        const anchor = prev?.closest("a[role='button']");
+        if (anchor) anchor.click();
+        break;
+      }
+      case "set_position":
+      case "seek": {
+        if (typeof positionMs === "number" && isFinite(positionMs)) {
+          const a = document.querySelector("audio");
+          if (a) a.currentTime = Math.max(0, positionMs / 1e3);
+        }
+        break;
+      }
+    }
+  }
+  // ── Helpers ──────────────────────────────────────────────────
+  qs(selector) {
+    return document.querySelector(selector);
+  }
+  qsText(selector) {
+    return document.querySelector(selector)?.textContent?.trim() || "";
+  }
+  /**
+   * Upgrade Bandcamp artwork to highest available resolution.
+   * _16 = 700×700, _10 = 1200×1200, _2 = 350×350
+   */
+  resolveArtwork(url) {
+    if (!url) return void 0;
+    if (url.includes("bcbits.com")) {
+      url = url.replace(/_16\./, "_10.");
+      url = url.replace(/_2\./, "_10.");
+    }
+    return url;
+  }
+};
+function parseTimeSpan(text) {
+  if (!text) return 0;
+  const parts = text.trim().split(":");
+  if (parts.length === 2) {
+    const mins = parseInt(parts[0], 10) || 0;
+    const secs = parseInt(parts[1], 10) || 0;
+    return (mins * 60 + secs) * 1e3;
+  }
+  if (parts.length === 3) {
+    const hrs = parseInt(parts[0], 10) || 0;
+    const mins = parseInt(parts[1], 10) || 0;
+    const secs = parseInt(parts[2], 10) || 0;
+    return (hrs * 3600 + mins * 60 + secs) * 1e3;
+  }
+  return 0;
+}
+
 // src/content.ts
 var providers = [
   new YouTubeMusicProvider(),
   new YouTubeProvider(),
   new SoundCloudProvider(),
+  new BandcampProvider(),
   new GenericMediaProvider()
 ];
 var lastSourceId = "";
@@ -694,7 +959,7 @@ function sendUpdate(result, force = false) {
     capabilities: result.capabilities,
     confidence: result.confidence,
     canonical_url: canonicalUrl || void 0,
-    _ext_fingerprint: true ? "c705ff9-dirty" : void 0
+    _ext_fingerprint: true ? "d9dd001-dirty" : void 0
   };
   chrome.runtime.sendMessage(msg).catch(() => {
   });
