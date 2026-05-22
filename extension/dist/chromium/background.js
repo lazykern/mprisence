@@ -221,7 +221,7 @@ nativePort.send({
   browser,
   extension_version: chrome.runtime.getManifest().version,
   protocol: PROTOCOL_VERSION,
-  git_sha: true ? "cb33982-dirty" : void 0
+  git_sha: true ? "e3520d1-dirty" : void 0
 });
 chrome.runtime.onMessage.addListener(
   (msg, sender) => {
@@ -251,5 +251,46 @@ function setBadge(site, tabId) {
 self.addEventListener("unload", () => {
   nativePort.disconnect();
 });
-console.log("[mprisence] Background script started");
+async function init() {
+  let extFingerprint;
+  try {
+    const FILES = ["background.js", "content.js", "page-world.js", "manifest.json"];
+    const enc = new TextEncoder();
+    const parts = [];
+    for (const rel of FILES) {
+      parts.push(enc.encode(rel));
+      parts.push(new Uint8Array([0]));
+      const text = await fetch(chrome.runtime.getURL(rel)).then((r) => r.text());
+      parts.push(enc.encode(text));
+      parts.push(new Uint8Array([0]));
+    }
+    const total = parts.reduce((s, p) => s + p.length, 0);
+    const merged = new Uint8Array(total);
+    let off = 0;
+    for (const p of parts) merged.set(p, off), off += p.length;
+    const hash = await crypto.subtle.digest("SHA-256", merged);
+    extFingerprint = Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    console.log(`[mprisence] extension fingerprint ${extFingerprint.slice(0, 12)}\u2026`);
+  } catch (e) {
+    console.warn("[mprisence] fingerprint failed:", e?.message ?? e);
+  }
+  nativePort.connect(onBridgeMessage, onBridgeDisconnect);
+  nativePort.send({
+    type: "hello",
+    browser,
+    extension_version: chrome.runtime.getManifest().version,
+    protocol: PROTOCOL_VERSION,
+    git_sha: true ? "e3520d1-dirty" : void 0,
+    extension_fingerprint: extFingerprint
+  });
+  chrome.runtime.onMessage.addListener(
+    (msg, sender) => {
+      onContentMessage(msg, sender);
+    }
+  );
+  chrome.tabs?.onRemoved?.addListener((tabId) => {
+    sendRemoveForTab(tabId, "tab closed");
+  });
+}
+init();
 //# sourceMappingURL=background.js.map

@@ -125,11 +125,17 @@ var YouTubeMusicProvider = class {
     const videoIdMatch = thumbSrc.match(this.videoIdRegex);
     const videoId = videoIdMatch?.[1] || "";
     const trackId = videoId ? `ytm:${videoId}` : void 0;
-    const currentSec = video?.currentTime || 0;
     const isPaused = video?.paused ?? true;
     const progressBar = this.qs("#progress-bar");
+    const progressNow = progressBar ? parseFloat(progressBar.getAttribute("aria-valuenow") ?? "") : NaN;
     const progressMax = progressBar ? parseFloat(progressBar.getAttribute("aria-valuemax") ?? "") : NaN;
-    const totalSec = isFinite(progressMax) && progressMax > 0 ? progressMax : video?.duration || 0;
+    const trackPositionSec = isFinite(progressNow) && progressNow >= 0 ? progressNow : void 0;
+    const trackDurationSec = isFinite(progressMax) && progressMax > 0 ? progressMax : void 0;
+    if (video && (trackPositionSec === void 0 || trackDurationSec === void 0) && video.duration > 600) {
+      return null;
+    }
+    const currentSec = trackPositionSec ?? (video?.currentTime || 0);
+    const totalSec = trackDurationSec ?? (video?.duration || 0);
     if (video && (totalSec === 0 || !isFinite(totalSec))) {
       return null;
     }
@@ -650,7 +656,6 @@ function startObserving() {
 }
 function sendUpdate(result, force = false) {
   const sourceId = `${sourceIdBase}:frame`;
-  const clampedDurationMs = Math.max(result.playback.duration_ms, result.playback.position_ms);
   const titleKey = result.metadata.title ?? "";
   const artistKey = result.metadata.artist.join(",");
   const identityChanged = lastTitle !== titleKey || lastArtist !== artistKey;
@@ -661,7 +666,7 @@ function sendUpdate(result, force = false) {
   const albumKey = result.metadata.album ?? "";
   const albumArtistKey = result.metadata.album_artist.join(",");
   const trackIdKey = result.metadata.track_id ?? "";
-  const unchanged = lastSourceId === sourceId && lastTitle === titleKey && lastArtist === artistKey && lastState === result.playback.status && lastArtUrl === (result.metadata.art_url ?? "") && lastPageUrl === url && lastCanonicalUrl === (canonicalUrl ?? "") && lastPositionSec === positionSec && lastDurationMs === clampedDurationMs && lastAlbum === albumKey && lastAlbumArtist === albumArtistKey && lastTrackId === trackIdKey && lastRate === result.playback.rate && lastConfidence === result.confidence;
+  const unchanged = lastSourceId === sourceId && lastTitle === titleKey && lastArtist === artistKey && lastState === result.playback.status && lastArtUrl === (result.metadata.art_url ?? "") && lastPageUrl === url && lastCanonicalUrl === (canonicalUrl ?? "") && lastPositionSec === positionSec && lastDurationMs === result.playback.duration_ms && lastAlbum === albumKey && lastAlbumArtist === albumArtistKey && lastTrackId === trackIdKey && lastRate === result.playback.rate && lastConfidence === result.confidence;
   if (!force && unchanged) {
     return;
   }
@@ -673,7 +678,7 @@ function sendUpdate(result, force = false) {
   lastPageUrl = url;
   lastCanonicalUrl = canonicalUrl ?? lastCanonicalUrl;
   lastPositionSec = positionSec;
-  lastDurationMs = clampedDurationMs;
+  lastDurationMs = result.playback.duration_ms;
   lastAlbum = albumKey;
   lastAlbumArtist = albumArtistKey;
   lastTrackId = trackIdKey;
@@ -688,14 +693,12 @@ function sendUpdate(result, force = false) {
     url,
     origin,
     site,
-    playback: {
-      ...result.playback,
-      duration_ms: clampedDurationMs
-    },
+    playback: result.playback,
     metadata: result.metadata,
     capabilities: result.capabilities,
     confidence: result.confidence,
-    canonical_url: canonicalUrl || void 0
+    canonical_url: canonicalUrl || void 0,
+    _ext_fingerprint: true ? "e3520d1-dirty" : void 0
   };
   chrome.runtime.sendMessage(msg).catch(() => {
   });

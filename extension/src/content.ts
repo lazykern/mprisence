@@ -221,13 +221,6 @@ function sendUpdate(result: ProviderResult, force = false): void {
   // but only if the content identity (title + artist) hasn't changed.
   // If identity changed and we still have no fresh URL, fall back to
   // window.location.href so the bridge sees the new page.
-  // Clamp duration to at least current position.
-  // YTM's <video> element is a visualizer loop whose duration can be
-  // shorter than the actual audio track (video.duration = loop length,
-  // but currentTime advances with real audio). If position exceeds
-  // reported duration, the duration metadata is wrong.
-  const clampedDurationMs = Math.max(result.playback.duration_ms, result.playback.position_ms);
-
   const titleKey = result.metadata.title ?? "";
   const artistKey = result.metadata.artist.join(",");
   const identityChanged =
@@ -253,7 +246,7 @@ function sendUpdate(result: ProviderResult, force = false): void {
     lastPageUrl === url &&
     lastCanonicalUrl === (canonicalUrl ?? "") &&
     lastPositionSec === positionSec &&
-    lastDurationMs === clampedDurationMs &&
+    lastDurationMs === result.playback.duration_ms &&
     lastAlbum === albumKey &&
     lastAlbumArtist === albumArtistKey &&
     lastTrackId === trackIdKey &&
@@ -273,7 +266,7 @@ function sendUpdate(result: ProviderResult, force = false): void {
   lastPageUrl = url;
   lastCanonicalUrl = canonicalUrl ?? lastCanonicalUrl;
   lastPositionSec = positionSec;
-  lastDurationMs = clampedDurationMs;
+  lastDurationMs = result.playback.duration_ms;
   lastAlbum = albumKey;
   lastAlbumArtist = albumArtistKey;
   lastTrackId = trackIdKey;
@@ -296,10 +289,7 @@ function sendUpdate(result: ProviderResult, force = false): void {
     url,
     origin,
     site: site,
-    playback: {
-      ...result.playback,
-      duration_ms: clampedDurationMs,
-    },
+    playback: result.playback,
     metadata: result.metadata,
     capabilities: result.capabilities,
     confidence: result.confidence,
