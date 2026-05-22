@@ -144,6 +144,8 @@ pub enum BridgeMessage {
 #[serde(rename_all = "snake_case")]
 pub enum CommandKind {
     PlayPause,
+    Play,
+    Pause,
     Next,
     Previous,
     Seek,

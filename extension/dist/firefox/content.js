@@ -65,12 +65,36 @@ var GenericMediaProvider = class {
       confidence: "dom"
     };
   }
-  async command(_cmd) {
+  async command(cmd, positionMs) {
+    const video = document.querySelector("video");
+    const audio = document.querySelector("audio");
+    const media = video ?? audio;
+    if (!media) return;
+    switch (cmd) {
+      case "play_pause":
+        if (media.paused) await media.play().catch(() => void 0);
+        else media.pause();
+        break;
+      case "play":
+        if (media.paused) await media.play().catch(() => void 0);
+        break;
+      case "pause":
+        if (!media.paused) media.pause();
+        break;
+      case "set_position":
+        if (typeof positionMs === "number" && isFinite(positionMs)) {
+          media.currentTime = Math.max(0, positionMs / 1e3);
+        }
+        break;
+      case "seek":
+        break;
+    }
   }
 };
 
 // src/providers/youtube-music.ts
 var YouTubeMusicProvider = class {
+  siteKey = "youtube_music";
   origin = "https://music.youtube.com";
   videoIdRegex = /\/vi\/([a-zA-Z0-9_-]+)\//;
   matches(url) {
@@ -136,12 +160,27 @@ var YouTubeMusicProvider = class {
       metadata,
       playback,
       capabilities,
-      confidence: "provider"
+      confidence: "provider",
+      canonicalUrl: videoId ? `https://music.youtube.com/watch?v=${videoId}` : void 0
     };
   }
-  async command(cmd) {
+  async command(cmd, positionMs) {
+    if (cmd === "set_position") {
+      const video = this.qs("video");
+      if (video && typeof positionMs === "number" && isFinite(positionMs)) {
+        video.currentTime = Math.max(0, positionMs / 1e3);
+      }
+      return;
+    }
+    if (cmd === "play" || cmd === "pause") {
+      const video = this.qs("video");
+      if (cmd === "play" && !video?.paused) return;
+      if (cmd === "pause" && video?.paused) return;
+    }
     const btnMap = {
       play_pause: "#play-pause-button",
+      play: "#play-pause-button",
+      pause: "#play-pause-button",
       next: "yt-icon-button.next-button button",
       previous: "yt-icon-button.previous-button button"
     };
@@ -158,6 +197,7 @@ var YouTubeMusicProvider = class {
 
 // src/providers/youtube.ts
 var YouTubeProvider = class {
+  siteKey = "youtube";
   origin = "https://www.youtube.com";
   videoIdRe = /\/vi\/([a-zA-Z0-9_-]+)\//;
   matches(url) {
@@ -264,15 +304,26 @@ var YouTubeProvider = class {
       playback,
       capabilities,
       confidence: "provider",
-      pageUrl: watchUrl || void 0
+      pageUrl: watchUrl || void 0,
+      canonicalUrl: watchUrl || void 0
     };
   }
-  async command(cmd) {
-    if (cmd === "play_pause") {
+  async command(cmd, positionMs) {
+    if (cmd === "play_pause" || cmd === "play" || cmd === "pause") {
+      const video = document.querySelector("#movie_player video");
+      if (cmd === "play" && !video?.paused) return;
+      if (cmd === "pause" && video?.paused) return;
       const btn = document.querySelector(
         ".ytp-play-button"
       );
       btn?.click();
+      return;
+    }
+    if (cmd === "set_position") {
+      const video = document.querySelector("#movie_player video");
+      if (video && typeof positionMs === "number" && isFinite(positionMs)) {
+        video.currentTime = Math.max(0, positionMs / 1e3);
+      }
       return;
     }
   }
@@ -280,6 +331,7 @@ var YouTubeProvider = class {
 
 // src/providers/soundcloud.ts
 var SoundCloudProvider = class {
+  siteKey = "soundcloud";
   matches(url) {
     return url.hostname === "soundcloud.com" || url.hostname.endsWith(".soundcloud.com");
   }
@@ -399,9 +451,14 @@ var SoundCloudProvider = class {
       pageUrl
     };
   }
-  async command(cmd) {
+  async command(cmd, _positionMs) {
     switch (cmd) {
-      case "play_pause": {
+      case "play_pause":
+      case "play":
+      case "pause": {
+        const isPlaying = document.querySelector(".playControls__play.playing") !== null || document.querySelector(".sc-button-play.playing") !== null;
+        if (cmd === "play" && isPlaying) break;
+        if (cmd === "pause" && !isPlaying) break;
         const btn = document.querySelector(".playControls__play") ?? document.querySelector(".sc-button-play");
         btn?.click();
         break;
@@ -478,6 +535,13 @@ var lastArtist = "";
 var lastState = "";
 var lastArtUrl = "";
 var lastPageUrl = "";
+var lastPositionSec = -1;
+var lastDurationMs = -1;
+var lastAlbum = "";
+var lastAlbumArtist = "";
+var lastTrackId = "";
+var lastRate = 1;
+var lastConfidence = "";
 var lastSentTime = 0;
 var FORCE_RESEND_INTERVAL = 5e3;
 var browser = detectBrowser();
@@ -543,7 +607,11 @@ function sendUpdate(result) {
   const now = Date.now();
   const titleKey = result.metadata.title ?? "";
   const artistKey = result.metadata.artist.join(",");
-  const unchanged = lastSourceId === sourceId && lastTitle === titleKey && lastArtist === artistKey && lastState === result.playback.status && lastArtUrl === (result.metadata.art_url ?? "") && lastPageUrl === url;
+  const positionSec = Math.floor(result.playback.position_ms / 1e3);
+  const albumKey = result.metadata.album ?? "";
+  const albumArtistKey = result.metadata.album_artist.join(",");
+  const trackIdKey = result.metadata.track_id ?? "";
+  const unchanged = lastSourceId === sourceId && lastTitle === titleKey && lastArtist === artistKey && lastState === result.playback.status && lastArtUrl === (result.metadata.art_url ?? "") && lastPageUrl === url && lastPositionSec === positionSec && lastDurationMs === result.playback.duration_ms && lastAlbum === albumKey && lastAlbumArtist === albumArtistKey && lastTrackId === trackIdKey && lastRate === result.playback.rate && lastConfidence === result.confidence;
   if (unchanged && now - lastSentTime < FORCE_RESEND_INTERVAL) {
     return;
   }
@@ -553,9 +621,17 @@ function sendUpdate(result) {
   lastState = result.playback.status;
   lastArtUrl = result.metadata.art_url ?? "";
   lastPageUrl = url;
+  lastPositionSec = positionSec;
+  lastDurationMs = result.playback.duration_ms;
   lastSentTime = now;
+  lastAlbum = albumKey;
+  lastAlbumArtist = albumArtistKey;
+  lastTrackId = trackIdKey;
+  lastRate = result.playback.rate;
+  lastConfidence = result.confidence;
   const urlObj = new URL(url);
-  const site = providers.find((p) => p.matches(urlObj))?.constructor.name.replace("Provider", "").replace(/([A-Z])/g, "_$1").toLowerCase().replace(/^_/, "").replace(/^generic$/, "generic") ?? "generic";
+  const provider = providers.find((p) => p.matches(urlObj));
+  const site = provider?.siteKey ?? provider?.constructor.name.replace("Provider", "").replace(/([A-Z])/g, "_$1").toLowerCase().replace(/^_/, "").replace(/^generic$/, "generic") ?? "generic";
   const msg = {
     type: "update",
     source_id: sourceId,
@@ -565,7 +641,8 @@ function sendUpdate(result) {
     playback: result.playback,
     metadata: result.metadata,
     capabilities: result.capabilities,
-    confidence: result.confidence
+    confidence: result.confidence,
+    canonical_url: result.canonicalUrl
   };
   chrome.runtime.sendMessage(msg).catch(() => {
   });
@@ -576,7 +653,7 @@ chrome.runtime.onMessage.addListener(
       const url = new URL(window.location.href);
       for (const provider of providers) {
         if (provider.matches(url)) {
-          provider.command(msg.command).then(() => sendResponse({ ok: true }));
+          provider.command(msg.command, msg.position_ms).then(() => sendResponse({ ok: true }));
           return true;
         }
       }

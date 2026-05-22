@@ -27,6 +27,7 @@ import type { Provider, ProviderResult } from "./base";
  *   - No <audio> — YTM uses <video>
  */
 export class YouTubeMusicProvider implements Provider {
+  readonly siteKey = "youtube_music";
   private readonly origin = "https://music.youtube.com";
   private readonly videoIdRegex = /\/vi\/([a-zA-Z0-9_-]+)\//;
 
@@ -127,13 +128,30 @@ export class YouTubeMusicProvider implements Provider {
       playback,
       capabilities,
       confidence: "provider",
+      canonicalUrl: videoId ? `https://music.youtube.com/watch?v=${videoId}` : undefined,
     };
   }
 
-  async command(cmd: string): Promise<void> {
+  async command(cmd: string, positionMs?: number): Promise<void> {
     // Class-selector map (verified live — there are no #id selectors for prev/next)
+    if (cmd === "set_position") {
+      const video = this.qs<HTMLVideoElement>("video");
+      if (video && typeof positionMs === "number" && isFinite(positionMs)) {
+        video.currentTime = Math.max(0, positionMs / 1000);
+      }
+      return;
+    }
+
+    if (cmd === "play" || cmd === "pause") {
+      const video = this.qs<HTMLVideoElement>("video");
+      if (cmd === "play" && !video?.paused) return;
+      if (cmd === "pause" && video?.paused) return;
+    }
+
     const btnMap: Record<string, string> = {
       play_pause: "#play-pause-button",
+      play: "#play-pause-button",
+      pause: "#play-pause-button",
       next: "yt-icon-button.next-button button",
       previous: "yt-icon-button.previous-button button",
     };

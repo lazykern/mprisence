@@ -165,14 +165,19 @@ fn bridge_command_for(source_id: &str, cmd: &mpris::MprisCommand) -> BridgeMessa
     use mpris::MprisCommand;
     let command = match cmd {
         MprisCommand::PlayPause => protocol::CommandKind::PlayPause,
+        MprisCommand::Play => protocol::CommandKind::Play,
+        MprisCommand::Pause => protocol::CommandKind::Pause,
         MprisCommand::Next => protocol::CommandKind::Next,
         MprisCommand::Previous => protocol::CommandKind::Previous,
         MprisCommand::Seek(_) => protocol::CommandKind::Seek,
         MprisCommand::SetPosition(_) => protocol::CommandKind::SetPosition,
-        _ => protocol::CommandKind::PlayPause,
+        MprisCommand::Stop => protocol::CommandKind::Pause,
     };
     let position_ms = match cmd {
-        MprisCommand::Seek(us) | MprisCommand::SetPosition(us) => Some((*us / 1000) as u64),
+        // SetPosition is absolute. Seek is relative (and may be negative), but
+        // the extension protocol only carries absolute position_ms, so don't
+        // send bogus wrapped offsets for Seek.
+        MprisCommand::SetPosition(us) if *us >= 0 => Some((*us / 1000) as u64),
         _ => None,
     };
     BridgeMessage::Command {

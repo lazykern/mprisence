@@ -36,6 +36,13 @@ let lastArtist = "";
 let lastState = "";
 let lastArtUrl = "";
 let lastPageUrl = "";
+let lastPositionSec = -1;
+let lastDurationMs = -1;
+let lastAlbum = "";
+let lastAlbumArtist = "";
+let lastTrackId = "";
+let lastRate = 1;
+let lastConfidence: ConfidenceLevel | "" = "";
 let lastSentTime = 0;
 const FORCE_RESEND_INTERVAL = 5000; // ms — re-send even if nothing changed (must be < bridge stale timeout)
 
@@ -136,13 +143,24 @@ function sendUpdate(result: ProviderResult): void {
   const now = Date.now();
   const titleKey = result.metadata.title ?? "";
   const artistKey = result.metadata.artist.join(",");
+  const positionSec = Math.floor(result.playback.position_ms / 1000);
+  const albumKey = result.metadata.album ?? "";
+  const albumArtistKey = result.metadata.album_artist.join(",");
+  const trackIdKey = result.metadata.track_id ?? "";
   const unchanged =
     lastSourceId === sourceId &&
     lastTitle === titleKey &&
     lastArtist === artistKey &&
     lastState === result.playback.status &&
     lastArtUrl === (result.metadata.art_url ?? "") &&
-    lastPageUrl === url;
+    lastPageUrl === url &&
+    lastPositionSec === positionSec &&
+    lastDurationMs === result.playback.duration_ms &&
+    lastAlbum === albumKey &&
+    lastAlbumArtist === albumArtistKey &&
+    lastTrackId === trackIdKey &&
+    lastRate === result.playback.rate &&
+    lastConfidence === result.confidence;
   if (unchanged && now - lastSentTime < FORCE_RESEND_INTERVAL) {
     return;
   }
@@ -153,11 +171,19 @@ function sendUpdate(result: ProviderResult): void {
   lastState = result.playback.status;
   lastArtUrl = result.metadata.art_url ?? "";
   lastPageUrl = url;
+  lastPositionSec = positionSec;
+  lastDurationMs = result.playback.duration_ms;
   lastSentTime = now;
+  lastAlbum = albumKey;
+  lastAlbumArtist = albumArtistKey;
+  lastTrackId = trackIdKey;
+  lastRate = result.playback.rate;
+  lastConfidence = result.confidence;
 
-  // Detect the site name from the first matching provider
+  // Detect stable site key from first matching provider.
   const urlObj = new URL(url);
-  const site = providers.find((p) => p.matches(urlObj))?.constructor.name
+  const provider = providers.find((p) => p.matches(urlObj));
+  const site = provider?.siteKey ?? provider?.constructor.name
     .replace("Provider", "")
     .replace(/([A-Z])/g, "_$1")
     .toLowerCase()
@@ -174,6 +200,7 @@ function sendUpdate(result: ProviderResult): void {
     metadata: result.metadata,
     capabilities: result.capabilities,
     confidence: result.confidence,
+    canonical_url: result.canonicalUrl,
   };
 
   chrome.runtime.sendMessage(msg).catch(() => {
@@ -189,7 +216,7 @@ chrome.runtime.onMessage.addListener(
       const url = new URL(window.location.href);
       for (const provider of providers) {
         if (provider.matches(url)) {
-          provider.command(msg.command).then(() => sendResponse({ ok: true }));
+          provider.command(msg.command, msg.position_ms).then(() => sendResponse({ ok: true }));
           return true; // keep channel open for async response
         }
       }

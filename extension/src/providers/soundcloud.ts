@@ -26,6 +26,8 @@ import type {
 import type { Provider, ProviderResult } from "./base";
 
 export class SoundCloudProvider implements Provider {
+  readonly siteKey = "soundcloud";
+
   matches(url: URL): boolean {
     return url.hostname === "soundcloud.com" || url.hostname.endsWith(".soundcloud.com");
   }
@@ -188,9 +190,17 @@ export class SoundCloudProvider implements Provider {
     };
   }
 
-  async command(cmd: string): Promise<void> {
+  async command(cmd: string, _positionMs?: number): Promise<void> {
     switch (cmd) {
-      case "play_pause": {
+      case "play_pause":
+      case "play":
+      case "pause": {
+        const isPlaying =
+          document.querySelector(".playControls__play.playing") !== null ||
+          document.querySelector(".sc-button-play.playing") !== null;
+        if (cmd === "play" && isPlaying) break;
+        if (cmd === "pause" && !isPlaying) break;
+
         // Try bottom player bar first, then track page button
         const btn =
           document.querySelector<HTMLElement>(".playControls__play") ??

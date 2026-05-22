@@ -45,6 +45,7 @@ export type ExtMessage =
       metadata: MediaMetadata;
       capabilities: Capabilities;
       confidence: ConfidenceLevel;
+      canonical_url?: string;
     }
   | { type: "remove"; source_id: string };
 
@@ -61,6 +62,8 @@ export type BridgeMessage =
 
 export type CommandKind =
   | "play_pause"
+  | "play"
+  | "pause"
   | "next"
   | "previous"
   | "seek"

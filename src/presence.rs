@@ -77,25 +77,60 @@ fn resolve_status_display_type(player_config: &PlayerConfig) -> StatusDisplayTyp
     }
 }
 
-fn summarize_log_value(key: &str, value: &dyn std::fmt::Debug) -> String {
-    const MAX_LOG_VALUE_CHARS: usize = 240;
-
+fn summarize_log_value_with_limit(
+    key: &str,
+    value: &dyn std::fmt::Debug,
+    max_chars: usize,
+) -> String {
     let rendered = format!("{:?}", value);
+    let rendered_len = rendered.chars().count();
     let looks_like_embedded_art = key.eq_ignore_ascii_case("mpris:artUrl")
-        && (rendered.starts_with("\"data:")
-            || rendered.contains(";base64,")
-            || rendered.len() > MAX_LOG_VALUE_CHARS);
+        && (rendered.contains("data:") || rendered.contains(";base64,"));
 
-    if looks_like_embedded_art || rendered.len() > MAX_LOG_VALUE_CHARS {
-        let truncated: String = rendered.chars().take(MAX_LOG_VALUE_CHARS).collect();
+    if looks_like_embedded_art || rendered_len > max_chars {
+        let truncated: String = rendered.chars().take(max_chars).collect();
+        let reason = if looks_like_embedded_art {
+            "embedded art"
+        } else {
+            "truncated"
+        };
         format!(
-            "{}… [truncated, {} chars total]",
+            "{}… [{}; {} chars total]",
             truncated,
-            rendered.chars().count()
+            reason,
+            rendered_len
         )
     } else {
         rendered
     }
+}
+
+fn summarize_log_value(key: &str, value: &dyn std::fmt::Debug) -> String {
+    summarize_log_value_with_limit(key, value, 240)
+}
+
+fn summarize_metadata_for_log(metadata: &MprisMetadata) -> String {
+    const MAX_ENTRIES: usize = 24;
+    const MAX_VALUE_CHARS: usize = 96;
+
+    let total = metadata.iter().count();
+    let mut entries = metadata
+        .iter()
+        .take(MAX_ENTRIES)
+        .map(|(key, value)| {
+            format!(
+                "{}={}",
+                key,
+                summarize_log_value_with_limit(key, value, MAX_VALUE_CHARS)
+            )
+        })
+        .collect::<Vec<_>>();
+
+    if total > MAX_ENTRIES {
+        entries.push(format!("… {} more", total - MAX_ENTRIES));
+    }
+
+    format!("Metadata({} entries) {{{}}}", total, entries.join(", "))
 }
 
 pub struct Presence {
@@ -345,6 +380,7 @@ impl Presence {
             self.player = player;
             self.last_player_state = None;
             self.cmus.reset();
+            *self.last_pushed_track_id.lock() = None;
             *self.last_pushed_track_url.lock() = None;
             *self.last_pushed_art_url.lock() = None;
             *self.last_resolved_cover_art.lock() = None;
@@ -378,7 +414,7 @@ impl Presence {
             }
         };
         let track = health::TrackFingerprint::from_mpris(&metadata);
-        trace!("Raw MPRIS metadata: {:?}", metadata);
+        trace!("Raw MPRIS metadata: {}", summarize_metadata_for_log(&metadata));
         let position = self.player.get_position().unwrap_or_default();
         let now = Instant::now();
         let generation = self.update_generation.load(Ordering::Relaxed);
@@ -723,7 +759,10 @@ impl Presence {
             }
         };
         let update_snapshot = UpdateSnapshot::from_mpris(playback_status, &metadata);
-        debug!("Raw MPRIS metadata from player: {:?}", metadata);
+        debug!(
+            "Raw MPRIS metadata from player: {}",
+            summarize_metadata_for_log(&metadata)
+        );
 
         // Detect a track change relative to the last push and bump the
         // generation counter so any in-flight cover-art task spawned for the
@@ -740,13 +779,38 @@ impl Presence {
         let track_changed = {
             let track_id = metadata.track_id().map(|id| id.to_string());
             let track_url = metadata.url().map(|url| url.to_string());
-            let art_url = metadata.art_url().map(|url| url.to_string());
+            let art_url = metadata.art_url();
             let mut last_id = self.last_pushed_track_id.lock();
             let mut last_url = self.last_pushed_track_url.lock();
             let mut last_art = self.last_pushed_art_url.lock();
-            let id_changed = last_id.as_deref() != track_id.as_deref();
-            let url_changed = last_url.as_deref() != track_url.as_deref();
-            let art_changed = last_art.as_deref() != art_url.as_deref();
+
+            // Stable track_id: only detect change when BOTH are Some and differ.
+            // The bridge sometimes drops mpris:trackid on some update cycles;
+            // treating absent→present as a change would fire on every alternation.
+            let id_changed = match (last_id.as_deref(), track_id.as_deref()) {
+                (Some(last), Some(current)) => last != current,
+                _ => false,
+            };
+
+            let url_changed = match (last_url.as_deref(), track_url.as_deref()) {
+                (Some(last), Some(current)) => last != current,
+                (None, Some(_)) => true,   // first URL seen
+                (Some(_), None) => false,  // URL disappeared — keep last
+                (None, None) => false,
+            };
+
+            // Art URL comparison: strip query params (YouTube cache-busting
+            // noise from sqp= and rs= parameters). The path alone identifies
+            // the actual image content.
+            let art_changed = match (last_art.as_deref(), art_url) {
+                (Some(last), Some(current)) => {
+                    utils::normalize_art_url(last) != utils::normalize_art_url(&current)
+                }
+                (None, Some(_)) => true,   // first art URL seen
+                (Some(_), None) => false,  // art URL disappeared — keep last
+                (None, None) => false,
+            };
+
             let changed = id_changed || url_changed || art_changed;
             if changed {
                 debug!(
@@ -756,9 +820,18 @@ impl Presence {
                     art_changed,
                     self.update_generation.load(Ordering::Relaxed),
                 );
-                *last_id = track_id;
-                *last_url = track_url;
-                *last_art = art_url;
+                // Only update stored values when meaningful.
+                // Prevents absent/present cycling from overwriting good state.
+                if let Some(ref id) = track_id {
+                    *last_id = Some(id.clone());
+                }
+                if let Some(ref url) = track_url {
+                    *last_url = Some(url.clone());
+                }
+                if let Some(ref art) = art_url {
+                    // Store normalized so next poll's comparison is stable.
+                    *last_art = Some(utils::normalize_art_url(art));
+                }
             }
             changed
         };
@@ -1314,6 +1387,7 @@ impl Presence {
 
         self.last_player_state = None;
         self.cmus.reset();
+        *self.last_pushed_track_id.lock() = None;
         *self.last_pushed_track_url.lock() = None;
         *self.last_pushed_art_url.lock() = None;
         *self.last_resolved_cover_art.lock() = None;
@@ -1572,5 +1646,15 @@ mod tests {
             resolve_status_display_type(&default_app_details),
             StatusDisplayType::Details
         );
+    }
+
+    #[test]
+    fn art_log_summary_truncates_embedded_payloads() {
+        let data_url = format!("data:image/png;base64,{}", "A".repeat(512));
+        let summary = summarize_log_value("mpris:artUrl", &data_url);
+
+        assert!(summary.contains("embedded art"));
+        assert!(summary.len() < data_url.len());
+        assert!(!summary.contains(&"A".repeat(300)));
     }
 }

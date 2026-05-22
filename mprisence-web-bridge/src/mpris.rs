@@ -5,6 +5,7 @@ use mpris_server::{
 };
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
 /// Commands received from MPRIS clients (user pressing play/pause in their desktop).
@@ -236,6 +237,16 @@ impl MprisPublisher {
         let metadata = build_metadata(source, is_active, &self.bus_name);
         let _ = player.set_metadata(metadata).await;
 
+        let position_us = source
+            .map(|s| {
+                s.playback
+                    .position_ms
+                    .saturating_mul(1_000)
+                    .min(i64::MAX as u64) as i64
+            })
+            .unwrap_or(0);
+        player.set_position(Time::from_micros(position_us));
+
         if let Some(s) = source {
             let _ = player.set_can_play(s.capabilities.play_pause).await;
             let _ = player.set_can_pause(s.capabilities.play_pause).await;
@@ -329,13 +340,12 @@ fn build_metadata(source: Option<&SourceState>, is_active: bool, _bus_name: &str
             format!("{:?}", s.confidence).to_lowercase(),
         );
         builder = builder.other("mprisence:active", if is_active { "true" } else { "false" });
-        builder = builder.other(
-            "mprisence:seenAgeMs",
-            s.last_seen
-                .elapsed()
-                .as_millis()
-                .to_string(),
-        );
+        let seen_age_ms = s.last_seen.elapsed().as_millis();
+        builder = builder.other("mprisence:seenAgeMs", seen_age_ms.to_string());
+        if let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) {
+            let last_seen_unix_ms = now.as_millis().saturating_sub(seen_age_ms);
+            builder = builder.other("mprisence:lastSeenUnixMs", last_seen_unix_ms.to_string());
+        }
         // Extract browser from bus_name (e.g. org.mpris.MediaPlayer2.mprisence_web.youtube_music.habc)
         // The browser info is embedded in the source_id (e.g. "firefox:tab:12:frame").
         let browser = s.source_id.split(':').next().unwrap_or("unknown").to_string();

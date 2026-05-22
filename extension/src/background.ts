@@ -13,12 +13,13 @@ import { NativeMessagingPort } from "./utils/native-messaging";
 
 // Injected by esbuild define at build time
 declare var __GIT_SHA__: string | undefined;
-import { detectBrowser } from "./utils/browser-detect";
+import { detectBrowser, makeSourceId } from "./utils/browser-detect";
 import { PROTOCOL_VERSION } from "./types";
 
 // ─── Native messaging port ───────────────────────────────────────
 
 const nativePort = new NativeMessagingPort();
+const browser = detectBrowser();
 
 // ─── Tab state tracking ──────────────────────────────────────────
 
@@ -120,6 +121,17 @@ function sendCommandToTab(
 
 // ─── Content script message handling ──────────────────────────────
 
+function sourceIdForSender(
+  originalSourceId: string,
+  sender: chrome.runtime.MessageSender
+): string {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined) return originalSourceId;
+
+  const frameId = sender.frameId ?? 0;
+  return `${makeSourceId(browser, tabId, frameId)}:frame`;
+}
+
 function onContentMessage(
   msg: ExtMessage,
   sender: chrome.runtime.MessageSender
@@ -129,28 +141,36 @@ function onContentMessage(
   // Track active tabs
   if (msg.type === "update") {
     const tabId = sender.tab?.id;
+    const bridgeMsg: ExtMessage = {
+      ...msg,
+      source_id: sourceIdForSender(msg.source_id, sender),
+    };
     console.log(
-      `[mprisence] ← Update from tab ${tabId}: site=${msg.site} "${msg.metadata.title ?? "?"}" status=${msg.playback.status} pos=${msg.playback.position_ms} dur=${msg.playback.duration_ms}`
+      `[mprisence] ← Update from tab ${tabId}: source=${bridgeMsg.source_id} site=${bridgeMsg.site} "${bridgeMsg.metadata.title ?? "?"}" status=${bridgeMsg.playback.status} pos=${bridgeMsg.playback.position_ms} dur=${bridgeMsg.playback.duration_ms}`
     );
     if (tabId !== undefined) {
-      activeTabs.set(tabId, msg.source_id);
+      activeTabs.set(tabId, bridgeMsg.source_id);
     }
 
     // Update badge
-    setBadge(msg.site, tabId);
+    setBadge(bridgeMsg.site, tabId);
 
     // Forward to native host
-    nativePort.send(msg);
+    nativePort.send(bridgeMsg);
   }
 
   if (msg.type === "remove") {
     const tabId = sender.tab?.id;
-    console.log(`[mprisence] ← Remove from tab ${tabId}`);
+    const bridgeMsg: ExtMessage = {
+      ...msg,
+      source_id: sourceIdForSender(msg.source_id, sender),
+    };
+    console.log(`[mprisence] ← Remove from tab ${tabId}: source=${bridgeMsg.source_id}`);
     if (tabId !== undefined) {
       activeTabs.delete(tabId);
     }
 
-    nativePort.send(msg);
+    nativePort.send(bridgeMsg);
   }
 }
 
@@ -160,7 +180,6 @@ function onContentMessage(
 nativePort.connect(onBridgeMessage, onBridgeDisconnect);
 
 // Send hello to bridge
-const browser = detectBrowser();
 nativePort.send({
   type: "hello",
   browser,

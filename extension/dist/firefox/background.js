@@ -94,12 +94,16 @@ function detectBrowser() {
   console.warn("[mprisence] Unknown browser, assuming chromium");
   return "chromium";
 }
+function makeSourceId(browser2, tabId, frameId) {
+  return `${browser2}:tab:${tabId ?? 0}:${frameId ?? 0}`;
+}
 
 // src/types.ts
 var PROTOCOL_VERSION = 1;
 
 // src/background.ts
 var nativePort = new NativeMessagingPort();
+var browser = detectBrowser();
 var activeTabs = /* @__PURE__ */ new Map();
 function onBridgeMessage(msg) {
   switch (msg.type) {
@@ -163,36 +167,49 @@ function sendCommandToTab(tabId, command, positionMs) {
     }
   );
 }
+function sourceIdForSender(originalSourceId, sender) {
+  const tabId = sender.tab?.id;
+  if (tabId === void 0) return originalSourceId;
+  const frameId = sender.frameId ?? 0;
+  return `${makeSourceId(browser, tabId, frameId)}:frame`;
+}
 function onContentMessage(msg, sender) {
   if (!msg || !msg.type) return;
   if (msg.type === "update") {
     const tabId = sender.tab?.id;
+    const bridgeMsg = {
+      ...msg,
+      source_id: sourceIdForSender(msg.source_id, sender)
+    };
     console.log(
-      `[mprisence] \u2190 Update from tab ${tabId}: site=${msg.site} "${msg.metadata.title ?? "?"}" status=${msg.playback.status} pos=${msg.playback.position_ms} dur=${msg.playback.duration_ms}`
+      `[mprisence] \u2190 Update from tab ${tabId}: source=${bridgeMsg.source_id} site=${bridgeMsg.site} "${bridgeMsg.metadata.title ?? "?"}" status=${bridgeMsg.playback.status} pos=${bridgeMsg.playback.position_ms} dur=${bridgeMsg.playback.duration_ms}`
     );
     if (tabId !== void 0) {
-      activeTabs.set(tabId, msg.source_id);
+      activeTabs.set(tabId, bridgeMsg.source_id);
     }
-    setBadge(msg.site, tabId);
-    nativePort.send(msg);
+    setBadge(bridgeMsg.site, tabId);
+    nativePort.send(bridgeMsg);
   }
   if (msg.type === "remove") {
     const tabId = sender.tab?.id;
-    console.log(`[mprisence] \u2190 Remove from tab ${tabId}`);
+    const bridgeMsg = {
+      ...msg,
+      source_id: sourceIdForSender(msg.source_id, sender)
+    };
+    console.log(`[mprisence] \u2190 Remove from tab ${tabId}: source=${bridgeMsg.source_id}`);
     if (tabId !== void 0) {
       activeTabs.delete(tabId);
     }
-    nativePort.send(msg);
+    nativePort.send(bridgeMsg);
   }
 }
 nativePort.connect(onBridgeMessage, onBridgeDisconnect);
-var browser = detectBrowser();
 nativePort.send({
   type: "hello",
   browser,
   extension_version: chrome.runtime.getManifest().version,
   protocol: PROTOCOL_VERSION,
-  git_sha: true ? "a160cc8-dirty" : void 0
+  git_sha: true ? "061d53c-dirty" : void 0
 });
 chrome.runtime.onMessage.addListener(
   (msg, sender) => {

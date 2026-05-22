@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use log::{debug, info, trace};
 use mpris::{Metadata as MprisMetadata, PlaybackStatus};
 
-use crate::metadata;
+use crate::{metadata, utils};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -38,7 +38,7 @@ impl TrackFingerprint {
         Self {
             track_id: metadata.track_id().map(|id| id.to_string()),
             url: metadata.url().map(|url| url.to_string()),
-            art_url: metadata.art_url().map(|url| url.to_string()),
+            art_url: metadata.art_url().map(|url| utils::normalize_art_url(&url)),
             title: metadata.title().map(|title| title.to_string()),
             artists: metadata
                 .artists()

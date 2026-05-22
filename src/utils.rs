@@ -13,6 +13,25 @@ pub fn normalize_player_identity(input: &str) -> String {
         .join("_")
 }
 
+/// Normalize art URLs for stable comparison without collapsing signed/CDN URLs.
+/// YouTube thumbnails use cache-busting params (sqp=, rs=) that do not change
+/// image content. Other hosts may use query params to select or authorize the
+/// actual image, so preserve those URLs exactly.
+pub fn normalize_art_url(url: &str) -> String {
+    let Ok(parsed) = Url::parse(url) else {
+        return url.to_string();
+    };
+
+    let host = parsed.host_str().unwrap_or("");
+    if !host.eq_ignore_ascii_case("i.ytimg.com") {
+        return url.to_string();
+    }
+
+    let scheme = parsed.scheme();
+    let path = parsed.path();
+    format!("{}://{}{}", scheme, host, path)
+}
+
 pub fn format_duration(seconds: u64) -> String {
     let hours = seconds / 3600;
     let minutes = (seconds % 3600) / 60;
@@ -94,6 +113,33 @@ mod tests {
 
     use super::*;
     use mpris::PlaybackStatus;
+
+    #[test]
+    fn test_normalize_art_url() {
+        // YouTube cache-busting variants — same path, different query params
+        let a = "https://i.ytimg.com/vi/abc123/maxresdefault.jpg?sqp=-oaymwE&rs=AMzJL3kGjx6";
+        let b = "https://i.ytimg.com/vi/abc123/maxresdefault.jpg?sqp=-other&rs=AOn4CLCGDr8";
+        assert_eq!(normalize_art_url(a), normalize_art_url(b));
+        assert_eq!(
+            normalize_art_url(a),
+            "https://i.ytimg.com/vi/abc123/maxresdefault.jpg"
+        );
+
+        // Different paths should differ
+        let c = "https://i.ytimg.com/vi/def456/maxresdefault.jpg";
+        assert_ne!(normalize_art_url(a), normalize_art_url(c));
+
+        // Non-URL strings pass through unchanged
+        assert_eq!(normalize_art_url("not-a-url"), "not-a-url");
+
+        // Non-YouTube query params may select/authorize the actual image.
+        let signed = "https://cdn.example.com/cover.jpg?sig=abc&v=2";
+        assert_eq!(normalize_art_url(signed), signed);
+
+        // No-query URL unchanged
+        let d = "https://example.com/cover.jpg";
+        assert_eq!(normalize_art_url(d), d);
+    }
 
     #[test]
     fn test_validate_version() {

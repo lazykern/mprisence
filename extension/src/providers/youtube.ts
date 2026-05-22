@@ -18,6 +18,7 @@ import type { Provider, ProviderResult } from "./base";
  * Art URL comes from MediaSession API (YouTube sets it everywhere).
  */
 export class YouTubeProvider implements Provider {
+  readonly siteKey = "youtube";
   private readonly origin = "https://www.youtube.com";
   private readonly videoIdRe = /\/vi\/([a-zA-Z0-9_-]+)\//;
 
@@ -156,15 +157,28 @@ export class YouTubeProvider implements Provider {
       capabilities,
       confidence: "provider",
       pageUrl: watchUrl || undefined,
+      canonicalUrl: watchUrl || undefined,
     };
   }
 
-  async command(cmd: string): Promise<void> {
-    if (cmd === "play_pause") {
+  async command(cmd: string, positionMs?: number): Promise<void> {
+    if (cmd === "play_pause" || cmd === "play" || cmd === "pause") {
+      const video = document.querySelector<HTMLVideoElement>("#movie_player video");
+      if (cmd === "play" && !video?.paused) return;
+      if (cmd === "pause" && video?.paused) return;
+
       const btn = document.querySelector<HTMLElement>(
         ".ytp-play-button"
       );
       btn?.click();
+      return;
+    }
+
+    if (cmd === "set_position") {
+      const video = document.querySelector<HTMLVideoElement>("#movie_player video");
+      if (video && typeof positionMs === "number" && isFinite(positionMs)) {
+        video.currentTime = Math.max(0, positionMs / 1000);
+      }
       return;
     }
 

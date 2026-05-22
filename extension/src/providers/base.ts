@@ -12,6 +12,8 @@ export interface ProviderResult {
   confidence: ConfidenceLevel;
   /** Override the page URL sent in ExtMessage (e.g. mini player watch URL) */
   pageUrl?: string;
+  /** Canonical track/page URL when distinct from the visible page URL. */
+  canonicalUrl?: string;
 }
 
 /**
@@ -25,8 +27,11 @@ export interface Provider {
   /** Extract metadata and playback state from the page */
   extract(): ProviderResult | null;
 
-  /** Execute a media control command */
-  command(cmd: string): Promise<void>;
+  /** Stable site key used for bridge grouping/config, e.g. `youtube_music`. */
+  readonly siteKey?: string;
+
+  /** Execute a media control command. `positionMs` is absolute for set_position. */
+  command(cmd: string, positionMs?: number): Promise<void>;
 }
 
 /**
@@ -101,7 +106,31 @@ export class GenericMediaProvider implements Provider {
     };
   }
 
-  async command(_cmd: string): Promise<void> {
-    // Generic media element commands are handled via content script
+  async command(cmd: string, positionMs?: number): Promise<void> {
+    const video = document.querySelector<HTMLVideoElement>("video");
+    const audio = document.querySelector<HTMLAudioElement>("audio");
+    const media = video ?? audio;
+    if (!media) return;
+
+    switch (cmd) {
+      case "play_pause":
+        if (media.paused) await media.play().catch(() => undefined);
+        else media.pause();
+        break;
+      case "play":
+        if (media.paused) await media.play().catch(() => undefined);
+        break;
+      case "pause":
+        if (!media.paused) media.pause();
+        break;
+      case "set_position":
+        if (typeof positionMs === "number" && isFinite(positionMs)) {
+          media.currentTime = Math.max(0, positionMs / 1000);
+        }
+        break;
+      case "seek":
+        // Bridge protocol currently has no signed relative offset; ignore.
+        break;
+    }
   }
 }
