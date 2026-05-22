@@ -6,10 +6,10 @@ use log::{debug, error, info, trace, warn};
 use mpris::Event as MprisEvent;
 use mpris::PlayerFinder;
 use player::{
-    compute_presence_migrations,
+    bridge_browser, canonical_player_bus_name, compute_presence_migrations,
     events::{EventOutcome, PlayerEvent, PlayerEventKind},
     is_mprisence_web_bridge_bus, is_playerctld_no_active_error, merge_url_duplicates,
-    select_richest_player, select_winner_idx,
+    select_richest_player, select_winner_idx, should_suppress_native,
     BucketSummary, PlayerIdentifier,
 };
 use presence::Presence;
@@ -231,6 +231,28 @@ impl Mprisence {
         // that e.g. plasma-browser-integration and the native browser MPRIS
         // endpoint exposing the same tab are tracked as one logical player.
         let candidates = merge_url_duplicates(candidates);
+
+        // Phase 1.6a: when a browser has a live bridge player, suppress that
+        // browser's own native MPRIS endpoint so its tabs are not double-counted.
+        let bridged_browsers: Vec<String> = candidates
+            .values()
+            .flatten()
+            .filter(|p| is_mprisence_web_bridge_bus(p.bus_name()))
+            .filter_map(|p| p.get_metadata().ok().and_then(|m| bridge_browser(&m)))
+            .collect();
+        let candidates: HashMap<SmolStr, Vec<mpris::Player>> = if bridged_browsers.is_empty() {
+            candidates
+        } else {
+            candidates
+                .into_iter()
+                .filter(|(_, players)| {
+                    !players.iter().all(|p| {
+                        let canon = canonical_player_bus_name(p.bus_name());
+                        should_suppress_native(&canon, &bridged_browsers)
+                    })
+                })
+                .collect()
+        };
 
         // Phase 1.6: presence-key migration. When URL-merge changes the
         // post-merge norm_id of an existing logical player (e.g. plasma

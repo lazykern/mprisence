@@ -147,6 +147,54 @@ pub fn is_mprisence_web_bridge_bus(raw_bus_name: &str) -> bool {
     canon.starts_with("mprisence_web")
 }
 
+/// Known native browser MPRIS bus prefixes (canonical, instance suffix stripped).
+const NATIVE_BROWSER_BUSES: &[(&str, &str)] = &[
+    ("firefox", "firefox"),
+    ("chromium", "chromium"),
+    ("chrome", "chromium"),
+    ("brave", "brave"),
+    ("vivaldi", "vivaldi"),
+    // plasma-browser-integration proxies whichever browser KDE is integrated
+    // with; treat it as a native browser bus with unknown specific browser.
+    ("plasma-browser-integration", "plasma"),
+];
+
+/// Returns true if a canonical bus name is a browser's own MPRIS endpoint.
+#[allow(dead_code)]
+pub fn is_native_browser_bus(canonical_bus_name: &str) -> bool {
+    NATIVE_BROWSER_BUSES
+        .iter()
+        .any(|(prefix, _)| canonical_bus_name.starts_with(prefix))
+}
+
+/// Maps a native browser bus name to the browser key the bridge reports in
+/// `mprisence:browser` (e.g. `"firefox"`). Returns None for non-browser buses.
+pub fn native_browser_of(canonical_bus_name: &str) -> Option<&'static str> {
+    NATIVE_BROWSER_BUSES
+        .iter()
+        .find(|(prefix, _)| canonical_bus_name.starts_with(prefix))
+        .map(|(_, browser)| *browser)
+}
+
+/// Pure: should this native browser bus be suppressed because its browser has
+/// a live bridge player? `plasma` matches when any browser is bridged, since
+/// plasma-browser-integration cannot be attributed to a specific browser.
+pub fn should_suppress_native(canonical_bus_name: &str, bridged_browsers: &[String]) -> bool {
+    match native_browser_of(canonical_bus_name) {
+        Some("plasma") => !bridged_browsers.is_empty(),
+        Some(browser) => bridged_browsers.iter().any(|b| b == browser),
+        None => false,
+    }
+}
+
+/// Extracts the `mprisence:browser` value from a bridge player's metadata.
+pub fn bridge_browser(metadata: &mpris::Metadata) -> Option<String> {
+    metadata
+        .get("mprisence:browser")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
 /// The stable config key all bridge MPRIS players resolve to.
 /// Instead of `mprisence_web.youtube_music.abc123` matching individual config,
 /// all bridge players use `mprisence_web` as their config lookup key.
@@ -965,5 +1013,24 @@ mod bridge_tests {
         // The function signature is tested via integration.
         // This test just verifies the function exists and compiles.
         assert_eq!(BRIDGE_CONFIG_KEY, "mprisence_web");
+    }
+
+    #[test]
+    fn suppresses_native_browser_when_bridge_present() {
+        // bridged browsers: firefox
+        let bridged = ["firefox".to_string()];
+        assert!(is_native_browser_bus("firefox.instance_1_5376"));
+        assert!(is_native_browser_bus("plasma-browser-integration"));
+        assert!(!is_native_browser_bus("spotify"));
+        assert!(!is_native_browser_bus("mprisence_web.youtube.abc"));
+
+        assert_eq!(native_browser_of("firefox.instance_1_5376"), Some("firefox"));
+        assert_eq!(native_browser_of("chromium.instance_2"), Some("chromium"));
+        assert_eq!(native_browser_of("spotify"), None);
+
+        // firefox native bus suppressed because firefox is bridged
+        assert!(should_suppress_native("firefox.instance_1_5376", &bridged));
+        // chromium native bus kept because chromium is not bridged
+        assert!(!should_suppress_native("chromium.instance_2", &bridged));
     }
 }
