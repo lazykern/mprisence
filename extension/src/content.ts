@@ -81,6 +81,10 @@ function getTabId(): number | undefined {
 // It does NOT supply track_id, canonical_url or pageUrl fields.
 // We preserve those from the last isolated-world update to prevent
 // the bridge from seeing alternating /mismatched track IDs.
+//
+// Art-only events: page-world also dispatches YTM square cover art
+// (yt3.googleusercontent.com) fetched via InnerTube API. These have
+// empty title/artist — merge art_url into last provider metadata.
 window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
   const data = event.detail;
   if (data?.type === "media-state") {
@@ -91,6 +95,22 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
       confidence: (data.confidence as ConfidenceLevel) || "dom",
     };
 
+    // Art-only merge: page-world sends square yt3 cover art from
+    // InnerTube API with empty title/artist. Merge art_url into
+    // last provider metadata so we don't overwrite title/artist
+    // with empty values.
+    const pwTitle = result.metadata.title ?? "";
+    const pwArtist = result.metadata.artist.join(",");
+    const pwArtUrl = result.metadata.art_url ?? "";
+    const isArtOnly = !pwTitle && !pwArtist && !!pwArtUrl &&
+      lastProviderMetadata !== null;
+    if (isArtOnly) {
+      result.metadata = {
+        ...lastProviderMetadata,
+        art_url: pwArtUrl,
+      };
+    }
+
     // Merge stable fields from the last isolated-world update so the
     // bridge sees a consistent track_id & canonical_url.
     // These only exist in the isolated-world path (provider extract).
@@ -99,8 +119,6 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
     // or artist differs from last page-world send), DON'T carry over
     // the old track_id — let the next isolated-world update supply the
     // correct one instead of sending stale data.
-    const pwTitle = result.metadata.title ?? "";
-    const pwArtist = result.metadata.artist.join(",");
     const isNewTrack =
       lastPageWorldMeta !== null &&
       (pwTitle !== lastPageWorldMeta.title || pwArtist !== lastPageWorldMeta.artist);
@@ -141,6 +159,9 @@ let lastPageWorldMeta: {
   track_id: string | undefined;
 } | null = null;
 let lastCanonicalUrlPageWorld = "";
+
+// Provider metadata snapshot for art-only merge (page-world InnerTube)
+let lastProviderMetadata: MediaMetadata | null = null;
 
 // ─── Event-driven observation (Layer 1: isolated world) ──────────
 
@@ -260,6 +281,13 @@ function sendUpdate(result: ProviderResult, force = false): void {
   // force=true to refresh the bridge's last_seen even when unchanged.
   if (!force && unchanged) {
     return;
+  }
+
+  // Update provider metadata snapshot for page-world art-only merge.
+  // Page-world InnerTube events have empty title, so this preserves
+  // the provider's title/artist while allowing art_url to be replaced.
+  if (titleKey) {
+    lastProviderMetadata = result.metadata;
   }
 
   lastSourceId = sourceId;

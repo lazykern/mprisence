@@ -1004,6 +1004,14 @@ window.addEventListener("mprisence-media-state", ((event) => {
     };
     const pwTitle = result.metadata.title ?? "";
     const pwArtist = result.metadata.artist.join(",");
+    const pwArtUrl = result.metadata.art_url ?? "";
+    const isArtOnly = !pwTitle && !pwArtist && !!pwArtUrl && lastProviderMetadata !== null;
+    if (isArtOnly) {
+      result.metadata = {
+        ...lastProviderMetadata,
+        art_url: pwArtUrl
+      };
+    }
     const isNewTrack = lastPageWorldMeta !== null && (pwTitle !== lastPageWorldMeta.title || pwArtist !== lastPageWorldMeta.artist);
     if (!isNewTrack) {
       if (lastPageWorldMeta && !result.metadata.track_id) {
@@ -1028,6 +1036,7 @@ window.addEventListener("mprisence-media-state", ((event) => {
 }));
 var lastPageWorldMeta = null;
 var lastCanonicalUrlPageWorld = "";
+var lastProviderMetadata = null;
 function extractFromProviders() {
   const url = new URL(window.location.href);
   for (const provider of providers) {
@@ -1095,6 +1104,9 @@ function sendUpdate(result, force = false) {
   if (!force && unchanged) {
     return;
   }
+  if (titleKey) {
+    lastProviderMetadata = result.metadata;
+  }
   lastSourceId = sourceId;
   lastTitle = titleKey;
   lastArtist = artistKey;
@@ -1123,7 +1135,7 @@ function sendUpdate(result, force = false) {
     capabilities: result.capabilities,
     confidence: result.confidence,
     canonical_url: canonicalUrl || void 0,
-    _ext_fingerprint: true ? "74ca367-dirty" : void 0
+    _ext_fingerprint: true ? "2a3b481-dirty" : void 0
   };
   chrome.runtime.sendMessage(msg).catch(() => {
   });

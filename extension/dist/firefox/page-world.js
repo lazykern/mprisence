@@ -119,6 +119,93 @@
     }
     return url;
   }
+  let lastYtmVideoId = "";
+  let cachedSquareArt = {};
+  let pendingFetch = {};
+  const INNERTUBE_KEY = "AIzaSyC9XL3ZjB78yOKadE1T3dT4iSfB9l6stUU";
+  const INNERTUBE_CLIENT = "WEB_REMIX";
+  const INNERTUBE_VER = "1.20250521.00.00";
+  async function fetchSquareArt(videoId) {
+    if (cachedSquareArt[videoId]) return cachedSquareArt[videoId];
+    if (pendingFetch[videoId]) return null;
+    pendingFetch[videoId] = true;
+    try {
+      const resp = await fetch(
+        "https://music.youtube.com/youtubei/v1/player?key=" + INNERTUBE_KEY,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            context: {
+              client: {
+                clientName: INNERTUBE_CLIENT,
+                clientVersion: INNERTUBE_VER,
+                hl: "en"
+              }
+            },
+            videoId
+          })
+        }
+      );
+      const data = await resp.json();
+      const thumbs = data?.videoDetails?.thumbnail?.thumbnails;
+      if (thumbs && thumbs.length > 0) {
+        var best = thumbs[0];
+        for (var i = 1; i < thumbs.length; i++) {
+          if ((thumbs[i].width || 0) > (best.width || 0)) best = thumbs[i];
+        }
+        if (best?.url && best.url.indexOf(".googleusercontent.com") > -1) {
+          var url = best.url.replace(/=[a-z0-9-]+$/, "=w544-h544-l90-rj");
+          cachedSquareArt[videoId] = url;
+          return url;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      delete pendingFetch[videoId];
+    }
+  }
+  function checkYtmAndDispatch() {
+    if (window.location.hostname !== "music.youtube.com") return;
+    var params = new URLSearchParams(window.location.search);
+    var videoId = params.get("v") || "";
+    if (!videoId) return;
+    if (videoId !== lastYtmVideoId) {
+      lastYtmVideoId = videoId;
+      fetchSquareArt(videoId);
+    }
+    var artUrl = cachedSquareArt[videoId];
+    if (artUrl) {
+      dispatch({
+        type: "media-state",
+        metadata: {
+          artist: [],
+          art_url: artUrl
+        },
+        playback: {
+          status: "playing",
+          position_ms: 0,
+          duration_ms: 0,
+          rate: 1
+        },
+        capabilities: {
+          play_pause: true,
+          next: false,
+          previous: false,
+          seek: false,
+          set_position: false,
+          raise: true
+        },
+        confidence: "provider"
+      });
+    }
+  }
+  setInterval(function() {
+    checkYtmAndDispatch();
+  }, 1e3);
   dispatch(collectState());
+  checkYtmAndDispatch();
 })();
 //# sourceMappingURL=page-world.js.map

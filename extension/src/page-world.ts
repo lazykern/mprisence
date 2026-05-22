@@ -175,6 +175,119 @@
     return url;
   }
 
+  // ─── YTM square cover art via InnerTube API ──────────────
+  //
+  // YouTube Music hides square album art behind InnerTube.
+  // Standard ytimg thumbnails (maxresdefault/hqdefault) are 16:9
+  // with black bars (art tracks) or wrong images.
+  // InnerTube returns square yt3.googleusercontent.com URLs (544-1400px).
+  //
+  // This runs in page-world so we have the page's cookies + fetch access.
+
+  let lastYtmVideoId = "";
+  let cachedSquareArt: Record<string, string> = {};
+  let pendingFetch: Record<string, true> = {};
+
+  const INNERTUBE_KEY = "AIzaSyC9XL3ZjB78yOKadE1T3dT4iSfB9l6stUU";
+  const INNERTUBE_CLIENT = "WEB_REMIX";
+  const INNERTUBE_VER = "1.20250521.00.00";
+
+  /** Fetch square cover art for a YTM video ID via InnerTube API */
+  async function fetchSquareArt(videoId: string): Promise<string | null> {
+    if (cachedSquareArt[videoId]) return cachedSquareArt[videoId];
+    if (pendingFetch[videoId]) return null;
+    pendingFetch[videoId] = true;
+
+    try {
+      const resp = await fetch(
+        "https://music.youtube.com/youtubei/v1/player?key=" + INNERTUBE_KEY,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            context: {
+              client: {
+                clientName: INNERTUBE_CLIENT,
+                clientVersion: INNERTUBE_VER,
+                hl: "en",
+              },
+            },
+            videoId: videoId,
+          }),
+        }
+      );
+      const data = await resp.json();
+      const thumbs = data?.videoDetails?.thumbnail?.thumbnails;
+      if (thumbs && thumbs.length > 0) {
+        // Pick largest square thumbnail (yt3.googleusercontent.com)
+        var best = thumbs[0];
+        for (var i = 1; i < thumbs.length; i++) {
+          if ((thumbs[i].width || 0) > (best.width || 0)) best = thumbs[i];
+        }
+        if (best?.url && best.url.indexOf(".googleusercontent.com") > -1) {
+          // Upgrade to 544px JPEG (good quality, small size)
+          var url = best.url.replace(/=[a-z0-9-]+$/, "=w544-h544-l90-rj");
+          cachedSquareArt[videoId] = url;
+          return url;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      delete pendingFetch[videoId];
+    }
+  }
+
+  /** YTM: detect video ID changes from page URL, fetch square art */
+  function checkYtmAndDispatch(): void {
+    if (window.location.hostname !== "music.youtube.com") return;
+
+    var params = new URLSearchParams(window.location.search);
+    var videoId = params.get("v") || "";
+    if (!videoId) return;
+
+    if (videoId !== lastYtmVideoId) {
+      lastYtmVideoId = videoId;
+      // Kick off InnerTube fetch (async, stores result in cache)
+      fetchSquareArt(videoId);
+    }
+
+    // If we have cached square art for current video, dispatch
+    var artUrl = cachedSquareArt[videoId];
+    if (artUrl) {
+      dispatch({
+        type: "media-state",
+        metadata: {
+          artist: [],
+          art_url: artUrl,
+        },
+        playback: {
+          status: "playing",
+          position_ms: 0,
+          duration_ms: 0,
+          rate: 1.0,
+        },
+        capabilities: {
+          play_pause: true,
+          next: false,
+          previous: false,
+          seek: false,
+          set_position: false,
+          raise: true,
+        },
+        confidence: "provider",
+      });
+    }
+  }
+
+  // Poll for YTM video ID changes (1s interval alongside MediaSession check)
+  setInterval(function () {
+    checkYtmAndDispatch();
+  }, 1000);
+
   // Initial dispatch
   dispatch(collectState());
+  // Also trigger initial YTM check
+  checkYtmAndDispatch();
 })();
