@@ -126,8 +126,10 @@ var YouTubeMusicProvider = class {
     const videoId = videoIdMatch?.[1] || "";
     const trackId = videoId ? `ytm:${videoId}` : void 0;
     const currentSec = video?.currentTime || 0;
-    const totalSec = video?.duration || 0;
     const isPaused = video?.paused ?? true;
+    const progressBar = this.qs("#progress-bar");
+    const progressMax = progressBar ? parseFloat(progressBar.getAttribute("aria-valuemax") ?? "") : NaN;
+    const totalSec = isFinite(progressMax) && progressMax > 0 ? progressMax : video?.duration || 0;
     if (video && (totalSec === 0 || !isFinite(totalSec))) {
       return null;
     }
@@ -236,6 +238,10 @@ var YouTubeProvider = class {
         }
       }
     }
+    if (!videoId && isWatchPage) {
+      const urlParams = new URLSearchParams(window.location.search);
+      videoId = urlParams.get("v") || void 0;
+    }
     let title;
     if (isWatchPage) {
       const titleEl = document.querySelector(
@@ -283,7 +289,8 @@ var YouTubeProvider = class {
       artist: channelName ? [channelName] : [],
       album: void 0,
       album_artist: [],
-      art_url: artUrl
+      art_url: artUrl,
+      track_id: videoId ? `yt:${videoId}` : void 0
     };
     const playback = {
       status,

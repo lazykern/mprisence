@@ -139,6 +139,7 @@ export class YouTubeProvider implements Provider {
       album: undefined,
       album_artist: [],
       art_url: artUrl,
+      track_id: videoId ? `yt:${videoId}` : undefined,
     };
 
     const playback: PlaybackState = {

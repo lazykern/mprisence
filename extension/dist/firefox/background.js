@@ -209,7 +209,7 @@ nativePort.send({
   browser,
   extension_version: chrome.runtime.getManifest().version,
   protocol: PROTOCOL_VERSION,
-  git_sha: true ? "061d53c-dirty" : void 0
+  git_sha: true ? "8ef7e65-dirty" : void 0
 });
 chrome.runtime.onMessage.addListener(
   (msg, sender) => {
