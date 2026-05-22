@@ -159,14 +159,6 @@ const NATIVE_BROWSER_BUSES: &[(&str, &str)] = &[
     ("plasma-browser-integration", "plasma"),
 ];
 
-/// Returns true if a canonical bus name is a browser's own MPRIS endpoint.
-#[allow(dead_code)]
-pub fn is_native_browser_bus(canonical_bus_name: &str) -> bool {
-    NATIVE_BROWSER_BUSES
-        .iter()
-        .any(|(prefix, _)| canonical_bus_name.starts_with(prefix))
-}
-
 /// Maps a native browser bus name to the browser key the bridge reports in
 /// `mprisence:browser` (e.g. `"firefox"`). Returns None for non-browser buses.
 pub fn native_browser_of(canonical_bus_name: &str) -> Option<&'static str> {
@@ -1019,10 +1011,10 @@ mod bridge_tests {
     fn suppresses_native_browser_when_bridge_present() {
         // bridged browsers: firefox
         let bridged = ["firefox".to_string()];
-        assert!(is_native_browser_bus("firefox.instance_1_5376"));
-        assert!(is_native_browser_bus("plasma-browser-integration"));
-        assert!(!is_native_browser_bus("spotify"));
-        assert!(!is_native_browser_bus("mprisence_web.youtube.abc"));
+        assert!(native_browser_of("firefox.instance_1_5376").is_some());
+        assert!(native_browser_of("plasma-browser-integration").is_some());
+        assert!(native_browser_of("spotify").is_none());
+        assert!(native_browser_of("mprisence_web.youtube.abc").is_none());
 
         assert_eq!(native_browser_of("firefox.instance_1_5376"), Some("firefox"));
         assert_eq!(native_browser_of("chromium.instance_2"), Some("chromium"));
@@ -1032,5 +1024,10 @@ mod bridge_tests {
         assert!(should_suppress_native("firefox.instance_1_5376", &bridged));
         // chromium native bus kept because chromium is not bridged
         assert!(!should_suppress_native("chromium.instance_2", &bridged));
+
+        // plasma-browser-integration is suppressed when ANY browser is bridged
+        // (it cannot be attributed to a specific browser).
+        assert!(should_suppress_native("plasma-browser-integration", &bridged));
+        assert!(!should_suppress_native("plasma-browser-integration", &[] as &[String]));
     }
 }

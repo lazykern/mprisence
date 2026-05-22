@@ -238,6 +238,7 @@ impl Mprisence {
             .values()
             .flatten()
             .filter(|p| is_mprisence_web_bridge_bus(p.bus_name()))
+            // A D-Bus metadata error silently skips the player for this scan cycle.
             .filter_map(|p| p.get_metadata().ok().and_then(|m| bridge_browser(&m)))
             .collect();
         let candidates: HashMap<SmolStr, Vec<mpris::Player>> = if bridged_browsers.is_empty() {
@@ -245,6 +246,10 @@ impl Mprisence {
         } else {
             candidates
                 .into_iter()
+                // A post-merge candidate group holds players of a single kind
+                // (bridge groups are keyed per-tab and never URL-merged), so a
+                // group is dropped only when every player in it is a
+                // suppressed native browser bus.
                 .filter(|(_, players)| {
                     !players.iter().all(|p| {
                         let canon = canonical_player_bus_name(p.bus_name());
