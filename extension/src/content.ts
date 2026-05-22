@@ -36,6 +36,7 @@ let lastArtist = "";
 let lastState = "";
 let lastArtUrl = "";
 let lastPageUrl = "";
+let lastCanonicalUrl = "";
 let lastPositionSec = -1;
 let lastDurationMs = -1;
 let lastAlbum = "";
@@ -43,8 +44,6 @@ let lastAlbumArtist = "";
 let lastTrackId = "";
 let lastRate = 1;
 let lastConfidence: ConfidenceLevel | "" = "";
-let lastSentTime = 0;
-const FORCE_RESEND_INTERVAL = 5000; // ms — re-send even if nothing changed (must be < bridge stale timeout)
 
 const browser = detectBrowser();
 const tabId = getTabId();
@@ -96,53 +95,101 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
   }
 }) as EventListener);
 
-// ─── Direct DOM polling (fallback) ───────────────────────────────
+// ─── Event-driven observation (Layer 1: isolated world) ──────────
 
 function extractFromProviders(): ProviderResult | null {
   const url = new URL(window.location.href);
-
   for (const provider of providers) {
     if (provider.matches(url)) {
       const result = provider.extract();
       if (result) return result;
     }
   }
-
   return null;
 }
 
-let pollInterval: ReturnType<typeof setInterval> | null = null;
-
-function startPolling(): void {
-  if (pollInterval) return;
-
-  // Poll every second for state changes
-  pollInterval = setInterval(() => {
-    const result = extractFromProviders();
-    if (result) {
-      sendUpdate(result);
-    }
-  }, 1000);
+function triggerUpdate(force = false): void {
+  const result = extractFromProviders();
+  if (result) sendUpdate(result, force);
 }
 
-function stopPolling(): void {
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
+/** Media-element events that always warrant an immediate update. */
+const MEDIA_EVENTS = [
+  "play",
+  "pause",
+  "ended",
+  "ratechange",
+  "seeked",
+  "loadedmetadata",
+  "durationchange",
+];
+
+/** `timeupdate` fires ~4x/s; throttle to ~1/s. */
+let lastTimeupdate = 0;
+function onTimeupdate(): void {
+  const now = Date.now();
+  if (now - lastTimeupdate < 900) return;
+  lastTimeupdate = now;
+  triggerUpdate();
+}
+
+function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return ((...args: any[]) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      fn(...args);
+    }, ms);
+  }) as T;
+}
+
+let keepaliveInterval: ReturnType<typeof setInterval> | null = null;
+
+function startObserving(): void {
+  // Capture-phase listeners on `document` catch media events from every
+  // element — including ones added later — and catch non-bubbling events
+  // such as `timeupdate`. These fire even while the tab is backgrounded.
+  for (const ev of MEDIA_EVENTS) {
+    document.addEventListener(ev, () => triggerUpdate(), true);
   }
+  document.addEventListener("timeupdate", onTimeupdate, true);
+
+  // SPA player-bar DOM changes (e.g. YouTube Music switching track without a
+  // media-element event) fire no media events — observe the DOM too.
+  const onMutation = debounce(() => triggerUpdate(), 500);
+  const observer = new MutationObserver(() => onMutation());
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+
+  // Keepalive: force-resend the current state so a paused, backgrounded tab is
+  // not stale-pruned by the bridge. The browser throttles this to ~1/min in
+  // background tabs; the bridge STALE_TIMEOUT (90s) tolerates that. An
+  // unchanged re-send emits no D-Bus signal — the bridge's diffing publisher
+  // drops it — it only refreshes the source's last_seen.
+  keepaliveInterval = setInterval(() => triggerUpdate(true), 30_000);
 }
 
 // ─── Message sending ─────────────────────────────────────────────
 
-function sendUpdate(result: ProviderResult): void {
+function sendUpdate(result: ProviderResult, force = false): void {
   const sourceId = `${sourceIdBase}:frame`;
-  const url = result.pageUrl || window.location.href;
+  // Prefer provider-supplied URL. When the update source provides no
+  // URL fields (e.g. page-world script), reuse last known good URL —
+  // but only if the content identity (title + artist) hasn't changed.
+  // If identity changed and we still have no fresh URL, fall back to
+  // window.location.href so the bridge sees the new page.
+  const titleKey = result.metadata.title ?? "";
+  const artistKey = result.metadata.artist.join(",");
+  const identityChanged =
+    lastTitle !== titleKey || lastArtist !== artistKey;
+  const url = result.pageUrl
+    || (!identityChanged && lastPageUrl)
+    || window.location.href;
+  const canonicalUrl = result.canonicalUrl
+    || lastCanonicalUrl;
   const origin = window.location.origin;
 
   // Deduplicate: skip if nothing changed (unless forced refresh)
-  const now = Date.now();
-  const titleKey = result.metadata.title ?? "";
-  const artistKey = result.metadata.artist.join(",");
   const positionSec = Math.floor(result.playback.position_ms / 1000);
   const albumKey = result.metadata.album ?? "";
   const albumArtistKey = result.metadata.album_artist.join(",");
@@ -154,6 +201,7 @@ function sendUpdate(result: ProviderResult): void {
     lastState === result.playback.status &&
     lastArtUrl === (result.metadata.art_url ?? "") &&
     lastPageUrl === url &&
+    lastCanonicalUrl === (canonicalUrl ?? "") &&
     lastPositionSec === positionSec &&
     lastDurationMs === result.playback.duration_ms &&
     lastAlbum === albumKey &&
@@ -161,7 +209,9 @@ function sendUpdate(result: ProviderResult): void {
     lastTrackId === trackIdKey &&
     lastRate === result.playback.rate &&
     lastConfidence === result.confidence;
-  if (unchanged && now - lastSentTime < FORCE_RESEND_INTERVAL) {
+  // Event-driven: drop a send only when nothing changed. The keepalive uses
+  // force=true to refresh the bridge's last_seen even when unchanged.
+  if (!force && unchanged) {
     return;
   }
 
@@ -171,9 +221,9 @@ function sendUpdate(result: ProviderResult): void {
   lastState = result.playback.status;
   lastArtUrl = result.metadata.art_url ?? "";
   lastPageUrl = url;
+  lastCanonicalUrl = canonicalUrl ?? lastCanonicalUrl;
   lastPositionSec = positionSec;
   lastDurationMs = result.playback.duration_ms;
-  lastSentTime = now;
   lastAlbum = albumKey;
   lastAlbumArtist = albumArtistKey;
   lastTrackId = trackIdKey;
@@ -200,7 +250,7 @@ function sendUpdate(result: ProviderResult): void {
     metadata: result.metadata,
     capabilities: result.capabilities,
     confidence: result.confidence,
-    canonical_url: result.canonicalUrl,
+    canonical_url: canonicalUrl || undefined,
   };
 
   chrome.runtime.sendMessage(msg).catch(() => {
@@ -228,16 +278,12 @@ chrome.runtime.onMessage.addListener(
 
 // ─── Init ────────────────────────────────────────────────────────
 
-// Start polling for media state
-startPolling();
+startObserving();
+triggerUpdate(); // initial state
 
-// Also inject page-world script for richer metadata
-injectPageWorldScript();
-
-// Clean up on page unload
+// Clean up on page unload.
 window.addEventListener("beforeunload", () => {
-  stopPolling();
-
+  if (keepaliveInterval) clearInterval(keepaliveInterval);
   const msg: ExtMessage = {
     type: "remove",
     source_id: `${sourceIdBase}:frame`,
