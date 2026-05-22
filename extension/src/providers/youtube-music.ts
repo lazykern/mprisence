@@ -61,16 +61,15 @@ export class YouTubeMusicProvider implements Provider {
     let artUrl = artImg?.src || undefined;
     // Skip 1×1 placeholder GIFs
     if (artUrl && artUrl.startsWith("data:")) artUrl = undefined;
-    // Upgrade thumbnails to higher resolution.
+    // Upgrade thumbnails — only for channel avatars (safe to strip size params).
+    // Do NOT upgrade video thumbnails to maxresdefault: YouTube only serves
+    // maxresdefault.jpg for 720p+ uploads; older/lower-res videos return 404.
+    // YouTube's thumb HTML already provides the correct size.
     if (artUrl) {
       if (artUrl.includes("yt3.googleusercontent.com")) {
         // Channel avatar: strip size params to get default 512x512.
         // Use =s800-c-k-no for 800x800 if needed.
         artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
-      } else {
-        // Video thumbnail: upgrade to maxresdefault (1280x720, 16:9)
-        // — no YouTube black bar at bottom.
-        artUrl = artUrl.replace(/\/[a-z]+default\./g, "/maxresdefault.");
       }
     }
 

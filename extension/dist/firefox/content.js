@@ -117,8 +117,6 @@ var YouTubeMusicProvider = class {
     if (artUrl) {
       if (artUrl.includes("yt3.googleusercontent.com")) {
         artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
-      } else {
-        artUrl = artUrl.replace(/\/[a-z]+default\./g, "/maxresdefault.");
       }
     }
     const thumbSrc = artImg?.src || "";
@@ -275,14 +273,12 @@ var YouTubeProvider = class {
       const urlParams = new URLSearchParams(window.location.search);
       const vid = urlParams.get("v") || videoId;
       if (vid) {
-        artUrl = `https://i.ytimg.com/vi/${vid}/maxresdefault.jpg`;
+        artUrl = `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
       }
     }
     if (artUrl) {
       if (artUrl.includes("yt3.googleusercontent.com")) {
         artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
-      } else if (artUrl.includes("ytimg.com")) {
-        artUrl = artUrl.replace(/\/[a-z]+default\./g, "/maxresdefault.");
       }
     }
     const status = isPaused ? "paused" : "playing";
@@ -698,7 +694,7 @@ function sendUpdate(result, force = false) {
     capabilities: result.capabilities,
     confidence: result.confidence,
     canonical_url: canonicalUrl || void 0,
-    _ext_fingerprint: true ? "e3520d1-dirty" : void 0
+    _ext_fingerprint: true ? "c705ff9-dirty" : void 0
   };
   chrome.runtime.sendMessage(msg).catch(() => {
   });

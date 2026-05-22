@@ -349,7 +349,7 @@ title_suffix = " - YouTube"
 app_id = "1301894190904639559"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/youtube.png"
 allow_streaming = true
-ignore = false
+ignore = true
 
 [website.apple_podcasts]
 match_pattern = "podcasts.apple.com"

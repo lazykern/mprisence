@@ -108,20 +108,22 @@ export class YouTubeProvider implements Provider {
     // ── Album art ───────────────────────────────────────────────
     let artUrl = msArtwork;
     // Fallback: construct from video ID
+    // Use hqdefault (always exists) — maxresdefault 404s for <720p uploads.
     if (!artUrl) {
       const urlParams = new URLSearchParams(window.location.search);
       const vid = urlParams.get("v") || videoId;
       if (vid) {
-        artUrl = `https://i.ytimg.com/vi/${vid}/maxresdefault.jpg`;
+        artUrl = `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
       }
     }
 
-    // Upgrade thumbnail resolution
+    // Channel avatar: strip size params for 512x512 default.
+    // Do NOT upgrade ytimg thumbnails to maxresdefault — YouTube's
+    // MediaSession already provides the best available size, and
+    // maxresdefault.jpg 404s for many uploads.
     if (artUrl) {
       if (artUrl.includes("yt3.googleusercontent.com")) {
         artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
-      } else if (artUrl.includes("ytimg.com")) {
-        artUrl = artUrl.replace(/\/[a-z]+default\./g, "/maxresdefault.");
       }
     }
 
