@@ -176,6 +176,13 @@ impl CoverManager {
         None
     }
 
+    /// Public wrapper: checks if a URL can be used directly as cover art
+    /// in Discord's Rich Presence without needing upload to ImgBB/Catbox.
+    /// Bridge-provided URLs (YouTube CDN, SoundCloud CDN) typically pass.
+    pub fn is_direct_url_allowed(url_str: &str) -> bool {
+        Self::direct_url_policy(url_str).allow_direct
+    }
+
     fn direct_url_policy(url_str: &str) -> DirectUrlPolicy {
         let parsed = match Url::parse(url_str) {
             Ok(url) => url,

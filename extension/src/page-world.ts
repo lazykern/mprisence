@@ -114,28 +114,39 @@
 
   // ─── Observers ──────────────────────────────────────────────
 
-  const dispatchDebounced = debounce(() => {
-    dispatch(collectState());
-  }, 500);
+  // Track last METADATA identity so we only dispatch on actual
+  // track/metadata changes — NOT on position updates. The isolated
+  // world (content.ts) handles position updates via timeupdate.
+  //
+  // We DO the periodic poll here (Metadata identity comparison)
+  // because `MediaSession` metadata changes (new track) can only
+  // be detected from the page world (isolated world has no access).
+  let lastMeta = "";
 
-  // Watch for Media Session metadata changes
-  try {
+  function metaIdentity(): string {
     const ms = (navigator as any).mediaSession;
-    if (ms?.metadata) {
-      // Poll for metadata changes (Media Session API has no callback)
-      setInterval(() => {
-        dispatchDebounced();
-      }, 1000);
-    }
-  } catch {
-    // ignore
+    if (!ms?.metadata) return "";
+    const md = ms.metadata;
+    return JSON.stringify({ t: md.title, a: md.artist, l: md.album, u: md.artwork?.[0]?.src });
   }
 
-  // Watch for media elements being added
+  function checkMetadataAndDispatch(): void {
+    const id = metaIdentity();
+    if (id && id !== lastMeta) {
+      lastMeta = id;
+      dispatch(collectState());
+    }
+  }
+
+  // Poll for Media Session metadata changes (Media Session API has no callback)
+  setInterval(() => {
+    checkMetadataAndDispatch();
+  }, 1000);
+
+  // Watch for new media elements being added (signals a new page/track)
   const observer = new MutationObserver(() => {
-    const media = document.querySelector("video, audio");
-    if (media) {
-      dispatchDebounced();
+    if (document.querySelector("video, audio")) {
+      checkMetadataAndDispatch();
     }
   });
   observer.observe(document.body || document.documentElement, {
@@ -143,17 +154,9 @@
     subtree: true,
   });
 
-  // Listen for timeupdate on media elements
-  document.addEventListener(
-    "timeupdate",
-    ((e: Event) => {
-      const target = e.target as HTMLMediaElement;
-      if (target && (target.tagName === "VIDEO" || target.tagName === "AUDIO")) {
-        dispatchDebounced();
-      }
-    }) as EventListener,
-    true // capture
-  );
+  // Also catch metadata that arrives via DOM events like playing/loadstart
+  document.addEventListener("playing", () => checkMetadataAndDispatch(), true);
+  document.addEventListener("loadedmetadata", () => checkMetadataAndDispatch(), true);
 
   /** Upgrade artwork URL to highest available resolution */
   function resolveArtworkUrl(url: string | undefined): string | undefined {

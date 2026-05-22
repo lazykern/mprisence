@@ -66,7 +66,14 @@ function getTabId(): number | undefined {
   return undefined;
 }
 
-// Listen for CustomEvent from page-world script
+// Listen for CustomEvent from page-world script.
+// The page-world only dispatches when MediaSession metadata identity
+// (title, artist, album, artwork src) changes — NOT on every position
+// update. The isolated world handles position updates via timeupdate.
+//
+// It does NOT supply track_id, canonical_url or pageUrl fields.
+// We preserve those from the last isolated-world update to prevent
+// the bridge from seeing alternating /mismatched track IDs.
 window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
   const data = event.detail;
   if (data?.type === "media-state") {
@@ -76,9 +83,57 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
       capabilities: data.capabilities || { play_pause: true, next: false, previous: false, seek: false, set_position: false, raise: false },
       confidence: (data.confidence as ConfidenceLevel) || "dom",
     };
+
+    // Merge stable fields from the last isolated-world update so the
+    // bridge sees a consistent track_id & canonical_url.
+    // These only exist in the isolated-world path (provider extract).
+    //
+    // BUT: when the page-world fires on a GENUINE track change (title
+    // or artist differs from last page-world send), DON'T carry over
+    // the old track_id — let the next isolated-world update supply the
+    // correct one instead of sending stale data.
+    const pwTitle = result.metadata.title ?? "";
+    const pwArtist = result.metadata.artist.join(",");
+    const isNewTrack =
+      lastPageWorldMeta !== null &&
+      (pwTitle !== lastPageWorldMeta.title || pwArtist !== lastPageWorldMeta.artist);
+
+    if (!isNewTrack) {
+      if (lastPageWorldMeta && !result.metadata.track_id) {
+        result.metadata.track_id = lastPageWorldMeta.track_id;
+      }
+      if (!result.canonicalUrl) {
+        result.canonicalUrl = lastCanonicalUrlPageWorld;
+      }
+    }
+
     sendUpdate(result);
+
+    // Snapshot the fields we preserved so consecutive page-world
+    // dispatches (same track) produce no-op dedup.
+    lastPageWorldMeta = {
+      title: result.metadata.title ?? "",
+      artist: result.metadata.artist.join(","),
+      album: result.metadata.album ?? "",
+      art_url: result.metadata.art_url ?? "",
+      track_id: result.metadata.track_id,
+    };
+    if (result.canonicalUrl) {
+      lastCanonicalUrlPageWorld = result.canonicalUrl;
+    }
   }
 }) as EventListener);
+
+// ─── Last known stable fields from page-world path ───────────
+
+let lastPageWorldMeta: {
+  title: string;
+  artist: string;
+  album: string;
+  art_url: string;
+  track_id: string | undefined;
+} | null = null;
+let lastCanonicalUrlPageWorld = "";
 
 // ─── Event-driven observation (Layer 1: isolated world) ──────────
 
@@ -163,6 +218,13 @@ function sendUpdate(result: ProviderResult, force = false): void {
   // but only if the content identity (title + artist) hasn't changed.
   // If identity changed and we still have no fresh URL, fall back to
   // window.location.href so the bridge sees the new page.
+  // Clamp duration to at least current position.
+  // YTM's <video> element is a visualizer loop whose duration can be
+  // shorter than the actual audio track (video.duration = loop length,
+  // but currentTime advances with real audio). If position exceeds
+  // reported duration, the duration metadata is wrong.
+  const clampedDurationMs = Math.max(result.playback.duration_ms, result.playback.position_ms);
+
   const titleKey = result.metadata.title ?? "";
   const artistKey = result.metadata.artist.join(",");
   const identityChanged =
@@ -188,7 +250,7 @@ function sendUpdate(result: ProviderResult, force = false): void {
     lastPageUrl === url &&
     lastCanonicalUrl === (canonicalUrl ?? "") &&
     lastPositionSec === positionSec &&
-    lastDurationMs === result.playback.duration_ms &&
+    lastDurationMs === clampedDurationMs &&
     lastAlbum === albumKey &&
     lastAlbumArtist === albumArtistKey &&
     lastTrackId === trackIdKey &&
@@ -208,7 +270,7 @@ function sendUpdate(result: ProviderResult, force = false): void {
   lastPageUrl = url;
   lastCanonicalUrl = canonicalUrl ?? lastCanonicalUrl;
   lastPositionSec = positionSec;
-  lastDurationMs = result.playback.duration_ms;
+  lastDurationMs = clampedDurationMs;
   lastAlbum = albumKey;
   lastAlbumArtist = albumArtistKey;
   lastTrackId = trackIdKey;
@@ -231,7 +293,10 @@ function sendUpdate(result: ProviderResult, force = false): void {
     url,
     origin,
     site: site,
-    playback: result.playback,
+    playback: {
+      ...result.playback,
+      duration_ms: clampedDurationMs,
+    },
     metadata: result.metadata,
     capabilities: result.capabilities,
     confidence: result.confidence,

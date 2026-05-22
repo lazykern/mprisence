@@ -626,10 +626,15 @@ impl Mprisence {
                     for deferred_evt in deferred {
                         self.handle_player_event(deferred_evt, &event_tx).await;
                     }
-                    // Reset the fallback poll timer so the next poll happens a full
-                    // interval from now. Events are the primary update mechanism;
-                    // the fallback poll exists only to catch missed events.
-                    fallback_poll_interval.reset();
+                    // Don't reset the fallback poll timer here — doing so starves
+                    // the discovery poll when events arrive faster than the poll
+                    // interval (e.g. every 1s from YT/SC). Without a self-healing
+                    // poll, players whose listeners die (PlayerShutDown from bridge
+                    // pruning stale sources) are never re-discovered and disappear
+                    // from Discord until a service restart.
+                    // The fallback poll fires every fallback_poll_interval ms
+                    // regardless of event flow — this is intentional.
+                    // fallback_poll_interval.reset();
                 },
                 _ = fallback_poll_interval.tick() => {
                     trace!("fallback poll tick");

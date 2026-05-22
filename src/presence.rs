@@ -194,6 +194,10 @@ pub struct Presence {
     /// Set `true` after a successful push, `false` after a clear.
     /// Prevents redundant Clear→Clear log spam from duplicate players.
     discord_activity_is_set: Arc<AtomicBool>,
+    /// False until the first Discord push completes. When false, the health
+    /// tracker is bypassed so initial discovery always pushes at least once.
+    /// Prevents `track_ended` from swallowing a freshly-discovered player.
+    first_update_done: AtomicBool,
     config: Arc<ConfigManager>,
     /// Cancellation token for background cover-art tasks. Cancelled on every
     /// track change so in-flight provider jobs (MusicBrainz, uploads) can abort
@@ -249,6 +253,7 @@ impl Presence {
             last_rendered_volume: None,
             last_activity_texts: None,
             discord_activity_is_set: Arc::new(AtomicBool::new(false)),
+            first_update_done: AtomicBool::new(false),
             config,
             cover_cancel_token: Arc::new(parking_lot::Mutex::new(CancellationToken::new())),
             listener_cancel: None,
@@ -402,10 +407,23 @@ impl Presence {
 
         self.ensure_connection()?;
 
-        let playback_status = self.player.get_playback_status().map_err(|err| {
+        // Stale-connection guard: bridge players get their MPRIS object
+        // recreated when the bridge prunes/re-creates sources. The stored
+        // `self.player` D-Bus connection can return stale status (Paused)
+        // even when the player is actually Playing. Verify by creating a
+        // fresh player object when status is unexpectedly non-Playing.
+        let raw_status = self.player.get_playback_status().map_err(|err| {
             error!("Failed to get playback status: {}", err);
             DiscordError::ActivityError(format!("Failed to get playback status: {}", err))
         })?;
+        let playback_status = if raw_status == PlaybackStatus::Playing {
+            PlaybackStatus::Playing
+        } else {
+            // Re-check with a fresh connection to rule out stale state.
+            recheck_playback_status(&self.player.bus_name())
+                .await
+                .unwrap_or(raw_status)
+        };
         let metadata = match self.player.get_metadata() {
             Ok(m) => m,
             Err(e) => {
@@ -462,9 +480,19 @@ impl Presence {
             return Ok(());
         }
 
-        let outcome = {
+        // Skip health check on the very first update (initial discovery): we
+        // must push at least once so Discord shows the player at all. The
+        // health tracker might fire `track_ended` immediately if the initial
+        // position happens to be near the end of a long track, causing the
+        // player to silently disappear from rich presence.
+        let outcome = if self.first_update_done.load(Ordering::Relaxed) {
             let mut health = self.health.lock();
             health.transition(&input)
+        } else {
+            self.first_update_done.store(true, Ordering::Relaxed);
+            health::TransitionOutcome::Push {
+                art_decision: health::ArtDecision::default(),
+            }
         };
 
         match outcome {
@@ -1050,6 +1078,25 @@ impl Presence {
                 Some((current_generation, cover_url.to_string()));
         }
 
+        // Fast-path fallback: if not cached, check if mpris:artUrl is a
+        // public CDN URL (e.g. YouTube/SoundCloud) that Discord can use
+        // directly. Avoids the "no cover → background fetch → second push"
+        // delay for bridge-provided art URLs.
+        let direct_cover = if cached_cover.is_none() {
+            metadata_source
+                .mpris_metadata()
+                .and_then(|m| m.art_url())
+                .filter(|url| crate::cover::CoverManager::is_direct_url_allowed(url))
+                .or_else(|| None)
+        } else {
+            None
+        };
+        if let Some(ref cover_url) = direct_cover {
+            debug!("Serving direct cover art URL on fast path: {}", cover_url);
+            *self.last_resolved_cover_art.lock() =
+                Some((current_generation, cover_url.to_string()));
+        }
+
         // Later same-generation activity refreshes must keep the cover that
         // the background task already resolved. Otherwise a position/timestamp
         // refresh pushes cover_art=None and clears Discord's artwork.
@@ -1068,13 +1115,18 @@ impl Presence {
                 current_generation, cover_url
             );
         }
-        let cover_for_push = cached_cover.as_deref().or(remembered_cover.as_deref());
+        let cover_for_push = cached_cover
+            .as_deref()
+            .or(direct_cover.as_deref())
+            .or(remembered_cover.as_deref());
         debug!(
             "Artwork source for push: {}",
             if cover_for_push.is_none() {
                 "none (placeholder)"
             } else if cached_cover.is_some() {
                 "cached_cover"
+            } else if direct_cover.is_some() {
+                "direct_art_url"
             } else {
                 "remembered_cover"
             }
@@ -1598,6 +1650,22 @@ impl Drop for Presence {
     fn drop(&mut self) {
         self.stop_listener();
     }
+}
+
+/// Create a fresh D-Bus connection to a player and re-read its playback
+/// status. Used to detect stale-connection state where the stored
+/// `Presence::player` holds a connection to an old MPRIS object that was
+/// replaced (e.g. bridge pruning + re-creating its sources).
+async fn recheck_playback_status(bus_name: &str) -> Option<PlaybackStatus> {
+    use mpris::PlayerFinder;
+    let mut finder = PlayerFinder::new().ok()?;
+    finder.set_player_timeout_ms(3000);
+    let player = finder
+        .iter_players()
+        .ok()?
+        .filter_map(|p| p.ok())
+        .find(|p| p.bus_name() == bus_name)?;
+    player.get_playback_status().ok()
 }
 
 #[cfg(test)]

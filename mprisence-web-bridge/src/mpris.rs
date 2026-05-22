@@ -1,5 +1,5 @@
 use crate::protocol::{MediaMetadata, SourceState, Status};
-use log::{debug, info, warn};
+use log::{debug, info, trace, warn};
 use mpris_server::{
     zbus::zvariant::ObjectPath, Metadata, Player, Time, TrackId,
 };
@@ -302,12 +302,30 @@ impl MprisPublisher {
 
         // `Position` is signal-exempt by the MPRIS spec; `set_position` is sync
         // and emits no D-Bus signal. Set it unconditionally.
+        //
+        // Clamp position to duration: YTM's `video.currentTime` can hold a
+        // stale position from a previous track after a UI-track change while
+        // duration comes from the progress-bar (correct for the new track).
+        // Without clamping, playerctl metadata shows position ≫ length and
+        // Discord's elapsed timer wraps to nonsense ("3:37 - 3:37").
         let position_us = source
             .map(|s| {
-                s.playback
-                    .position_ms
-                    .saturating_mul(1_000)
-                    .min(i64::MAX as u64) as i64
+                let pos = s.playback.position_ms.saturating_mul(1_000);
+                let dur = (s.playback.duration_ms as u64).saturating_mul(1_000);
+                if pos > dur && dur > 0 {
+                    trace!(
+                        "clamping position {}µs > duration {}µs for {}",
+                        pos,
+                        dur,
+                        self.bus_name,
+                    );
+                    // Clamp to duration so Discord timer doesn't wrap.
+                    // The next update (~1s) will carry the correct position
+                    // from the new track's video element, showing "just started".
+                    dur as i64
+                } else {
+                    pos.min(i64::MAX as u64) as i64
+                }
             })
             .unwrap_or(0);
         player.set_position(Time::from_micros(position_us));
