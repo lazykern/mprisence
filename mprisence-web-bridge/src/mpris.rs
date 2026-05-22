@@ -133,31 +133,11 @@ impl PlayerManager {
         }
     }
 
-    /// Get publisher by source_id (without creating).
-    pub fn get(&self, source_id: &str) -> Option<&MprisPublisher> {
-        self.players.get(source_id).map(|e| &e.publisher)
-    }
-
     /// Remove a player when its source is gone.
     pub fn remove_player(&mut self, source_id: &str) {
         if self.players.remove(source_id).is_some() {
             debug!("Removed MPRIS player for {source_id}");
         }
-    }
-
-    /// Remove players for sources that are no longer alive.
-    pub fn retain(&mut self, alive_sources: &[String]) {
-        self.players.retain(|id, _| alive_sources.contains(id));
-    }
-
-    pub fn player_count(&self) -> usize {
-        self.players.len()
-    }
-
-    pub fn bus_name_for(&self, source_id: &str) -> Option<&str> {
-        self.players
-            .get(source_id)
-            .map(|e| e.publisher.bus_name())
     }
 }
 

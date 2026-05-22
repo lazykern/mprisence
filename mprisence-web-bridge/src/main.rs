@@ -140,17 +140,11 @@ async fn run_bridge_inner() {
             }
 
             _ = heartbeat_timer.tick() => {
+                // Prune sources that stopped sending updates; unpublish their
+                // MPRIS players. Live sources are published as updates arrive.
                 let removed = registry.prune_stale();
                 for id in &removed {
                     players.remove_player(id);
-                }
-                // Run selection to update active_source_id
-                registry.select_active();
-                // Publish current state for each player
-                for (source_id, state) in registry.sources() {
-                    if let Some(publisher) = players.get(source_id) {
-                        publisher.publish(Some(state)).await;
-                    }
                 }
             }
         }

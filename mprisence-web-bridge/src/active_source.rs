@@ -1,55 +1,43 @@
-use crate::protocol::{SourceState, Status};
+use crate::protocol::SourceState;
 use log::trace;
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-/// Default heartbeat timeout — source must send updates at least this often.
-pub const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(5);
-/// Source is removed if no update received for this long.
-pub const STALE_TIMEOUT: Duration = Duration::from_secs(10);
+/// A source is removed if no update has been received for this long. Must
+/// comfortably exceed the extension's keepalive cadence, which the browser
+/// throttles to ~once/minute in backgrounded tabs.
+pub const STALE_TIMEOUT: Duration = Duration::from_secs(90);
 
-/// Manages source state and selects the active source.
+/// Holds one `SourceState` per browser tab. No arbitration: every source is
+/// published as its own MPRIS player.
 pub struct SourceRegistry {
     sources: HashMap<String, SourceState>,
-    active_source_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SelectionReason {
-    Playing,
-    Paused,
-    None,
 }
 
 impl SourceRegistry {
     pub fn new() -> Self {
         Self {
             sources: HashMap::new(),
-            active_source_id: None,
         }
     }
 
     /// Insert or update a source from an extension update message.
     pub fn upsert(&mut self, state: SourceState) {
-        let id = state.source_id.clone();
         trace!(
             "source {}: status={:?} title={:?}",
-            id,
+            state.source_id,
             state.playback.status,
             state.metadata.title.as_deref().unwrap_or("(no title)")
         );
-        self.sources.insert(id, state);
+        self.sources.insert(state.source_id.clone(), state);
     }
 
     /// Remove a source (tab closed, navigation away, etc.).
     pub fn remove(&mut self, source_id: &str) {
         self.sources.remove(source_id);
-        if self.active_source_id.as_deref() == Some(source_id) {
-            self.active_source_id = None;
-        }
     }
 
-    /// Prune stale sources. Returns removed IDs.
+    /// Prune sources with no recent update. Returns removed IDs.
     pub fn prune_stale(&mut self) -> Vec<String> {
         let mut removed = Vec::new();
         self.sources.retain(|id, state| {
@@ -61,73 +49,15 @@ impl SourceRegistry {
                 true
             }
         });
-        if !removed.is_empty() {
-            if let Some(active) = &self.active_source_id {
-                if removed.contains(active) {
-                    self.active_source_id = None;
-                }
-            }
-        }
         removed
     }
 
-    /// Select the best source given current state.
-    /// Returns the selected source and the reason.
-    pub fn select_active(&mut self) -> (Option<&SourceState>, SelectionReason) {
-        // Clone the ID first to avoid borrow conflicts with self.active_source_id
-        let selected_id = self
-            .find_best_playing()
-            .map(|(id, _)| id.clone())
-            .or_else(|| self.find_paused().map(|(id, _)| id.clone()));
-
-        match selected_id {
-            Some(id) => {
-                let reason = if self.sources.get(&id).map_or(false, |s| s.is_playing()) {
-                    SelectionReason::Playing
-                } else {
-                    SelectionReason::Paused
-                };
-                self.active_source_id = Some(id.clone());
-                (self.sources.get(&id), reason)
-            }
-            None => {
-                self.active_source_id = None;
-                (None, SelectionReason::None)
-            }
-        }
+    /// Get a specific source by ID.
+    pub fn get(&self, source_id: &str) -> Option<&SourceState> {
+        self.sources.get(source_id)
     }
 
-    fn find_best_playing(&self) -> Option<(&String, &SourceState)> {
-        let now = Instant::now();
-        // Loyalty bonus (5s) for the currently active source to prevent flickering
-        // when multiple tabs are playing simultaneously.
-        const LOYALTY_BONUS_MS: u64 = 5000;
-
-        self.sources
-            .iter()
-            .filter(|(_, s)| s.is_playing())
-            .max_by_key(|(id, s)| {
-                let staleness = now.duration_since(s.last_seen);
-                let mut effective = staleness.as_millis() as u64;
-                // Give the currently active source a head start
-                if self.active_source_id.as_deref() == Some(*id) {
-                    effective = effective.saturating_sub(LOYALTY_BONUS_MS);
-                }
-                u64::MAX.saturating_sub(effective)
-            })
-    }
-
-    fn find_paused(&self) -> Option<(&String, &SourceState)> {
-        self.sources
-            .iter()
-            .filter(|(_, s)| matches!(s.playback.status, Status::Paused))
-            .max_by_key(|(_, s)| s.last_seen)
-    }
-
-    pub fn active_source_id(&self) -> Option<&str> {
-        self.active_source_id.as_deref()
-    }
-
+    #[allow(dead_code)]
     pub fn source_count(&self) -> usize {
         self.sources.len()
     }
@@ -136,22 +66,13 @@ impl SourceRegistry {
     pub fn is_empty(&self) -> bool {
         self.sources.is_empty()
     }
-
-    /// Iterate over all non-stale sources.
-    pub fn sources(&self) -> impl Iterator<Item = (&str, &SourceState)> {
-        self.sources.iter().map(|(id, s)| (id.as_str(), s))
-    }
-
-    /// Get a specific source by ID.
-    pub fn get(&self, source_id: &str) -> Option<&SourceState> {
-        self.sources.get(source_id)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{Capabilities, MediaMetadata, PlaybackState};
+    use crate::protocol::{Capabilities, ConfidenceLevel, MediaMetadata, PlaybackState, Status};
+    use std::time::Instant;
 
     fn make_source(id: &str, status: Status) -> SourceState {
         SourceState {
@@ -162,7 +83,7 @@ mod tests {
             playback: PlaybackState {
                 status,
                 position_ms: 0,
-                duration_ms: 100000,
+                duration_ms: 100_000,
                 rate: 1.0,
             },
             metadata: MediaMetadata {
@@ -181,51 +102,53 @@ mod tests {
                 set_position: false,
                 raise: false,
             },
-            confidence: crate::protocol::ConfidenceLevel::Fallback,
+            confidence: ConfidenceLevel::Fallback,
             last_seen: Instant::now(),
             canonical_url: None,
         }
     }
 
     #[test]
-    fn test_select_playing_over_paused() {
+    fn upsert_then_get_returns_source() {
         let mut reg = SourceRegistry::new();
-        reg.upsert(make_source("tab:1", Status::Paused));
-        reg.upsert(make_source("tab:2", Status::Playing));
-
-        let (source, reason) = reg.select_active();
-        assert_eq!(reason, SelectionReason::Playing);
-        assert_eq!(source.unwrap().source_id, "tab:2");
+        reg.upsert(make_source("firefox:tab:1:0", Status::Playing));
+        assert!(reg.get("firefox:tab:1:0").is_some());
+        assert_eq!(reg.source_count(), 1);
     }
 
     #[test]
-    fn test_select_paused_when_no_playing() {
+    fn upsert_same_id_replaces() {
         let mut reg = SourceRegistry::new();
-        reg.upsert(make_source("tab:1", Status::Paused));
-        reg.upsert(make_source("tab:2", Status::Stopped));
-
-        let (source, reason) = reg.select_active();
-        assert_eq!(reason, SelectionReason::Paused);
-        assert_eq!(source.unwrap().source_id, "tab:1");
+        reg.upsert(make_source("firefox:tab:1:0", Status::Playing));
+        reg.upsert(make_source("firefox:tab:1:0", Status::Paused));
+        assert_eq!(reg.source_count(), 1);
     }
 
     #[test]
-    fn test_no_source_when_empty() {
+    fn remove_drops_source() {
         let mut reg = SourceRegistry::new();
-        let (_, reason) = reg.select_active();
-        assert_eq!(reason, SelectionReason::None);
+        reg.upsert(make_source("firefox:tab:1:0", Status::Playing));
+        reg.remove("firefox:tab:1:0");
+        assert!(reg.is_empty());
     }
 
     #[test]
-    fn test_prune_stale_removes_old_sources() {
+    fn prune_stale_removes_old_sources() {
         let mut reg = SourceRegistry::new();
-        let mut state = make_source("tab:1", Status::Playing);
-        // Set last_seen far in the past
+        let mut state = make_source("firefox:tab:1:0", Status::Playing);
         state.last_seen = Instant::now() - STALE_TIMEOUT - Duration::from_secs(1);
         reg.upsert(state);
 
         let removed = reg.prune_stale();
-        assert_eq!(removed.len(), 1);
+        assert_eq!(removed, vec!["firefox:tab:1:0".to_string()]);
         assert!(reg.is_empty());
+    }
+
+    #[test]
+    fn prune_stale_keeps_fresh_sources() {
+        let mut reg = SourceRegistry::new();
+        reg.upsert(make_source("firefox:tab:1:0", Status::Playing));
+        assert!(reg.prune_stale().is_empty());
+        assert_eq!(reg.source_count(), 1);
     }
 }
