@@ -147,11 +147,9 @@ async fn run_bridge_inner() {
                 // Run selection to update active_source_id
                 registry.select_active();
                 // Publish current state for each player
-                let active_id = registry.active_source_id().map(|s| s.to_string());
                 for (source_id, state) in registry.sources() {
                     if let Some(publisher) = players.get(source_id) {
-                        let is_active = active_id.as_deref() == Some(source_id);
-                        publisher.publish(Some(state), is_active).await;
+                        publisher.publish(Some(state)).await;
                     }
                 }
             }
@@ -229,11 +227,10 @@ async fn handle_extension_message(
             };
             registry.upsert(state);
 
-            // Ensure this source has an MPRIS player, then publish
+            // Ensure this source has an MPRIS player, then publish.
             if let Some(publisher) = players.ensure_player(&source_id, &site_for_player, cmd_tx).await {
                 if let Some(state) = registry.get(&source_id) {
-                    let is_active = registry.active_source_id() == Some(source_id.as_str());
-                    publisher.publish(Some(state), is_active).await;
+                    publisher.publish(Some(state)).await;
                 }
             }
         }
@@ -426,7 +423,7 @@ async fn debug_fake_player(mpris_name: String) {
     };
 
     info!("Publishing fake player...");
-    publisher.publish(Some(&fake_source), false).await;
+    publisher.publish(Some(&fake_source)).await;
     info!("Fake player published! Check with: playerctl metadata");
     info!("Running...");
 }

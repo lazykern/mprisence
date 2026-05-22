@@ -5,7 +5,6 @@ use mpris_server::{
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
 /// Metadata fields that feed the D-Bus `Metadata` property. Compared as a unit:
@@ -199,8 +198,8 @@ fn dbus_safe_value(raw: &str) -> String {
 pub struct MprisPublisher {
     player: Arc<Player>,
     bus_name: String,
-    /// Track the current track ID to detect changes.
-    current_track_id: std::sync::Mutex<String>,
+    /// Last state pushed to D-Bus. The diffing publisher compares against this.
+    last_snapshot: std::sync::Mutex<PublishedSnapshot>,
 }
 
 impl MprisPublisher {
@@ -264,7 +263,7 @@ impl MprisPublisher {
         Ok(Self {
             player: arc_player,
             bus_name,
-            current_track_id: std::sync::Mutex::new(String::new()),
+            last_snapshot: std::sync::Mutex::new(PublishedSnapshot::default()),
         })
     }
 
@@ -273,27 +272,40 @@ impl MprisPublisher {
         self.player.run()
     }
 
-    /// Update the MPRIS player state from a source.
-    pub async fn publish(&self, source: Option<&SourceState>, is_active: bool) {
+    /// Update the MPRIS player state from a source, emitting D-Bus property
+    /// changes only for the groups that actually changed since the last call.
+    pub async fn publish(&self, source: Option<&SourceState>) {
         let player = &self.player;
+        let next = build_snapshot(source);
 
-        let identity = source
-            .map(|s| format_site_name(&s.site))
-            .unwrap_or_default();
-        let _ = player.set_identity(&identity).await;
+        let decision = {
+            let prev = self.last_snapshot.lock().unwrap();
+            compute_publish_decision(&prev, &next)
+        };
 
-        let status = source
-            .map(|s| match s.playback.status {
-                Status::Playing => mpris_server::PlaybackStatus::Playing,
-                Status::Paused => mpris_server::PlaybackStatus::Paused,
-                Status::Stopped => mpris_server::PlaybackStatus::Stopped,
-            })
-            .unwrap_or(mpris_server::PlaybackStatus::Stopped);
-        let _ = player.set_playback_status(status).await;
+        if decision.identity {
+            let _ = player.set_identity(&next.identity).await;
+        }
+        if decision.status {
+            let status = next
+                .status
+                .map(to_mpris_status)
+                .unwrap_or(mpris_server::PlaybackStatus::Stopped);
+            let _ = player.set_playback_status(status).await;
+        }
+        if decision.metadata {
+            let _ = player.set_metadata(build_metadata(source)).await;
+        }
+        if decision.caps {
+            let _ = player.set_can_play(next.caps.can_play_pause).await;
+            let _ = player.set_can_pause(next.caps.can_play_pause).await;
+            let _ = player.set_can_go_next(next.caps.can_next).await;
+            let _ = player.set_can_go_previous(next.caps.can_previous).await;
+            let _ = player.set_can_seek(next.caps.can_seek).await;
+        }
 
-        let metadata = build_metadata(source, is_active, &self.bus_name);
-        let _ = player.set_metadata(metadata).await;
-
+        // `Position` is signal-exempt by the MPRIS spec; `set_position` is sync
+        // and emits no D-Bus signal. Set it unconditionally.
         let position_us = source
             .map(|s| {
                 s.playback
@@ -304,44 +316,14 @@ impl MprisPublisher {
             .unwrap_or(0);
         player.set_position(Time::from_micros(position_us));
 
-        if let Some(s) = source {
-            let _ = player.set_can_play(s.capabilities.play_pause).await;
-            let _ = player.set_can_pause(s.capabilities.play_pause).await;
-            let _ = player.set_can_go_next(s.capabilities.next).await;
-            let _ = player.set_can_go_previous(s.capabilities.previous).await;
-            let can_seek = s.capabilities.seek || s.capabilities.set_position;
-            let _ = player.set_can_seek(can_seek).await;
-        } else {
-            let _ = player.set_can_play(false).await;
-            let _ = player.set_can_pause(false).await;
-            let _ = player.set_can_go_next(false).await;
-            let _ = player.set_can_go_previous(false).await;
-            let _ = player.set_can_seek(false).await;
-        }
-
-        // Track change detection
-        let new_track_id = source
-            .and_then(|s| s.metadata.track_id.as_deref())
-            .unwrap_or("");
-        let mut cached_track = self.current_track_id.lock().unwrap();
-        if *cached_track != new_track_id && !new_track_id.is_empty() {
-            *cached_track = new_track_id.to_string();
-            info!(
-                "Track changed: {identity} — {title}",
-                identity = identity,
-                title = source
-                    .and_then(|s| s.metadata.title.as_deref())
-                    .unwrap_or("(unknown)")
+        if decision.any() {
+            debug!(
+                "MPRIS player {bus} emitted {decision:?}",
+                bus = self.bus_name
             );
         }
 
-        debug!(
-            "MPRIS player {bus} updated (status={status}, identity={identity})",
-            bus = self.bus_name,
-            status = source
-                .map(|s| format!("{:?}", s.playback.status))
-                .unwrap_or("stopped".into()),
-        );
+        *self.last_snapshot.lock().unwrap() = next;
     }
 
     pub fn bus_name(&self) -> &str {
@@ -373,7 +355,52 @@ fn format_site_name(site: &str) -> String {
     }
 }
 
-fn build_metadata(source: Option<&SourceState>, is_active: bool, _bus_name: &str) -> Metadata {
+fn to_mpris_status(status: Status) -> mpris_server::PlaybackStatus {
+    match status {
+        Status::Playing => mpris_server::PlaybackStatus::Playing,
+        Status::Paused => mpris_server::PlaybackStatus::Paused,
+        Status::Stopped => mpris_server::PlaybackStatus::Stopped,
+    }
+}
+
+/// Build the desired `PublishedSnapshot` from a source (or default when absent).
+fn build_snapshot(source: Option<&SourceState>) -> PublishedSnapshot {
+    let Some(s) = source else {
+        return PublishedSnapshot::default();
+    };
+    let meta = &s.metadata;
+    let length_us = {
+        let d = s.playback.duration_ms;
+        if d > 0 && d < 86_400_000 { (d * 1000) as i64 } else { 0 }
+    };
+    let art_url = meta
+        .art_url
+        .clone()
+        .filter(|u| u.starts_with("http://") || u.starts_with("https://"))
+        .unwrap_or_default();
+    PublishedSnapshot {
+        identity: format_site_name(&s.site),
+        status: Some(s.playback.status),
+        meta: MetaSnapshot {
+            track_id: make_track_id(s, meta),
+            title: meta.title.clone().unwrap_or_default(),
+            artists: meta.artist.clone(),
+            album: meta.album.clone().unwrap_or_default(),
+            album_artists: meta.album_artist.clone(),
+            art_url,
+            length_us,
+            url: select_best_url(s),
+        },
+        caps: CapsSnapshot {
+            can_play_pause: s.capabilities.play_pause,
+            can_next: s.capabilities.next,
+            can_previous: s.capabilities.previous,
+            can_seek: s.capabilities.seek || s.capabilities.set_position,
+        },
+    }
+}
+
+fn build_metadata(source: Option<&SourceState>) -> Metadata {
     let mut builder = Metadata::builder();
 
     // Always include the bridge marker so mprisence can detect bridge players.
@@ -382,7 +409,7 @@ fn build_metadata(source: Option<&SourceState>, is_active: bool, _bus_name: &str
     if let Some(s) = source {
         let meta = &s.metadata;
 
-        // ── Custom mprisence metadata ──────────────────────────
+        // ── Custom mprisence metadata (stable keys only) ───────
         builder = builder.other("mprisence:sourceId", s.source_id.clone());
         builder = builder.other("mprisence:site", s.site.clone());
         builder = builder.other("mprisence:origin", s.origin.clone());
@@ -392,23 +419,9 @@ fn build_metadata(source: Option<&SourceState>, is_active: bool, _bus_name: &str
                 builder = builder.other("mprisence:canonicalUrl", cu.clone());
             }
         }
-        builder = builder.other(
-            "mprisence:confidence",
-            format!("{:?}", s.confidence).to_lowercase(),
-        );
-        builder = builder.other("mprisence:active", if is_active { "true" } else { "false" });
-        let seen_age_ms = s.last_seen.elapsed().as_millis();
-        builder = builder.other("mprisence:seenAgeMs", seen_age_ms.to_string());
-        if let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) {
-            let last_seen_unix_ms = now.as_millis().saturating_sub(seen_age_ms);
-            builder = builder.other("mprisence:lastSeenUnixMs", last_seen_unix_ms.to_string());
-        }
-        // Extract browser from bus_name (e.g. org.mpris.MediaPlayer2.mprisence_web.youtube_music.habc)
-        // The browser info is embedded in the source_id (e.g. "firefox:tab:12:frame").
+        // Browser is the first ':'-segment of the source_id (e.g. "firefox:tab:12:0").
         let browser = s.source_id.split(':').next().unwrap_or("unknown").to_string();
         builder = builder.other("mprisence:browser", browser);
-        // Group key for dedup: same site = same group.
-        builder = builder.other("mprisence:group", s.site.clone());
 
         // ── Standard MPRIS metadata ────────────────────────────
         let track_id_str = make_track_id(s, meta);
