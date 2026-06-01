@@ -3,25 +3,11 @@
 [![AUR version](https://img.shields.io/aur/version/mprisence)](https://aur.archlinux.org/packages/mprisence)
 [![Nixpkgs](https://img.shields.io/badge/NixOS-nixpkgs-blue?logo=nixos)](https://search.nixos.org/packages?query=mprisence)
 
-Highly customizable Discord Rich Presence client for MPRIS media players. Supports VLC, MPV, RhythmBox, and many other Linux music and media players.
+Highly customizable Discord Rich Presence client for MPRIS media players. Supports VLC, MPV, Rhythmbox, and many other Linux music and media players.
 
 <img src="/assets/example.gif" width="548" height="548"/>
 
 _(Note: Actual appearance depends on your configuration and the specific media player)_
-
-## Preconfigured Players
-
-Ready to use with popular media players (configured in [`config.default.toml`](./config/config.default.toml)):
-
-- **Media Players**: VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer, Supersonic, Feishin, kew, Quod Libet, Euphonica
-- **Streaming**: YouTube Music, Spotify (disabled by default)
-- **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
-- **Web player overrides (overlays on top of any browser)**: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Spotify Web (disabled by default). When `xesam:url` matches a `[web_player.*]` entry, the web player's icon and Discord application replace the browser's, so Discord shows e.g. *Listening to YouTube Music* instead of *Firefox*. See [Web Player Overrides](#web-player-overrides) below.
-- **Web Player Integration:** Bridge browser media players (YouTube Music, YouTube, SoundCloud, Bandcamp, Tidal, Apple Music) into MPRIS via a native messaging host + browser extension, unlocking MPRIS controls and Discord presence for web media. See [Web Player Integration](#web-player-integration).
-
-Note: MPD frontends (e.g., Euphonica) will also show MPD rich presence in Discord; you can disable the MPD entry in your config (see [Configuration Reference](#configuration-reference)
-
-Feel free to create a new issue if you want your player name+icon to be recognized by mprisence!
 
 ## Features
 
@@ -33,110 +19,32 @@ Feel free to create a new issue if you want your player name+icon to be recogniz
 - **Smart activity type**: “Listening” / “Watching” / etc. based on content (configurable)
 - **Per-player overrides**: app IDs, icons, status, and more
 - **Rich metadata**: access detailed fields (including technical audio info) inside templates
+- **Web media support**: browser URL overrides, plus an optional browser extension bridge for sites/tabs that need better metadata or controls
+
+## Supported Players
+
+Ready to use with popular media players (configured in [`config.default.toml`](./config/config.default.toml)):
+
+- **Media players**: VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer, Supersonic, Feishin, kew, Quod Libet, Euphonica
+- **Streaming apps**: YouTube Music, Spotify (disabled by default)
+- **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
+- **Web player overrides**: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music, Pocket Casts, Apple Podcasts, Podurama, Spotify Web (disabled by default)
+
+Note: MPD frontends (e.g., Euphonica) will also show MPD rich presence in Discord; you can disable the MPD entry in your config (see [Configuration Reference](#configuration-reference)).
+
+Feel free to create a new issue if you want your player name+icon to be recognized by mprisence!
 
 ---
 
-## Web Player Integration
+## Quick Install
 
-A browser extension + native messaging host (`mprisence-web-bridge`) that bridges web media players into MPRIS. The extension reads playback metadata from page DOM, the bridge publishes per-tab MPRIS players on D-Bus, and mprisence discovers them like any other media player.
-
-**Supported sites:** YouTube Music, YouTube, SoundCloud, Bandcamp, Tidal, Apple Music
-
-### Build & Install
-
-```bash
-# 1. Build the native bridge
-cargo build --release -p mprisence-web-bridge
-
-# 2. Register native messaging manifests (so browser trusts the bridge)
-./target/release/mprisence-web-bridge install
-
-# 3. Verify setup
-./target/release/mprisence-web-bridge doctor
-
-# 4. Build the browser extension
-cd extension
-npm install
-npm run build:firefox   # or: npm run build:chromium
-cd ..
-```
-
-### Load extension in browser
-
-Run these steps once per browser session (extension loads temporarily until browser restart):
-
-**Firefox:**
-1. Navigate to `about:debugging#/runtime/this-firefox`
-2. Click **Load Temporary Add-on**
-3. Select `extension/dist/firefox/manifest.json`
-
-**Chromium (Chrome, Edge, Brave):**
-1. Navigate to `chrome://extensions`
-2. Enable **Developer mode** (top-right)
-3. Click **Load unpacked**
-4. Select the `extension/dist/chromium/` folder
-
-### Run
-
-```bash
-# 1. Start the mprisence daemon
-mprisence
-
-# 2. The browser auto-launches the bridge when the extension connects
-#    (visible in /tmp/bridge-stderr.log)
-
-# 3. Visit a supported site and play media
-#    You should see MPRIS players appear:
-playerctl -l | grep mprisence_web
-
-# 4. Test controls:
-playerctl -p mprisence_web.youtube_music.* play-pause
-playerctl -p mprisence_web.youtube_music.* position 30+
-```
-
-### Configuration
-
-Web players are **disabled by default**. Enable them in your mprisence config:
-
-```toml
-[web_player.default]
-ignore = true
-
-[web_player.youtube_music]
-match_patterns = ["music.youtube.com"]
-ignore = false
-app_id = "1121632048155742288"  # optional: custom Discord app ID
-```
-
-See `config/config.example.toml` for all available web_player entries.
-
-### Logs
-
-```bash
-tail -f /tmp/bridge-stderr.log
-```
-
-### Uninstall
-
-```bash
-./target/release/mprisence-web-bridge uninstall
-# Then remove the extension from the browser (Extensions page)
-```
-
----
-
-## Prerequisites
+### Prerequisites
 
 - **For running:** A desktop environment with an active D-Bus session (standard on most Linux desktops).
 - **For service management:** `systemd` (user instance).
 - **For manual installation/building from source:**
   - `rustc` and `cargo` (latest stable version recommended)
   - `git` (to clone the repository)
-
-## Installation and Setup
-
-<details>
-<summary><b>Expand installation and setup steps</b></summary>
 
 ### Package Manager
 
@@ -284,8 +192,6 @@ journalctl --user -u mprisence -f
 systemctl --user disable --now mprisence
 ```
 
-</details>
-
 ## Configuration
 
 `mprisence` is highly configurable via `~/.config/mprisence/config.toml` (or `$XDG_CONFIG_HOME/mprisence/config.toml`).
@@ -347,44 +253,130 @@ status_display_type = "name" # name | state | details
 status_display_type = "details"
 ```
 
-### Web Player Overrides
-
-Browsers like Firefox, Zen or Chrome publish the playing tab's URL through MPRIS (`xesam:url`). mprisence inspects that URL and, when its host matches a `[web_player.<key>]` entry, **uses that entry as the authoritative configuration for the player** — so listening to YouTube Music in any browser shows up as *Listening to YouTube Music* in Discord instead of *Firefox* or *Zen*.
-
-The web player entry fully replaces the browser's `[player.*]` config for that URL: `ignore`, `allow_streaming`, `app_id`, `icon`, `name`, and activity type all come from the matched entry. You do not need to also enable or unhide the browser's `[player.*]` entry — adding a `[web_player.*]` is enough.
-
-When the URL changes (e.g. you navigate from `music.youtube.com` to `soundcloud.com`), mprisence transparently recycles its Discord IPC client so the new application's name and icon take effect.
-
-Bundled entries: YouTube, YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music, Pocket Casts, Apple Podcasts, Podurama (each ships with a placeholder app ID you can replace with your own registered Discord application), and Spotify Web (ships with `ignore = true`).
-
-```toml
-# Top-level table — sibling to [player.*].
-[web_player.youtube_music]
-match_pattern = "music.youtube.com"      # exact host, `*?` wildcards, or `re:` / `/.../` regex
-app_id        = "1125082278339559505"    # your Discord application id
-icon          = "https://…/yt-music.png"
-allow_streaming = true                   # required since the source URL is HTTPS
-ignore        = false                    # set true to skip presence for this site
-
-# Per-user override: enable Spotify Web (bundled config ships ignore = true).
-# Patterns are inherited from the bundled entry — you only need to write the
-# fields you want to change.
-[web_player.spotify_web]
-ignore = false
-app_id = "YOUR_SPOTIFY_WEB_APP_ID"
-```
-
-Notes:
-
-- User entries merge with bundled entries: fields you leave unset fall through to the bundled entry (including `match_pattern`/`match_patterns`). A `[web_player.youtube] ignore = false` with no patterns still matches `youtube.com`.
-- Any http/https URL that does NOT match a `[web_player.*]` entry is auto-ignored. Opt back in by adding an entry.
-- Inspect resolved entries with `mprisence config` or `mprisence players list -d`.
-
 ### Configuration Reference
 
 - [`config.example.toml`](./config/config.example.toml): Detailed options and explanations.
 - [`config.default.toml`](./config/config.default.toml): Default configurations for popular players.
 - [`src/metadata.rs`](./src/metadata.rs): Definitive source for all available template variables.
+
+## Web Media Support
+
+mprisence supports web media in two separate ways:
+
+| Use case | Feature | Requires extension? | Requires browser MPRIS? |
+| --- | --- | --- | --- |
+| Browser already exposes media via MPRIS, but Discord shows “Firefox” or “Chrome” | [Web player overrides](#web-player-overrides) | No | Yes |
+| Browser/site does not expose useful MPRIS metadata or controls | [Browser Extension Bridge](#browser-extension-bridge) | Yes | No |
+| Native apps like VLC, MPV, Rhythmbox | Normal player config | No | No |
+
+Web player overrides and the browser bridge have separate support lists. Overrides are configured by `[web_player.*]` entries. The bridge currently supports only the sites listed in the bridge section.
+
+### Web Player Overrides
+
+Use this when a browser already publishes media through MPRIS and includes the tab URL in `xesam:url`. When the URL host matches a `[web_player.<key>]` entry, mprisence uses that web player entry instead of the browser's `[player.*]` config — so Discord shows *Listening to YouTube Music* instead of *Firefox* or *Chrome*.
+
+Bundled override entries: YouTube, YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music, Pocket Casts, Apple Podcasts, Podurama, and Spotify Web (ships with `ignore = true`).
+
+```toml
+[web_player.youtube_music]
+match_pattern = "music.youtube.com"
+ignore = false
+app_id = "1125082278339559505"
+```
+
+Notes:
+
+- User entries merge with bundled entries: fields you leave unset fall through to the bundled entry (including `match_pattern`/`match_patterns`).
+- Unmatched http/https URLs are auto-ignored. Opt back in by adding a `[web_player.*]` entry.
+- Inspect resolved entries with `mprisence config` or `mprisence players list -d`.
+
+### Browser Extension Bridge
+
+Use this when browser MPRIS is missing, incomplete, or lacks controls. The browser extension reads playback metadata from supported pages, sends it to the local native messaging host (`mprisence-web-bridge`), and the bridge publishes per-tab MPRIS players on D-Bus. mprisence then discovers them like normal players.
+
+**Bridge-supported sites:** YouTube Music, YouTube, SoundCloud, Bandcamp, TIDAL, Apple Music
+
+#### Bridge prerequisites
+
+- Rust/Cargo to build `mprisence-web-bridge`
+- Node.js/npm to build the extension
+- Firefox or a Chromium-based browser with native messaging support
+- Running `mprisence` daemon
+
+#### Build & install bridge
+
+```bash
+# 1. Build the native bridge
+cargo build --release -p mprisence-web-bridge
+
+# 2. Register native messaging manifests (so browser trusts the bridge)
+./target/release/mprisence-web-bridge install
+
+# 3. Verify setup
+./target/release/mprisence-web-bridge doctor
+
+# 4. Build the browser extension
+cd extension
+npm install
+npm run build:firefox   # or: npm run build:chromium
+cd ..
+```
+
+#### Load extension in browser
+
+Temporary local install:
+
+**Firefox:**
+1. Navigate to `about:debugging#/runtime/this-firefox`
+2. Click **Load Temporary Add-on**
+3. Select `extension/dist/firefox/manifest.json`
+
+**Chromium (Chrome, Edge, Brave):**
+1. Navigate to `chrome://extensions`
+2. Enable **Developer mode** (top-right)
+3. Click **Load unpacked**
+4. Select the `extension/dist/chromium/` folder
+
+#### Enable a bridged site
+
+Web players are disabled by default. Enable each site in your mprisence config:
+
+```toml
+[web_player.default]
+ignore = true
+
+[web_player.youtube_music]
+match_patterns = ["music.youtube.com"]
+ignore = false
+app_id = "1121632048155742288"  # optional: custom Discord app ID
+```
+
+#### Run & verify
+
+```bash
+# Start mprisence
+mprisence
+
+# Visit a supported site and play media, then check for bridge players
+playerctl -l | grep mprisence_web
+
+# Test controls
+playerctl -p mprisence_web.youtube_music.* play-pause
+playerctl -p mprisence_web.youtube_music.* position 30+
+```
+
+Bridge logs:
+
+```bash
+tail -f /tmp/bridge-stderr.log
+```
+
+Uninstall bridge manifests:
+
+```bash
+./target/release/mprisence-web-bridge uninstall
+# Then remove the extension from the browser Extensions page
+```
 
 ## CLI Commands
 
@@ -413,9 +405,6 @@ RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
 
 ## Troubleshooting
 
-<details>
-<summary><b>Expand troubleshooting tips</b></summary>
-
 ### Common Issues
 
 1. **Discord Presence Not Showing / Updating**
@@ -437,13 +426,11 @@ RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
    - **Cache:** Try clearing the cache (`rm -rf ~/.cache/mprisence/cover_art`) if you suspect stale entries.
 
 3. **Service Issues**
-   - Use the commands mentioned in the [Autostarting / Service Management](#autostarting--service-management) section to check status (`status`), view logs (`journalctl`), and manage the service (`start`, `stop`, `restart`).
+   - Use the commands in [Managing the Service](#managing-the-service) to check status, view logs, restart, or stop the service.
 
 4. **Configuration Issues**
-   _**Syntax Errors:** Validate your `config.toml` using an online TOML validator or `toml-lint`.
-   _ **Defaults:** If unsure, temporarily remove your `~/.config/mprisence/config.toml` to test with the built-in defaults.
-
-</details>
+   - **Syntax Errors:** Validate your `config.toml` using an online TOML validator or `toml-lint`.
+   - **Defaults:** If unsure, temporarily remove your `~/.config/mprisence/config.toml` to test with the built-in defaults.
 
 ## Contributing
 
