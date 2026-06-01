@@ -59,6 +59,16 @@ const browser = detectBrowser();
 const tabId = getTabId();
 const sourceIdBase = makeSourceId(browser, tabId, 0);
 
+function normalizeStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+  }
+  if (typeof value === "string" && value.length > 0) {
+    return [value];
+  }
+  return [];
+}
+
 function getTabId(): number | undefined {
   // In content scripts, we can get tab ID from the runtime
   try {
@@ -90,8 +100,13 @@ function getTabId(): number | undefined {
 window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
   const data = event.detail;
   if (data?.type === "media-state") {
+    const metadata: MediaMetadata = {
+      ...(data.metadata || {}),
+      artist: normalizeStringList(data?.metadata?.artist),
+      album_artist: normalizeStringList(data?.metadata?.album_artist),
+    };
     const result: ProviderResult = {
-      metadata: data.metadata || { artist: [] },
+      metadata,
       playback: data.playback || { status: "stopped", position_ms: 0, duration_ms: 0, rate: 1.0 },
       capabilities: data.capabilities || { play_pause: true, next: false, previous: false, seek: false, set_position: false, raise: false },
       confidence: (data.confidence as ConfidenceLevel) || "dom",
@@ -164,6 +179,33 @@ let lastCanonicalUrlPageWorld = "";
 
 // Provider metadata snapshot for art-only merge (page-world InnerTube)
 let lastProviderMetadata: MediaMetadata | null = null;
+let extensionContextAlive = true;
+
+function isContextInvalidatedError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return /Extension context invalidated/i.test(err.message)
+    || /context invalidated/i.test(err.message);
+}
+
+function markExtensionContextDead(err: unknown): void {
+  if (!isContextInvalidatedError(err)) return;
+  extensionContextAlive = false;
+  if (keepaliveInterval) {
+    clearInterval(keepaliveInterval);
+    keepaliveInterval = null;
+  }
+}
+
+function safeSendMessage(msg: ExtMessage): void {
+  if (!extensionContextAlive) return;
+  try {
+    chrome.runtime.sendMessage(msg).catch((err) => {
+      markExtensionContextDead(err);
+    });
+  } catch (err) {
+    markExtensionContextDead(err);
+  }
+}
 
 // ─── Event-driven observation (Layer 1: isolated world) ──────────
 
@@ -249,7 +291,7 @@ function sendUpdate(result: ProviderResult, force = false): void {
   // If identity changed and we still have no fresh URL, fall back to
   // window.location.href so the bridge sees the new page.
   const titleKey = result.metadata.title ?? "";
-  const artistKey = result.metadata.artist.join(",");
+  const artistKey = normalizeStringList(result.metadata.artist).join(",");
   const identityChanged =
     lastTitle !== titleKey || lastArtist !== artistKey;
   const url = result.pageUrl
@@ -262,7 +304,7 @@ function sendUpdate(result: ProviderResult, force = false): void {
   // Deduplicate: skip if nothing changed (unless forced refresh)
   const positionSec = Math.floor(result.playback.position_ms / 1000);
   const albumKey = result.metadata.album ?? "";
-  const albumArtistKey = result.metadata.album_artist.join(",");
+  const albumArtistKey = normalizeStringList(result.metadata.album_artist).join(",");
   const trackIdKey = result.metadata.track_id ?? "";
   const unchanged =
     lastSourceId === sourceId &&
@@ -331,28 +373,30 @@ function sendUpdate(result: ProviderResult, force = false): void {
     _ext_fingerprint: typeof __GIT_SHA__ !== "undefined" ? __GIT_SHA__ : undefined,
   };
 
-  chrome.runtime.sendMessage(msg).catch(() => {
-    // Background might not be ready yet
-  });
+  safeSendMessage(msg);
 }
 
 // ─── Listen for commands from background script ───────────────────
 
-chrome.runtime.onMessage.addListener(
-  (msg: any, _sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
-    if (msg?.type === "command" && msg?.command) {
-      const url = new URL(window.location.href);
-      for (const provider of providers) {
-        if (provider.matches(url)) {
-          provider.command(msg.command, msg.position_ms).then(() => sendResponse({ ok: true }));
-          return true; // keep channel open for async response
+try {
+  chrome.runtime.onMessage.addListener(
+    (msg: any, _sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
+      if (msg?.type === "command" && msg?.command) {
+        const url = new URL(window.location.href);
+        for (const provider of providers) {
+          if (provider.matches(url)) {
+            provider.command(msg.command, msg.position_ms).then(() => sendResponse({ ok: true }));
+            return true; // keep channel open for async response
+          }
         }
+        sendResponse({ ok: false, error: "no matching provider" });
       }
-      sendResponse({ ok: false, error: "no matching provider" });
+      return true;
     }
-    return true;
-  }
-);
+  );
+} catch (err) {
+  markExtensionContextDead(err);
+}
 
 // ─── Init ────────────────────────────────────────────────────────
 
@@ -366,5 +410,5 @@ window.addEventListener("beforeunload", () => {
     type: "remove",
     source_id: `${sourceIdBase}:frame`,
   };
-  chrome.runtime.sendMessage(msg).catch(() => {});
+  safeSendMessage(msg);
 });

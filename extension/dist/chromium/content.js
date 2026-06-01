@@ -1145,6 +1145,15 @@ var lastConfidence = "";
 var browser = detectBrowser();
 var tabId = getTabId();
 var sourceIdBase = makeSourceId(browser, tabId, 0);
+function normalizeStringList(value) {
+  if (Array.isArray(value)) {
+    return value.filter((item) => typeof item === "string" && item.length > 0);
+  }
+  if (typeof value === "string" && value.length > 0) {
+    return [value];
+  }
+  return [];
+}
 function getTabId() {
   try {
     if (typeof chrome !== "undefined" && chrome.devtools) {
@@ -1157,8 +1166,13 @@ function getTabId() {
 window.addEventListener("mprisence-media-state", ((event) => {
   const data = event.detail;
   if (data?.type === "media-state") {
+    const metadata = {
+      ...data.metadata || {},
+      artist: normalizeStringList(data?.metadata?.artist),
+      album_artist: normalizeStringList(data?.metadata?.album_artist)
+    };
     const result = {
-      metadata: data.metadata || { artist: [] },
+      metadata,
       playback: data.playback || { status: "stopped", position_ms: 0, duration_ms: 0, rate: 1 },
       capabilities: data.capabilities || { play_pause: true, next: false, previous: false, seek: false, set_position: false, raise: false },
       confidence: data.confidence || "dom"
@@ -1198,6 +1212,29 @@ window.addEventListener("mprisence-media-state", ((event) => {
 var lastPageWorldMeta = null;
 var lastCanonicalUrlPageWorld = "";
 var lastProviderMetadata = null;
+var extensionContextAlive = true;
+function isContextInvalidatedError(err) {
+  if (!(err instanceof Error)) return false;
+  return /Extension context invalidated/i.test(err.message) || /context invalidated/i.test(err.message);
+}
+function markExtensionContextDead(err) {
+  if (!isContextInvalidatedError(err)) return;
+  extensionContextAlive = false;
+  if (keepaliveInterval) {
+    clearInterval(keepaliveInterval);
+    keepaliveInterval = null;
+  }
+}
+function safeSendMessage(msg) {
+  if (!extensionContextAlive) return;
+  try {
+    chrome.runtime.sendMessage(msg).catch((err) => {
+      markExtensionContextDead(err);
+    });
+  } catch (err) {
+    markExtensionContextDead(err);
+  }
+}
 function extractFromProviders() {
   const url = new URL(window.location.href);
   for (const provider of providers) {
@@ -1252,14 +1289,14 @@ function startObserving() {
 function sendUpdate(result, force = false) {
   const sourceId = `${sourceIdBase}:frame`;
   const titleKey = result.metadata.title ?? "";
-  const artistKey = result.metadata.artist.join(",");
+  const artistKey = normalizeStringList(result.metadata.artist).join(",");
   const identityChanged = lastTitle !== titleKey || lastArtist !== artistKey;
   const url = result.pageUrl || !identityChanged && lastPageUrl || window.location.href;
   const canonicalUrl = result.canonicalUrl || lastCanonicalUrl;
   const origin = window.location.origin;
   const positionSec = Math.floor(result.playback.position_ms / 1e3);
   const albumKey = result.metadata.album ?? "";
-  const albumArtistKey = result.metadata.album_artist.join(",");
+  const albumArtistKey = normalizeStringList(result.metadata.album_artist).join(",");
   const trackIdKey = result.metadata.track_id ?? "";
   const unchanged = lastSourceId === sourceId && lastTitle === titleKey && lastArtist === artistKey && lastState === result.playback.status && lastArtUrl === (result.metadata.art_url ?? "") && lastPageUrl === url && lastCanonicalUrl === (canonicalUrl ?? "") && lastPositionSec === positionSec && lastDurationMs === result.playback.duration_ms && lastAlbum === albumKey && lastAlbumArtist === albumArtistKey && lastTrackId === trackIdKey && lastRate === result.playback.rate && lastConfidence === result.confidence;
   if (!force && unchanged) {
@@ -1296,26 +1333,29 @@ function sendUpdate(result, force = false) {
     capabilities: result.capabilities,
     confidence: result.confidence,
     canonical_url: canonicalUrl || void 0,
-    _ext_fingerprint: true ? "d09ad49-dirty" : void 0
+    _ext_fingerprint: true ? "431fe82-dirty" : void 0
   };
-  chrome.runtime.sendMessage(msg).catch(() => {
-  });
+  safeSendMessage(msg);
 }
-chrome.runtime.onMessage.addListener(
-  (msg, _sender, sendResponse) => {
-    if (msg?.type === "command" && msg?.command) {
-      const url = new URL(window.location.href);
-      for (const provider of providers) {
-        if (provider.matches(url)) {
-          provider.command(msg.command, msg.position_ms).then(() => sendResponse({ ok: true }));
-          return true;
+try {
+  chrome.runtime.onMessage.addListener(
+    (msg, _sender, sendResponse) => {
+      if (msg?.type === "command" && msg?.command) {
+        const url = new URL(window.location.href);
+        for (const provider of providers) {
+          if (provider.matches(url)) {
+            provider.command(msg.command, msg.position_ms).then(() => sendResponse({ ok: true }));
+            return true;
+          }
         }
+        sendResponse({ ok: false, error: "no matching provider" });
       }
-      sendResponse({ ok: false, error: "no matching provider" });
+      return true;
     }
-    return true;
-  }
-);
+  );
+} catch (err) {
+  markExtensionContextDead(err);
+}
 startObserving();
 triggerUpdate();
 window.addEventListener("beforeunload", () => {
@@ -1324,7 +1364,6 @@ window.addEventListener("beforeunload", () => {
     type: "remove",
     source_id: `${sourceIdBase}:frame`
   };
-  chrome.runtime.sendMessage(msg).catch(() => {
-  });
+  safeSendMessage(msg);
 });
 //# sourceMappingURL=content.js.map

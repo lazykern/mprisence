@@ -21,7 +21,7 @@
     const video = document.querySelector("video");
     const audio = document.querySelector("audio");
     const media = video ?? audio;
-    let metadata = { artist: [] };
+    let metadata = { artist: [], album_artist: [] };
     let playback = { status: "stopped", position_ms: 0, duration_ms: 0, rate: 1 };
     let capabilities = {
       play_pause: true,
@@ -179,6 +179,7 @@
       type: "media-state",
       metadata: {
         artist: [],
+        album_artist: [],
         art_url: artUrl
       },
       playback: {

@@ -41,7 +41,7 @@
     const audio = document.querySelector("audio");
     const media = video ?? audio;
 
-    let metadata: Record<string, any> = { artist: [] };
+    let metadata: Record<string, any> = { artist: [], album_artist: [] };
     let playback = { status: "stopped", position_ms: 0, duration_ms: 0, rate: 1.0 };
     let capabilities = {
       play_pause: true,
@@ -258,6 +258,7 @@
       type: "media-state",
       metadata: {
         artist: [],
+        album_artist: [],
         art_url: artUrl,
       },
       playback: {

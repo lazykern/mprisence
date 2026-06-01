@@ -16,6 +16,8 @@ use tokio::time::{interval, Duration};
 
 /// Firefox extension ID — must match manifest.firefox.json
 const EXTENSION_ID: &str = "mprisence-bridge@lazykern.github.io";
+/// Chrome extension ID — from chrome://extensions when loaded unpacked
+const CHROME_EXTENSION_ID: &str = "pphdmbejbipjlocngoefnmjoijcbdejf";
 /// Native messaging host name — must match extension/src/utils/native-messaging.ts
 const HOST_NAME: &str = "mprisence.web.bridge";
 
@@ -292,6 +294,50 @@ fn manifest_dir_chromium() -> std::path::PathBuf {
     std::path::PathBuf::from(home).join(".config/chromium/NativeMessagingHosts")
 }
 
+fn manifest_dir_google_chrome() -> std::path::PathBuf {
+    let home = std::env::var_os("HOME").expect("$HOME not set");
+    std::path::PathBuf::from(home).join(".config/google-chrome/NativeMessagingHosts")
+}
+
+fn chromium_manifest_targets() -> Vec<(String, std::path::PathBuf)> {
+    let home = std::env::var_os("HOME").expect("$HOME not set");
+    let config_root = std::path::PathBuf::from(home).join(".config");
+
+    let mut targets = std::collections::BTreeMap::<String, std::path::PathBuf>::new();
+    targets.insert("Chromium".into(), manifest_dir_chromium());
+    targets.insert("Google Chrome".into(), manifest_dir_google_chrome());
+
+    if let Ok(entries) = std::fs::read_dir(&config_root) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            let is_chrome_family = name == "chromium"
+                || name.starts_with("chromium-")
+                || name == "google-chrome"
+                || name.starts_with("google-chrome-");
+            if !is_chrome_family {
+                continue;
+            }
+
+            let label = if name == "chromium" {
+                "Chromium".to_string()
+            } else if name == "google-chrome" {
+                "Google Chrome".to_string()
+            } else {
+                format!("Chrome profile root {name}")
+            };
+            targets.insert(label, path.join("NativeMessagingHosts"));
+        }
+    }
+
+    targets.into_iter().collect()
+}
+
 fn install_firefox_manifest(binary: &std::path::Path) {
     let dir = manifest_dir_firefox();
     let path = dir.join(format!("{HOST_NAME}.json"));
@@ -312,22 +358,21 @@ fn install_firefox_manifest(binary: &std::path::Path) {
 }
 
 fn install_chromium_manifest(binary: &std::path::Path) {
-    let dir = manifest_dir_chromium();
-    let path = dir.join(format!("{HOST_NAME}.json"));
-
     let manifest = serde_json::json!({
         "name": HOST_NAME,
         "description": "mprisence-web-bridge — sends browser media to MPRIS",
         "path": binary.to_str().expect("binary path is not UTF-8"),
         "type": "stdio",
-        "allowed_extensions": [EXTENSION_ID],
+        "allowed_origins": [format!("chrome-extension://{CHROME_EXTENSION_ID}/")],
     });
 
-    std::fs::create_dir_all(&dir).expect("create NativeMessagingHosts dir");
-    std::fs::write(&path, serde_json::to_string_pretty(&manifest).unwrap())
-        .expect("write Chromium native messaging manifest");
-
-    println!("✓ Chromium: {}", path.display());
+    for (browser, dir) in chromium_manifest_targets() {
+        let path = dir.join(format!("{HOST_NAME}.json"));
+        std::fs::create_dir_all(&dir).expect("create NativeMessagingHosts dir");
+        std::fs::write(&path, serde_json::to_string_pretty(&manifest).unwrap())
+            .expect("write Chromium native messaging manifest");
+        println!("✓ {browser}: {}", path.display());
+    }
 }
 
 async fn cmd_uninstall(browsers: Vec<String>) {
@@ -343,12 +388,14 @@ async fn cmd_uninstall(browsers: Vec<String>) {
         }
     }
     if requested("chromium") {
-        let path = manifest_dir_chromium().join(format!("{HOST_NAME}.json"));
-        if path.exists() {
-            std::fs::remove_file(&path).ok();
-            println!("✗ Removed Chromium: {}", path.display());
-        } else {
-            println!("  Chromium manifest not found: {}", path.display());
+        for (browser, dir) in chromium_manifest_targets() {
+            let path = dir.join(format!("{HOST_NAME}.json"));
+            if path.exists() {
+                std::fs::remove_file(&path).ok();
+                println!("✗ Removed {browser}: {}", path.display());
+            } else {
+                println!("  {browser} manifest not found: {}", path.display());
+            }
         }
     }
 }
@@ -362,9 +409,10 @@ async fn cmd_doctor() {
         None => println!("✗ Binary: could not resolve"),
     }
 
-    for (browser, dir_fn) in [("Firefox", manifest_dir_firefox as fn() -> std::path::PathBuf),
-                               ("Chromium", manifest_dir_chromium as fn() -> std::path::PathBuf)] {
-        let dir = dir_fn();
+    let mut targets = vec![("Firefox".to_string(), manifest_dir_firefox())];
+    targets.extend(chromium_manifest_targets());
+
+    for (browser, dir) in targets {
         let manifest_path = dir.join(format!("{HOST_NAME}.json"));
         if manifest_path.exists() {
             match std::fs::read_to_string(&manifest_path) {

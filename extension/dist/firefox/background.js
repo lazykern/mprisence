@@ -215,22 +215,6 @@ function onContentMessage(msg, sender) {
     nativePort.send(bridgeMsg);
   }
 }
-nativePort.connect(onBridgeMessage, onBridgeDisconnect);
-nativePort.send({
-  type: "hello",
-  browser,
-  extension_version: chrome.runtime.getManifest().version,
-  protocol: PROTOCOL_VERSION,
-  git_sha: true ? "d09ad49-dirty" : void 0
-});
-chrome.runtime.onMessage.addListener(
-  (msg, sender) => {
-    onContentMessage(msg, sender);
-  }
-);
-chrome.tabs?.onRemoved?.addListener((tabId) => {
-  sendRemoveForTab(tabId, "tab closed");
-});
 var BADGE_COLORS = {
   youtube_music: [255, 0, 0],
   // red
@@ -280,7 +264,7 @@ async function init() {
     browser,
     extension_version: chrome.runtime.getManifest().version,
     protocol: PROTOCOL_VERSION,
-    git_sha: true ? "d09ad49-dirty" : void 0,
+    git_sha: true ? "431fe82-dirty" : void 0,
     extension_fingerprint: extFingerprint
   });
   chrome.runtime.onMessage.addListener(

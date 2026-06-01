@@ -188,34 +188,6 @@ function onContentMessage(
   }
 }
 
-// ─── Init ─────────────────────────────────────────────────────────
-
-// Connect to native host
-nativePort.connect(onBridgeMessage, onBridgeDisconnect);
-
-// Send hello to bridge
-nativePort.send({
-  type: "hello",
-  browser,
-  extension_version: chrome.runtime.getManifest().version,
-  protocol: PROTOCOL_VERSION,
-  git_sha: (typeof __GIT_SHA__ !== "undefined" ? __GIT_SHA__ : undefined) as string | undefined,
-});
-
-// Listen for messages from content scripts
-chrome.runtime.onMessage.addListener(
-  (msg: ExtMessage, sender: chrome.runtime.MessageSender) => {
-    onContentMessage(msg, sender);
-  }
-);
-
-// Content-script beforeunload messages are not reliable during tab close.
-// Background owns tab lifecycle and removes bridge players immediately when
-// a known media tab closes, instead of waiting for bridge stale-prune.
-chrome.tabs?.onRemoved?.addListener((tabId) => {
-  sendRemoveForTab(tabId, "tab closed");
-});
-
 // ─── Badge ────────────────────────────────────────────────────────
 
 const BADGE_COLORS: Record<string, [number, number, number]> = {
