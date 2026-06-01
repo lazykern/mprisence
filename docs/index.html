@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — mprisence Bridge Extension</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 720px; margin: 0 auto; padding: 2rem 1.5rem; line-height: 1.7; color: #222; }
+    h1 { border-bottom: 2px solid #eee; padding-bottom: .5rem; }
+    h2 { margin-top: 2rem; }
+    code { background: #f5f5f5; padding: .15rem .4rem; border-radius: 3px; font-size: .9em; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid #ddd; padding: .5rem .75rem; text-align: left; }
+    th { background: #f8f8f8; }
+    a { color: #0366d6; }
+    .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #eee; font-size: .85em; color: #666; }
+  </style>
+</head>
+<body>
+<h1>Privacy Policy — mprisence Bridge Extension</h1>
+<p><strong>Last updated:</strong> 2026-06-01</p>
+
+<h2>Overview</h2>
+<p>The mprisence Bridge browser extension ("Extension") sends media playback metadata
+from supported websites (YouTube Music, YouTube, SoundCloud, Bandcamp, Tidal, Apple Music)
+to the mprisence native messaging host, which forwards it to the mprisence daemon for
+Discord Rich Presence display.</p>
+
+<h2>What data is collected</h2>
+<p>When you play media on a supported website, the Extension collects:</p>
+<table>
+  <tr><th>Data</th><th>Purpose</th></tr>
+  <tr><td>Website URL</td><td>Identify the media source and match it to a Discord application</td></tr>
+  <tr><td>Media metadata (title, artist, album)</td><td>Display "now playing" information in Discord</td></tr>
+  <tr><td>Playback state (playing/paused, position, duration)</td><td>Show current playback status and progress</td></tr>
+  <tr><td>Album art URL</td><td>Fetch and display album cover art in Discord</td></tr>
+</table>
+
+<h2>How data is used</h2>
+<p>All collected data is transmitted exclusively to the <strong>mprisence native messaging host</strong>
+— a local binary running on your computer. The data is then forwarded to the
+<strong>mprisence daemon</strong>, also running locally, which publishes it to <strong>Discord</strong>
+via the Discord Rich Presence API.</p>
+<p><strong>Data flow:</strong> Browser Extension → Native Messaging Host (local) → mprisence Daemon (local) → Discord API</p>
+
+<h2>What data is NOT collected</h2>
+<ul>
+  <li>No personal information (name, email, address, etc.)</li>
+  <li>No authentication credentials or cookies</li>
+  <li>No browsing history beyond the supported media websites</li>
+  <li>No keystrokes, form data, or page content</li>
+  <li>No telemetry, analytics, or usage statistics</li>
+</ul>
+
+<h2>Data storage</h2>
+<p>Data is processed in real-time and is not persistently stored by the Extension
+or the native messaging host. Cached album art images are stored locally on your
+machine under <code>~/.cache/mprisence/cover_art/</code> and may be retained for performance.</p>
+
+<h2>Data sharing</h2>
+<ul>
+  <li><strong>No third-party sharing.</strong> Data is transmitted only to Discord via their Rich Presence API for the sole purpose of displaying your current media activity.</li>
+  <li><strong>No data selling.</strong> Your data is never sold, rented, or traded.</li>
+  <li><strong>No advertising.</strong> Your data is never used for advertising or marketing purposes.</li>
+</ul>
+
+<h2>Security</h2>
+<ul>
+  <li>Communication between the Extension and the native messaging host uses Chrome/Firefox's built-in <strong>native messaging</strong> protocol, restricted to the registered extension ID.</li>
+  <li>Communication with Discord uses <strong>HTTPS</strong> encryption.</li>
+  <li>No data is transmitted to any server operated by the Extension developer.</li>
+</ul>
+
+<h2>Third-party services</h2>
+<p>The Extension communicates with:</p>
+<ul>
+  <li><strong>Discord</strong> (discord.com) — to display your media activity via Rich Presence</li>
+  <li><strong>YouTube/YouTube Music</strong> (i.ytimg.com) — to fetch album art thumbnails</li>
+  <li><strong>Other media websites</strong> (as listed in the manifest) — to read playback metadata from the DOM</li>
+</ul>
+<p>All communication with these services is subject to their respective privacy policies.</p>
+
+<h2>Changes to this policy</h2>
+<p>If this privacy policy changes, the "Last updated" date will be updated. Material
+changes will be communicated via the extension's update notes.</p>
+
+<h2>Contact</h2>
+<p>For questions about this privacy policy or the Extension's data practices,
+open an issue at:
+<a href="https://github.com/lazykern/mprisence/issues">https://github.com/lazykern/mprisence/issues</a></p>
+
+<div class="footer">
+  <p><a href="https://github.com/lazykern/mprisence/blob/main/PRIVACY.md">View raw markdown</a></p>
+</div>
+</body>
+</html>

@@ -1,6 +1,7 @@
 // ─── Build script for mprisence-browser-extension ─────────────────
-// Usage: node build.mjs <browser> [--watch]
+// Usage: node build.mjs <browser> [--watch] [--store]
 //   browser: "firefox" | "chromium"
+//   --store   strip dev-only fields (key) for store submission
 
 import * as esbuild from "esbuild";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "fs";
@@ -12,13 +13,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const browsers = ["firefox", "chromium"];
 const target = process.argv[2];
 const isWatch = process.argv.includes("--watch");
+const isStore = process.argv.includes("--store");
 
 if (!target || !browsers.includes(target)) {
-  console.error(`Usage: node build.mjs <browser> [--watch]\n  browser: ${browsers.join(" | ")}`);
+  console.error(`Usage: node build.mjs <browser> [--watch] [--store]\n  browser: ${browsers.join(" | ")}`);
   process.exit(1);
 }
 
-console.log(`Building for ${target}...`);
+console.log(`Building for ${target}${isStore ? " (store)" : ""}...`);
 
 const outdir = join(__dirname, "dist", target);
 mkdirSync(outdir, { recursive: true });
@@ -64,17 +66,28 @@ async function build() {
     await ctx.rebuild();
     await ctx.dispose();
 
+    // Strip dev-only fields for store builds
+    if (isStore) {
+      const storeKeys = ["key"];
+      for (const k of storeKeys) {
+        if (k in manifest) {
+          delete manifest[k];
+          console.log(`  stripped "${k}" from manifest`);
+        }
+      }
+    }
+
     // Write manifest
     writeFileSync(join(outdir, "manifest.json"), JSON.stringify(manifest, null, 2));
 
     // Copy icons
     const iconDir = join(outdir, "icons");
     mkdirSync(iconDir, { recursive: true });
-    if (existsSync(join(__dirname, "icons", "icon-48.png"))) {
-      copyFileSync(join(__dirname, "icons", "icon-48.png"), join(iconDir, "icon-48.png"));
-    }
-    if (existsSync(join(__dirname, "icons", "icon-96.png"))) {
-      copyFileSync(join(__dirname, "icons", "icon-96.png"), join(iconDir, "icon-96.png"));
+    for (const size of ["48", "96", "128"]) {
+      const src = join(__dirname, "icons", `icon-${size}.png`);
+      if (existsSync(src)) {
+        copyFileSync(src, join(iconDir, `icon-${size}.png`));
+      }
     }
     // Use SVG as fallback icon
     if (existsSync(join(__dirname, "icons", "icon.svg"))) {

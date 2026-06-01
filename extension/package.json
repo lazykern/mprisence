@@ -8,6 +8,9 @@
     "build:firefox": "node build.mjs firefox",
     "build:chromium": "node build.mjs chromium",
     "build:all": "node build.mjs firefox && node build.mjs chromium",
+    "build:chromium:store": "node build.mjs chromium --store",
+    "build:firefox:store": "node build.mjs firefox --store",
+    "build:store": "node build.mjs firefox --store && node build.mjs chromium --store",
     "watch:firefox": "node build.mjs firefox --watch",
     "watch:chromium": "node build.mjs chromium --watch"
   },
