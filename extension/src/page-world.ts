@@ -125,7 +125,15 @@
     return JSON.stringify({ t: md.title, a: md.artist, l: md.album, u: md.artwork?.[0]?.src });
   }
 
+  function isYoutubeAdPlaying(): boolean {
+    return !!document.querySelector('.ad-showing');
+  }
+
   function checkMetadataAndDispatch(): void {
+    // Skip updates while a YouTube ad is playing to prevent ad metadata
+    // (MediaSession API) from leaking into mprisence as track info.
+    if (isYoutubeAdPlaying()) return;
+
     const id = metaIdentity();
     if (id && id !== lastMeta) {
       lastMeta = id;
@@ -292,8 +300,10 @@
     checkYtmVideoId();
   }, 1000);
 
-  // Initial dispatch
-  dispatch(collectState());
+  // Initial dispatch (skip during ads)
+  if (!isYoutubeAdPlaying()) {
+    dispatch(collectState());
+  }
   // Also trigger initial YTM check
   checkYtmVideoId();
 })();

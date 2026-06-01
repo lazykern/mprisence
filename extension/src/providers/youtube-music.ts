@@ -36,6 +36,9 @@ export class YouTubeMusicProvider implements Provider {
   }
 
   extract(): ProviderResult | null {
+    // Skip extraction during YouTube Music ads.
+    if (document.querySelector('.ad-showing')) return null;
+
     const titleEl = this.qs<HTMLElement>(".title.ytmusic-player-bar");
     const artistEl = this.qs<HTMLElement>(".byline.ytmusic-player-bar");
     const artImg = this.qs<HTMLImageElement>(

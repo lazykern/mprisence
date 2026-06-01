@@ -28,6 +28,11 @@ export class YouTubeProvider implements Provider {
   }
 
   extract(): ProviderResult | null {
+    // Skip extraction during YouTube ads — the DOM still shows the real
+    // video title/channel but MediaSession is overridden with ad metadata
+    // and the <video> element reflects ad position/duration.
+    if (document.querySelector('.ad-showing')) return null;
+
     const mainPlayer = document.querySelector("#movie_player");
     const video = mainPlayer?.querySelector<HTMLVideoElement>("video");
 

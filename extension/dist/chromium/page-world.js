@@ -80,7 +80,11 @@
     const md = ms.metadata;
     return JSON.stringify({ t: md.title, a: md.artist, l: md.album, u: md.artwork?.[0]?.src });
   }
+  function isYoutubeAdPlaying() {
+    return !!document.querySelector(".ad-showing");
+  }
   function checkMetadataAndDispatch() {
+    if (isYoutubeAdPlaying()) return;
     const id = metaIdentity();
     if (id && id !== lastMeta) {
       lastMeta = id;
@@ -205,7 +209,9 @@
   setInterval(function() {
     checkYtmVideoId();
   }, 1e3);
-  dispatch(collectState());
+  if (!isYoutubeAdPlaying()) {
+    dispatch(collectState());
+  }
   checkYtmVideoId();
 })();
 //# sourceMappingURL=page-world.js.map

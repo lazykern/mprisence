@@ -98,6 +98,7 @@ var YouTubeMusicProvider = class {
     return url.origin === this.origin;
   }
   extract() {
+    if (document.querySelector(".ad-showing")) return null;
     const titleEl = this.qs(".title.ytmusic-player-bar");
     const artistEl = this.qs(".byline.ytmusic-player-bar");
     const artImg = this.qs(
@@ -222,6 +223,7 @@ var YouTubeProvider = class {
     return url.origin === this.origin;
   }
   extract() {
+    if (document.querySelector(".ad-showing")) return null;
     const mainPlayer = document.querySelector("#movie_player");
     const video = mainPlayer?.querySelector("video");
     if (!video || !mainPlayer) return null;

@@ -1,0 +1,63 @@
+- generic [active] [ref=e1]:
+  - generic "YouTube Video Player" [ref=e5]:
+    - generic [ref=e7]:
+      - generic:
+        - generic [ref=e9] [cursor=pointer]:
+          - img [ref=e10]
+          - generic [ref=e12]:
+            - generic "โซลูชั่น n8n ที่โฮสต์เองอย่างชาญฉลาด" [ref=e13]
+            - generic "hostinger.com/vps/n8n" [ref=e14]
+          - link "Start now This link opens in new tab" [ref=e15]:
+            - generic [ref=e16]: Start now
+        - generic [ref=e17]:
+          - generic "Sponsored" [ref=e19]
+          - button "My Ad Center" [ref=e21] [cursor=pointer]:
+            - generic [ref=e22]:
+              - img
+          - generic [ref=e23]:
+            - text: •
+            - generic "1 of 2" [ref=e24]
+          - link "hostinger.com/vps/n8n This link opens in new tab" [ref=e25]:
+            - generic [ref=e26] [cursor=pointer]: hostinger.com/vps/n8n
+    - generic [ref=e29]:
+      - generic [ref=e30]:
+        - slider "Seek slider" [disabled] [ref=e31]
+        - generic:
+          - generic:
+            - generic:
+              - slider "Click or scroll the panel for the precise seeking." [disabled]
+      - generic [ref=e41]:
+        - generic [ref=e42]:
+          - button "Pause (k)" [ref=e43] [cursor=pointer]:
+            - img
+          - generic [ref=e44]:
+            - button "Mute (m)" [ref=e46] [cursor=pointer]:
+              - img
+            - slider "Volume"
+          - button "0 Minutes 0 Seconds of 0 Minutes 24 Seconds" [ref=e50] [cursor=pointer]: 0:00 / 0:24
+        - generic [ref=e51]:
+          - generic [ref=e52]:
+            - button "Subtitles/closed captions unavailable" [ref=e53] [cursor=pointer]:
+              - generic [ref=e54]:
+                - img
+            - button "Settings" [ref=e55] [cursor=pointer]:
+              - img
+          - generic [ref=e56]:
+            - button "Theater mode (t)" [ref=e57] [cursor=pointer]:
+              - img
+            - button "Full screen (f)" [ref=e58] [cursor=pointer]:
+              - img
+  - banner [ref=e82]:
+    - generic [ref=e84]:
+      - generic [ref=e85]:
+        - button "Guide" [ref=e87] [cursor=pointer]
+        - generic:
+          - link:
+            - /url: /
+            - generic:
+              - generic:
+                - img
+      - search [ref=e90]:
+        - generic [ref=e91]:
+          - combobox [expanded] [ref=e94]
+          - button "Search" [ref=e95] [cursor=pointer]
