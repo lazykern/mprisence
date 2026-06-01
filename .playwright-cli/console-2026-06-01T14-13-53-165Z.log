@@ -1,5 +1,0 @@
-[-12913482ms] [INFO] Autofocus processing was blocked because a document already has a focused element. @ devtools://devtools/bundled/worker_app.html?remoteBase=https://chrome-devtools-frontend.appspot.com/serve_file/@7c855c70efe3f6ade6663c1520913fa7f63a0b2b/&browserConnection=true:0
-[-12913520ms] [TIMEEND] Main._createAppUI: 28.89697265625 ms @ devtools://devtools/bundled/entrypoints/main/main.js:10
-[-12913219ms] [TIMEEND] Main._showAppUI: 297.541015625 ms @ devtools://devtools/bundled/entrypoints/main/main.js:10
-[-12913184ms] [TIMEEND] Main._initializeTarget: 7.25 ms @ devtools://devtools/bundled/entrypoints/main/main.js:10
-[-12913081ms] [TIMEEND] Main._lateInitialization: 0.10595703125 ms @ devtools://devtools/bundled/entrypoints/main/main.js:10
