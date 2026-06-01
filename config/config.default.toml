@@ -235,7 +235,7 @@ match_pattern = "music.youtube.com"
 name = "YouTube Music"
 title_suffix = " | YouTube Music"
 app_id = "1125082278339559505" # shared with [player."*youtube_music*"]
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/youtube-music.png"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/youtube-music.png"
 allow_streaming = true
 ignore = false
 
@@ -243,7 +243,7 @@ ignore = false
 match_patterns = ["soundcloud.com", "snd.sc"]
 name = "SoundCloud"
 app_id = "1505610509406437446"
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/soundcloud.png"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/soundcloud.png"
 allow_streaming = true
 ignore = false
 
@@ -251,7 +251,7 @@ ignore = false
 match_patterns = ["qobuz.com", "play.qobuz.com", "open.qobuz.com"]
 name = "Qobuz"
 app_id = "1247655024637513778"
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/qobuz.png"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/qobuz.png"
 allow_streaming = true
 ignore = false
 
@@ -259,7 +259,7 @@ ignore = false
 match_pattern = "music.apple.com"
 name = "Apple Music"
 app_id = "1505611096273457192"
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/apple-music.png"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/apple-music.png"
 allow_streaming = true
 ignore = false
 
@@ -267,7 +267,7 @@ ignore = false
 match_pattern = "bandcamp.com"
 name = "Bandcamp"
 app_id = "1505611276917669908"
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/bandcamp.png"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/bandcamp.png"
 allow_streaming = true
 ignore = false
 
@@ -275,7 +275,7 @@ ignore = false
 match_patterns = ["tidal.com", "listen.tidal.com", "listen.stage.tidal.com"]
 name = "Tidal"
 app_id = "1505610940488486912"
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/tidal.png"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/tidal.png"
 allow_streaming = true
 ignore = false
 
@@ -308,7 +308,7 @@ match_patterns = [
 ]
 name = "Amazon Music"
 app_id = "1247654006587789363"
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/amazon-music.png"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/amazon-music.png"
 allow_streaming = true
 ignore = false
 
@@ -316,7 +316,7 @@ ignore = false
 match_pattern = "deezer.com"
 name = "Deezer"
 app_id = "1247654082215284847"
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/deezer.png"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/deezer.png"
 allow_streaming = true
 ignore = false
 
@@ -324,7 +324,7 @@ ignore = false
 match_patterns = ["music.yandex.com", "music.yandex.ru"]
 name = "Yandex Music"
 app_id = "1295649755535511592"
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/yandex-music.png"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/yandex-music.png"
 allow_streaming = true
 ignore = false
 
@@ -333,7 +333,7 @@ match_patterns = ["youtube.com", "youtu.be"]
 name = "YouTube"
 title_suffix = " - YouTube"
 app_id = "1301894190904639559"
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/feat/website-overrides/assets/icons/websites/youtube.png"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/youtube.png"
 allow_streaming = true
 ignore = true
 
