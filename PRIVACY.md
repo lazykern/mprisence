@@ -23,9 +23,61 @@ When you play media on a supported website, the Extension reads the following fr
 
 All data is sent via **native messaging** to the `mprisence-web-bridge` binary on your machine. That binary publishes MPRIS players on D-Bus so desktop applications (media keys, Discord via mprisence daemon, etc.) can see your web media.
 
-**Data flow:** Browser Extension → Native Messaging (local) → Bridge Binary (local) → D-Bus (local)
+```
+ ┌─────────────────────────────────────────────┐
+ │  Browser Extension                          │
+ │  (reads DOM, sends JSON via native msg)     │
+ └──────────┬──────────────────────────────────┘
+            │  stdin/stdout (local)
+            ▼
+ ┌──────────────────────┐        ┌──────────────────────────┐
+ │ mprisence-web-bridge │───────▶│  D-Bus MPRIS             │
+ │ (local binary)       │pub.    │  org.mpris.MediaPlayer2. │
+ │                      │MPRIS   │  mprisence_web.*         │
+ └──────────────────────┘        └──────────────────────────┘
+                                         │
+                                         ▼
+                               Desktop integrations
+                               (media keys, mprisence daemon,
+                                Discord RP, etc.)
+```
 
-The extension itself transmits nothing to the network.
+The extension itself transmits nothing to the network. All communication stays on your machine.
+
+### Example — actual JSON message the extension sends
+
+When you play music on YouTube Music, the extension sends a message like this to the bridge binary:
+
+```json
+{
+  "type": "update",
+  "source_id": "firefox:tab:42:0",
+  "url": "https://music.youtube.com/watch?v=ABC123",
+  "origin": "https://music.youtube.com",
+  "site": "youtube_music",
+  "playback": {
+    "status": "playing",
+    "position_ms": 45000,
+    "duration_ms": 240000
+  },
+  "metadata": {
+    "title": "Song Title",
+    "artist": ["Artist Name"],
+    "album": "Album Name",
+    "album_artist": ["Artist Name"],
+    "art_url": "https://i.ytimg.com/vi/ABC123/hqdefault.jpg"
+  },
+  "capabilities": {
+    "play_pause": true,
+    "next": true,
+    "previous": true,
+    "seek": true,
+    "set_position": true
+  }
+}
+```
+
+This is the **only** data the extension ever transmits. No cookies, no history, no personal identifiers beyond a random tab ID.
 
 ## What data is NOT accessed
 

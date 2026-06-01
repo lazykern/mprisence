@@ -43,8 +43,54 @@ desktop standard so media keys and desktop integrations can work.</p>
 <p>All data is sent via <strong>native messaging</strong> to the <code>mprisence-web-bridge</code> binary
 on your machine. That binary publishes MPRIS players on D-Bus so desktop applications
 (media keys, Discord via mprisence daemon, etc.) can see your web media.</p>
-<p><strong>Data flow:</strong> Browser Extension → Native Messaging (local) → Bridge Binary (local) → D-Bus (local)</p>
-<p>The extension itself transmits nothing to the network.</p>
+<pre> ┌─────────────────────────────────────────────┐
+ │  Browser Extension                          │
+ │  (reads DOM, sends JSON via native msg)     │
+ └──────────┬──────────────────────────────────┘
+            │  stdin/stdout (local)
+            ▼
+ ┌──────────────────────┐        ┌──────────────────────────┐
+ │ mprisence-web-bridge │───────▶│  D-Bus MPRIS             │
+ │ (local binary)       │pub.    │  org.mpris.MediaPlayer2. │
+ │                      │MPRIS   │  mprisence_web.*         │
+ └──────────────────────┘        └──────────────────────────┘
+                                         │
+                                         ▼
+                               Desktop integrations
+                               (media keys, mprisence daemon,
+                                Discord RP, etc.)
+</pre>
+<p>The extension itself transmits nothing to the network. All communication stays on your machine.</p>
+
+<h3>Example — actual JSON message the extension sends</h3>
+<p>When you play music on YouTube Music, the extension sends a message like this to the bridge binary:</p>
+<pre>{
+  "type": "update",
+  "source_id": "firefox:tab:42:0",
+  "url": "https://music.youtube.com/watch?v=ABC123",
+  "origin": "https://music.youtube.com",
+  "site": "youtube_music",
+  "playback": {
+    "status": "playing",
+    "position_ms": 45000,
+    "duration_ms": 240000
+  },
+  "metadata": {
+    "title": "Song Title",
+    "artist": ["Artist Name"],
+    "album": "Album Name",
+    "album_artist": ["Artist Name"],
+    "art_url": "https://i.ytimg.com/vi/ABC123/hqdefault.jpg"
+  },
+  "capabilities": {
+    "play_pause": true,
+    "next": true,
+    "previous": true,
+    "seek": true,
+    "set_position": true
+  }
+}</pre>
+<p>This is the <strong>only</strong> data the extension ever transmits. No cookies, no history, no personal identifiers beyond a random tab ID.</p>
 
 <h2>What data is NOT accessed</h2>
 <ul>
