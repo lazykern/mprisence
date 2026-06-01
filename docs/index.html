@@ -26,8 +26,8 @@ from supported websites (YouTube Music, YouTube, SoundCloud, Bandcamp, Tidal, Ap
 to the mprisence native messaging host, which forwards it to the mprisence daemon for
 Discord Rich Presence display.</p>
 
-<h2>What data is collected</h2>
-<p>When you play media on a supported website, the Extension collects:</p>
+<h2>What data is accessed</h2>
+<p>When you play media on a supported website, the Extension reads the following from the page:</p>
 <table>
   <tr><th>Data</th><th>Purpose</th></tr>
   <tr><td>Website URL</td><td>Identify the media source and match it to a Discord application</td></tr>
@@ -37,13 +37,13 @@ Discord Rich Presence display.</p>
 </table>
 
 <h2>How data is used</h2>
-<p>All collected data is transmitted exclusively to the <strong>mprisence native messaging host</strong>
+<p>All data is transmitted exclusively to the <strong>mprisence native messaging host</strong>
 — a local binary running on your computer. The data is then forwarded to the
 <strong>mprisence daemon</strong>, also running locally, which publishes it to <strong>Discord</strong>
 via the Discord Rich Presence API.</p>
 <p><strong>Data flow:</strong> Browser Extension → Native Messaging Host (local) → mprisence Daemon (local) → Discord API</p>
 
-<h2>What data is NOT collected</h2>
+<h2>What data is NOT accessed</h2>
 <ul>
   <li>No personal information (name, email, address, etc.)</li>
   <li>No authentication credentials or cookies</li>

@@ -6,9 +6,9 @@
 
 The mprisence Bridge browser extension ("Extension") sends media playback metadata from supported websites (YouTube Music, YouTube, SoundCloud, Bandcamp, Tidal, Apple Music) to the mprisence native messaging host, which forwards it to the mprisence daemon for Discord Rich Presence display.
 
-## What data is collected
+## What data is accessed
 
-When you play media on a supported website, the Extension collects:
+When you play media on a supported website, the Extension reads the following from the page:
 
 | Data | Purpose |
 |------|---------|
@@ -19,11 +19,11 @@ When you play media on a supported website, the Extension collects:
 
 ## How data is used
 
-All collected data is transmitted exclusively to the **mprisence native messaging host** — a local binary running on your computer. The data is then forwarded to the **mprisence daemon**, also running locally, which publishes it to **Discord** via the Discord Rich Presence API.
+All data is transmitted exclusively to the **mprisence native messaging host** — a local binary running on your computer. The data is then forwarded to the **mprisence daemon**, also running locally, which publishes it to **Discord** via the Discord Rich Presence API.
 
 **Data flow:** Browser Extension → Native Messaging Host (local) → mprisence Daemon (local) → Discord API
 
-## What data is NOT collected
+## What data is NOT accessed
 
 - No personal information (name, email, address, etc.)
 - No authentication credentials or cookies
