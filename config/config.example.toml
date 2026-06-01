@@ -11,9 +11,9 @@
 # falls back to polling every `interval` ms. Restart mprisence to switch modes.
 event_driven = true
 
-# Event-driven mode only: how often to scan the D-Bus session bus for newly
-# launched or quit players (milliseconds).
-discovery_interval = 5000
+# Event-driven mode only: how often to do a fallback poll to catch any
+# missed changes and discover newly launched or quit players (milliseconds).
+fallback_poll_interval = 5000
 
 # Polling fallback only: how often to poll each player (milliseconds).
 interval = 2000
@@ -173,7 +173,7 @@ expiration = 86400 # 24 hours
 [cover.provider.musicbrainz]
 # Minimum score (0-100) required for a MusicBrainz result to be considered valid.
 # Higher values mean stricter matching, lower values allow more potential matches and are more likely to be false positives.
-min_score = 95
+min_score = 100
 
 [cover.provider.catbox]
 # Upload files via catbox.moe. No API key is required, but you can set your user hash
@@ -192,8 +192,11 @@ litter_hours = 24
 [player]
 # Default configuration for all players
 # Priority: user entries override bundled ones. Fields left unset in a higher-priority entry fall back to lower matches, then [player.default], then built-in defaults. If identity and bus-name differ, an exact user bus-name entry wins.
+# [player.default].ignore_unmatched controls unknown players. Matched [player.*] entries start enabled unless some matched layer sets ignore = true.
 # Fields:
+#   name: Display name override shown in templates (replaces the auto-detected player identity in the `{{{player}}}` variable)
 #   ignore: Don't show rich presence for this player
+#   ignore_unmatched: Only meaningful in [player.default]. Hide players with no matching [player.*] entry.
 #   app_id: Discord application ID (get yours at: https://discord.com/developers/docs/quick-start/overview-of-apps)
 #   icon: Player icon URL (shown as small image)
 #   show_icon: Show player icon in Discord (as small image)
@@ -204,12 +207,13 @@ litter_hours = 24
 #       "state"   -> Rendered template.state value (default: "{{{artists}}}")
 #       "details" -> Rendered template.details value (default: "{{{title}}}")
 #   override_activity_type: Will always show this activity type regardless of media content type
-default = { ignore = false, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false, status_display_type = "name" }
+default = { ignore_unmatched = true, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false, status_display_type = "name" }
 
 # ------------------
 # Example Player-Specific Settings
 # ------------------
-# Each player can override any of the default settings above
+# Each player can override any of the default settings above.
+# Matched player entries start enabled by default; add ignore = true to keep one hidden.
 # Example for VLC Media Player:
 [player.vlc_media_player]
 app_id = "1124968989538402334"
@@ -236,4 +240,69 @@ status_display_type = "details"
 # show_icon = true
 # override_activity_type = "watching"
 
-# For more examples of player configurations, see config.default.toml (after running the app once to generate it)
+# For the full list of bundled local players and web players, see config.default.toml
+# on GitHub: https://github.com/lazykern/mprisence/blob/main/config/config.default.toml
+# It ships compiled into the binary and is merged underneath your user config,
+# so you only need to write the fields you want to change.
+
+# ----------------------
+# Web Player Integration
+# ----------------------
+# Browsers (Firefox, Zen, Chrome, etc.) can publish the playing tab's URL via
+# `xesam:url`. When the URL host matches a `[web_player.*]` entry, mprisence
+# applies that site's app_id, icon, name, ignore, allow_streaming, and activity
+# type instead of treating the source as a generic browser. So you do not need
+# to also enable the browser entry; adding or overriding a `[web_player.*]`
+# entry is enough.
+#
+# Pattern syntax (same as [player.*] keys):
+#   bare        -> exact host match, with substring fallback against the host
+#   `*` / `?`   -> wildcards (e.g. "*.bandcamp.com")
+#   `re:` / `/.../` -> regex
+#
+# Specificity wins: exact > regex > wildcard > substring.
+#
+# Any http/https URL that does NOT match a `[web_player.*]` entry is
+# auto-ignored, so unknown browser audio (ads, random tabs) stays out
+# of Discord. Opt back in by adding a matching `[web_player.*]` entry.
+#
+# Merge semantics: user entries are merged per-key with the bundled
+# entries — user fields win, and unset fields (including
+# `match_pattern` / `match_patterns`) fall through to the bundled
+# entry. So changing one field on a bundled site only takes one line.
+#
+# Most bundled web players are enabled (`ignore = false`). YouTube is ignored
+# by default, and unmatched http/https URLs are ignored by default.
+
+# [web_player.default]
+
+# Example: opt into YouTube video pages (bundled with `ignore = true`).
+# Patterns are inherited from the bundled entry — one line is enough.
+# [web_player.youtube]
+# ignore = false
+
+# Example: register a new web_player not in the bundle.
+# [web_player.last_fm]
+# match_pattern = "last.fm"
+# name = "Last.fm"
+# app_id = "YOUR_DISCORD_APP_ID"
+# icon = "https://example.com/last-fm.png"
+# allow_streaming = true
+# ignore = false
+
+# Bundled `[web_player.*]` keys + patterns (override any of these by writing
+# the same key in this file):
+#   youtube_music   music.youtube.com
+#   youtube         youtube.com, youtu.be
+#   soundcloud      soundcloud.com, snd.sc
+#   apple_music     music.apple.com
+#   bandcamp        bandcamp.com
+#   tidal           tidal.com, listen.tidal.com, listen.stage.tidal.com
+#   deezer          deezer.com
+#   qobuz           qobuz.com, play.qobuz.com, open.qobuz.com
+#   amazon_music    music.amazon.* (all regions)
+#   yandex_music    music.yandex.com, music.yandex.ru
+#
+# Inspect resolved entries with `mprisence config`.
+# Check which web_player (if any) is currently matched for each player with
+# `mprisence players list --detailed`.

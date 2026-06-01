@@ -1,12 +1,31 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use url::Url;
 
 use crate::utils::normalize_player_identity;
 
+/// Pre-compiled player/web_player pattern.  Built once at config load time so
+/// repeated matching avoids per-call `Regex::new()` overhead.
+#[derive(Debug, Clone)]
+pub enum CompiledPattern {
+    Exact(String),
+    Wildcard(Regex),
+    Regex(Regex),
+}
+
+impl CompiledPattern {
+    fn matches(&self, candidate: &str) -> bool {
+        match self {
+            CompiledPattern::Exact(key) => key == candidate,
+            CompiledPattern::Wildcard(re) | CompiledPattern::Regex(re) => re.is_match(candidate),
+        }
+    }
+}
+
 pub const DEFAULT_INTERVAL: u64 = 2000;
 pub const DEFAULT_EVENT_DRIVEN: bool = true;
-pub const DEFAULT_DISCOVERY_INTERVAL: u64 = 5000;
+pub const DEFAULT_FALLBACK_POLL_INTERVAL: u64 = 30000;
 pub const DEFAULT_USE_CONTENT_TYPE: bool = true;
 pub const DEFAULT_ACTIVITY_TYPE: ActivityType = ActivityType::Listening;
 pub const DEFAULT_TIME_SHOW: bool = true;
@@ -24,7 +43,7 @@ pub const DEFAULT_PLAYER_STATUS_DISPLAY_TYPE: StatusDisplayType = StatusDisplayT
 const DEFAULT_TEMPLATE_DETAIL: &str = "{{{title}}}";
 const DEFAULT_TEMPLATE_STATE: &str = "{{{artists}}}";
 const DEFAULT_TEMPLATE_LARGE_TEXT: &str =
-    "{{#if album_name includeZero=true}}{{{album_name}}}{{else}}{{{title}}}{{/if}}";
+    "{{#if album includeZero=true}}{{{album}}}{{else}}{{{title}}}{{/if}}";
 const DEFAULT_TEMPLATE_SMALL_TEXT: &str = "{{{player}}}";
 
 const DEFAULT_COVER_FILE_NAMES: [&str; 5] = ["cover", "folder", "front", "album", "art"];
@@ -34,56 +53,63 @@ const DEFAULT_MUSICBRAINZ_MIN_SCORE: u8 = 95;
 const DEFAULT_CATBOX_USE_LITTER: bool = true;
 const DEFAULT_CATBOX_LITTER_HOURS: u8 = 24;
 
-pub(crate) mod normalized_string {
-    use crate::utils::normalize_player_identity;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-    use std::collections::HashMap;
+macro_rules! normalized_map_serde {
+    ($mod_name:ident, $value_type:ident, $entity:literal) => {
+        pub(crate) mod $mod_name {
+            use crate::utils::normalize_player_identity;
+            use serde::{Deserialize, Deserializer, Serialize, Serializer};
+            use std::collections::HashMap;
 
-    pub fn serialize<S>(
-        map: &HashMap<String, super::PlayerConfigLayer>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        map.serialize(serializer)
-    }
+            pub fn serialize<S>(
+                map: &HashMap<String, super::$value_type>,
+                serializer: S,
+            ) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                map.serialize(serializer)
+            }
 
-    pub fn deserialize<'de, D>(
-        deserializer: D,
-    ) -> Result<HashMap<String, super::PlayerConfigLayer>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let temp_map = HashMap::<String, super::PlayerConfigLayer>::deserialize(deserializer)?;
-
-        let mut final_map: HashMap<String, super::PlayerConfigLayer> = HashMap::new();
-
-        for (key, value) in temp_map {
-            let normalized_key = normalize_player_identity(&key);
-
-            if let Some(existing) = final_map.get_mut(&normalized_key) {
-                // If we have a duplicate key after normalization, merge the configs
-                log::debug!(
-                    "Merging duplicate player config for '{}' (from '{}')",
-                    normalized_key,
-                    key
-                );
-
-                existing.merge_from(value);
-            } else {
-                log::debug!(
-                    "Normalizing player config key from '{}' to '{}'",
-                    key,
-                    normalized_key
-                );
-                final_map.insert(normalized_key, value);
+            pub fn deserialize<'de, D>(
+                deserializer: D,
+            ) -> Result<HashMap<String, super::$value_type>, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                let temp_map = HashMap::<String, super::$value_type>::deserialize(deserializer)?;
+                let mut final_map: HashMap<String, super::$value_type> = HashMap::new();
+                for (key, value) in temp_map {
+                    let normalized_key = normalize_player_identity(&key);
+                    if let Some(existing) = final_map.get_mut(&normalized_key) {
+                        log::debug!(
+                            "Merging duplicate {} config for '{}' (from '{}')",
+                            $entity,
+                            normalized_key,
+                            key
+                        );
+                        existing.merge_from(value);
+                    } else {
+                        log::debug!(
+                            "Normalizing {} config key from '{}' to '{}'",
+                            $entity,
+                            key,
+                            normalized_key
+                        );
+                        final_map.insert(normalized_key, value);
+                    }
+                }
+                Ok(final_map)
             }
         }
-
-        Ok(final_map)
-    }
+    };
 }
+
+normalized_map_serde!(normalized_string, PlayerConfigLayer, "player");
+normalized_map_serde!(
+    normalized_web_player_string,
+    WebPlayerConfigLayer,
+    "web_player"
+);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivityTypesConfig {
@@ -119,8 +145,11 @@ pub struct Config {
     #[serde(default = "default_event_driven")]
     pub event_driven: bool,
 
-    #[serde(default = "default_discovery_interval")]
-    pub discovery_interval: u64,
+    #[serde(
+        default = "default_fallback_poll_interval",
+        alias = "discovery_interval"
+    )]
+    pub fallback_poll_interval: u64,
 
     #[serde(default = "default_allowed_players")]
     pub allowed_players: Vec<String>,
@@ -145,6 +174,34 @@ pub struct Config {
 
     #[serde(skip)]
     pub user_player_patterns: HashSet<String>,
+
+    #[serde(default)]
+    #[serde(with = "normalized_web_player_string")]
+    pub web_player: HashMap<String, WebPlayerConfigLayer>,
+
+    #[serde(skip)]
+    pub bundled_web_player: HashMap<String, WebPlayerConfigLayer>,
+
+    #[serde(skip)]
+    pub user_web_player: HashMap<String, WebPlayerConfigLayer>,
+
+    /// Per-key merge of `bundled_web_player` and `user_web_player`. User fields
+    /// override bundled fields; unset user fields fall through to bundled
+    /// (so a user `[web_player.youtube] ignore = false` entry without
+    /// `match_patterns` still matches via the bundled patterns). Rebuilt
+    /// after every load/reload by `rebuild_merged_web_player`.
+    #[serde(skip)]
+    pub merged_web_player: HashMap<String, WebPlayerConfigLayer>,
+
+    /// Pre-compiled player patterns (key → compiled matcher).  Populated by
+    /// `precompile_patterns()` and used by all player-config lookups.
+    #[serde(skip)]
+    pub compiled_player_patterns: HashMap<String, CompiledPattern>,
+
+    /// Pre-compiled web_player patterns (key → list of compiled matchers, one per
+    /// match pattern).  Populated by `precompile_patterns()`.
+    #[serde(skip)]
+    pub compiled_web_player_patterns: HashMap<String, Vec<CompiledPattern>>,
 }
 
 fn default_interval() -> u64 {
@@ -155,8 +212,8 @@ fn default_event_driven() -> bool {
     DEFAULT_EVENT_DRIVEN
 }
 
-fn default_discovery_interval() -> u64 {
-    DEFAULT_DISCOVERY_INTERVAL
+fn default_fallback_poll_interval() -> u64 {
+    DEFAULT_FALLBACK_POLL_INTERVAL
 }
 
 fn default_allowed_players() -> Vec<String> {
@@ -168,7 +225,7 @@ impl Default for Config {
         Config {
             interval: default_interval(),
             event_driven: default_event_driven(),
-            discovery_interval: default_discovery_interval(),
+            fallback_poll_interval: default_fallback_poll_interval(),
             allowed_players: default_allowed_players(),
             template: TemplateConfig::default(),
             time: TimeConfig::default(),
@@ -178,6 +235,12 @@ impl Default for Config {
             bundled_player: HashMap::default(),
             user_player: HashMap::default(),
             user_player_patterns: HashSet::new(),
+            web_player: HashMap::default(),
+            bundled_web_player: HashMap::default(),
+            user_web_player: HashMap::default(),
+            merged_web_player: HashMap::default(),
+            compiled_player_patterns: HashMap::default(),
+            compiled_web_player_patterns: HashMap::default(),
         }
     }
 }
@@ -223,6 +286,293 @@ impl Config {
         self.resolve_player_config(matches)
     }
 
+    /// Like `get_player_config` but additionally overlays any matching
+    /// `[web_player.*]` layers on top when the current track's URL matches.
+    pub fn get_player_config_with_url(
+        &self,
+        identity: &str,
+        player_bus_name: &str,
+        url: Option<&str>,
+    ) -> PlayerConfig {
+        let base = self.get_player_config(identity, player_bus_name);
+        self.apply_web_player_overrides(base, url)
+    }
+
+    /// When the current track's URL matches a configured `[web_player.*]`
+    /// entry, the web_player's resolved config **fully replaces** the browser's
+    /// player config. This is the spec: the web_player override is the
+    /// authoritative configuration for any web-based player, regardless of
+    /// which browser is hosting it. Unmatched http URLs auto-ignore so
+    /// random browser audio doesn't leak into Discord.
+    fn apply_web_player_overrides(&self, base: PlayerConfig, url: Option<&str>) -> PlayerConfig {
+        let Some(raw_url) = url else {
+            return base;
+        };
+        if raw_url.is_empty() {
+            return base;
+        }
+
+        let (default_layer, ignore_unmatched) = self.resolve_default_web_player_base();
+        let host_or_url = url_host_for_match(raw_url);
+
+        if let Some(layer) = find_matching_web_player_entry(
+            &self.compiled_web_player_patterns,
+            &self.merged_web_player,
+            &host_or_url,
+        )
+        .map(|(_, layer)| layer)
+        {
+            let mut web_base = default_layer.apply_into_web_player(WebPlayerConfig::default());
+            web_base = layer.apply_into_web_player(web_base);
+            return web_base.into_player_config();
+        }
+
+        // Unknown web URL (http/https with no matching web_player entry):
+        // use ignore_unmatched from [web_player.default].
+        if is_http_url(raw_url) {
+            let mut hidden = base;
+            hidden.ignore = ignore_unmatched;
+            return hidden;
+        }
+
+        base
+    }
+
+    /// Public accessor: returns the matched web_player key and its fully
+    /// resolved config for a given URL. Used by the CLI to surface which
+    /// `[web_player.*]` entry the runtime would apply.
+    pub fn matched_web_player_for_url(
+        &self,
+        url: Option<&str>,
+    ) -> Option<(String, WebPlayerConfig)> {
+        let raw_url = url?;
+        if raw_url.is_empty() {
+            return None;
+        }
+        let (default_layer, _) = self.resolve_default_web_player_base();
+        let host = url_host_for_match(raw_url);
+        let (key, layer) = find_matching_web_player_entry(
+            &self.compiled_web_player_patterns,
+            &self.merged_web_player,
+            &host,
+        )?;
+        let mut resolved = default_layer.apply_into_web_player(WebPlayerConfig::default());
+        resolved = layer.apply_into_web_player(resolved);
+        Some((key, resolved))
+    }
+
+    /// Resolve the merged `[web_player.default]` layer and its
+    /// `ignore_unmatched` policy.
+    fn resolve_default_web_player_base(&self) -> (WebPlayerConfigLayer, bool) {
+        let mut layer = WebPlayerConfigLayer::default();
+        let mut ignore_unmatched = true;
+
+        if let Some(bundled_default) = self.bundled_web_player.get("default") {
+            ignore_unmatched = bundled_default.ignore_unmatched.unwrap_or(ignore_unmatched);
+            layer.merge_from(bundled_default.clone());
+        }
+        if let Some(user_default) = self.user_web_player.get("default") {
+            ignore_unmatched = user_default.ignore_unmatched.unwrap_or(ignore_unmatched);
+            layer.merge_from(user_default.clone());
+        }
+
+        (layer, ignore_unmatched)
+    }
+
+    /// Rebuilds `merged_web_player` from `bundled_web_player` and `user_web_player`.
+    /// Must be called after either map is mutated (load + reload paths in
+    /// `config::mod` do this). User fields win on collisions; unset user
+    /// fields fall through to the bundled value so a patternless user
+    /// override (e.g. `[web_player.youtube] ignore = false`) still inherits
+    /// `match_patterns` from the bundled entry.
+    pub fn rebuild_merged_web_player(&mut self) {
+        let mut merged: HashMap<String, WebPlayerConfigLayer> = HashMap::new();
+        let keys: HashSet<String> = self
+            .bundled_web_player
+            .keys()
+            .chain(self.user_web_player.keys())
+            .cloned()
+            .collect();
+        for key in keys {
+            let mut layer = self
+                .bundled_web_player
+                .get(&key)
+                .cloned()
+                .unwrap_or_default();
+            if let Some(user_layer) = self.user_web_player.get(&key) {
+                layer.merge_from(user_layer.clone());
+            }
+            merged.insert(key, layer);
+        }
+        self.merged_web_player = merged;
+    }
+
+    /// Pre-compile all player and web_player patterns so repeated matching
+    /// avoids per-call `Regex::new()` overhead. Must be called after
+    /// `rebuild_merged_web_player()` and every config reload.
+    pub fn precompile_patterns(&mut self) {
+        self.compiled_player_patterns.clear();
+        self.compiled_web_player_patterns.clear();
+
+        // --- player patterns ---
+        let all_player_keys: HashSet<&String> = self
+            .bundled_player
+            .keys()
+            .chain(self.user_player.keys())
+            .collect();
+
+        for key in all_player_keys {
+            if key == "default" {
+                continue;
+            }
+            let compiled = Self::compile_single_pattern(key);
+            self.compiled_player_patterns.insert(key.clone(), compiled);
+        }
+
+        // --- web_player patterns ---
+        for (key, layer) in &self.merged_web_player {
+            if key == "default" {
+                continue;
+            }
+            let patterns = layer.effective_patterns();
+            if patterns.is_empty() {
+                continue;
+            }
+            let compiled: Vec<CompiledPattern> = patterns
+                .iter()
+                .map(|p| Self::compile_single_pattern(p))
+                .collect();
+            self.compiled_web_player_patterns
+                .insert(key.clone(), compiled);
+        }
+    }
+
+    fn compile_single_pattern(pattern: &str) -> CompiledPattern {
+        if is_regex_pattern(pattern) {
+            let raw = if let Some(stripped) = pattern.strip_prefix("re:") {
+                stripped.to_string()
+            } else {
+                pattern
+                    .trim_start_matches('/')
+                    .trim_end_matches('/')
+                    .to_string()
+            };
+            match Regex::new(&raw) {
+                Ok(re) => CompiledPattern::Regex(re),
+                Err(err) => {
+                    log::warn!("Invalid regex pattern '{}': {}", pattern, err);
+                    CompiledPattern::Exact(pattern.to_string())
+                }
+            }
+        } else if is_wildcard_pattern(pattern) {
+            let mut regex_str = String::from("^");
+            for ch in pattern.chars() {
+                match ch {
+                    '*' => regex_str.push_str(".*"),
+                    '?' => regex_str.push('.'),
+                    _ => regex_str.push_str(&regex::escape(&ch.to_string())),
+                }
+            }
+            regex_str.push('$');
+
+            match Regex::new(&regex_str) {
+                Ok(re) => CompiledPattern::Wildcard(re),
+                Err(err) => {
+                    log::warn!("Invalid wildcard pattern '{}': {}", pattern, err);
+                    CompiledPattern::Exact(pattern.to_string())
+                }
+            }
+        } else {
+            CompiledPattern::Exact(pattern.to_string())
+        }
+    }
+
+    /// Try to match a web_player config by checking if the title ends with a
+    /// configured `title_suffix` (or ` | <name>` as fallback). Operates on
+    /// the merged per-key map so user-only entries that lack a suffix still
+    /// inherit the bundled one.  Returns the matching layer and the suffix
+    /// that matched (so it can be stripped from the displayed title).
+    pub fn match_web_player_by_title_suffix(
+        &self,
+        title: &str,
+    ) -> Option<(WebPlayerConfigLayer, String)> {
+        // First pass: explicit title_suffix field.
+        for layer in self.merged_web_player.values() {
+            if let Some(suffix) = &layer.title_suffix {
+                if title.ends_with(suffix.as_str()) {
+                    return Some((layer.clone(), suffix.clone()));
+                }
+            }
+        }
+
+        // Second pass: fallback to " | <name>" pattern.
+        for layer in self.merged_web_player.values() {
+            if let Some(name) = &layer.name {
+                let suffix = format!(" | {}", name);
+                if title.ends_with(&suffix) {
+                    return Some((layer.clone(), suffix));
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Apply web_player overrides using title-suffix inference when URL is
+    /// absent. Like the URL path, the matched web_player's resolved config
+    /// fully replaces the base player config.
+    pub fn apply_web_player_overrides_by_title(
+        &self,
+        base: PlayerConfig,
+        title: Option<&str>,
+    ) -> (PlayerConfig, Option<String>) {
+        let Some(title) = title else {
+            return (base, None);
+        };
+        match self.match_web_player_by_title_suffix(title) {
+            Some((layer, suffix)) => {
+                let config = layer
+                    .apply_into_web_player(WebPlayerConfig::default())
+                    .into_player_config();
+                (config, Some(suffix))
+            }
+            None => (base, None),
+        }
+    }
+
+    /// Resolved (non-Layer) view of every configured web_player, used by
+    /// `mprisence config web_players` and for inspection.
+    pub fn effective_web_player_configs(&self) -> HashMap<String, WebPlayerConfig> {
+        let mut keys: HashSet<String> = HashSet::new();
+        for key in self
+            .bundled_web_player
+            .keys()
+            .chain(self.user_web_player.keys())
+        {
+            keys.insert(key.clone());
+        }
+
+        let (default_layer, _) = self.resolve_default_web_player_base();
+
+        let mut result = HashMap::new();
+        for key in keys {
+            if key == "default" {
+                let resolved = default_layer.apply_into_web_player(WebPlayerConfig::default());
+                result.insert(key, resolved);
+                continue;
+            }
+            let mut resolved = default_layer.apply_into_web_player(WebPlayerConfig::default());
+            if let Some(layer) = self.bundled_web_player.get(&key) {
+                resolved = layer.apply_into_web_player(resolved);
+            }
+            if let Some(layer) = self.user_web_player.get(&key) {
+                resolved = layer.apply_into_web_player(resolved);
+            }
+            result.insert(key, resolved);
+        }
+        result
+    }
+
     pub fn effective_player_configs(&self) -> HashMap<String, PlayerConfig> {
         let mut keys: HashSet<String> = HashSet::new();
         for key in self.bundled_player.keys().chain(self.user_player.keys()) {
@@ -233,14 +583,9 @@ impl Config {
 
         let mut result = HashMap::new();
         for key in keys {
-            let mut resolved = PlayerConfig::default();
+            let (mut resolved, _) = self.resolve_default_player_base();
+            resolved.ignore = false;
 
-            if let Some(layer) = self.bundled_player.get("default") {
-                resolved = layer.apply_over(resolved);
-            }
-            if let Some(layer) = self.user_player.get("default") {
-                resolved = layer.apply_over(resolved);
-            }
             if let Some(layer) = self.bundled_player.get(&key) {
                 resolved = layer.apply_over(resolved);
             }
@@ -255,21 +600,37 @@ impl Config {
     }
 
     fn resolve_player_config(&self, matches: Vec<PlayerConfigLayer>) -> PlayerConfig {
-        let mut resolved = PlayerConfig::default();
+        let (mut resolved, ignore_unmatched) = self.resolve_default_player_base();
 
-        if let Some(layer) = self.bundled_player.get("default") {
-            resolved = layer.apply_over(resolved);
+        if matches.is_empty() {
+            resolved.ignore = ignore_unmatched;
+            return resolved;
         }
 
-        if let Some(layer) = self.user_player.get("default") {
-            resolved = layer.apply_over(resolved);
-        }
+        resolved.ignore = false;
 
         for layer in matches {
             resolved = layer.apply_over(resolved);
         }
 
         resolved
+    }
+
+    fn resolve_default_player_base(&self) -> (PlayerConfig, bool) {
+        let mut resolved = PlayerConfig::default();
+        let mut ignore_unmatched = resolved.ignore;
+
+        if let Some(layer) = self.bundled_player.get("default") {
+            ignore_unmatched = layer.ignore_unmatched.unwrap_or(ignore_unmatched);
+            resolved = layer.apply_over(resolved);
+        }
+
+        if let Some(layer) = self.user_player.get("default") {
+            ignore_unmatched = layer.ignore_unmatched.unwrap_or(ignore_unmatched);
+            resolved = layer.apply_over(resolved);
+        }
+
+        (resolved, ignore_unmatched)
     }
 
     fn collect_ordered_matches(&self, normalized_identity: &str) -> Vec<PlayerConfigLayer> {
@@ -315,36 +676,38 @@ impl Config {
                 continue;
             }
 
-            if pattern_key == normalized_identity {
-                result.exact = Some(ScoredLayer::new(cfg.clone(), pattern_key.len(), 0));
-                continue;
-            }
+            let compiled = self
+                .compiled_player_patterns
+                .get(pattern_key)
+                .cloned()
+                .unwrap_or_else(|| Config::compile_single_pattern(pattern_key));
 
-            if let Some(re) = regex_from_pattern(pattern_key) {
-                if re.is_match(normalized_identity) {
+            match compiled {
+                CompiledPattern::Exact(key) if key == normalized_identity => {
+                    result.exact = Some(ScoredLayer::new(cfg.clone(), pattern_key.len(), 0));
+                }
+                CompiledPattern::Regex(_) if compiled.matches(normalized_identity) => {
                     let total_len = pattern_key.len();
                     match &result.regex {
                         Some(existing) if existing.pattern_len >= total_len => {}
                         _ => result.regex = Some(ScoredLayer::new(cfg.clone(), total_len, 0)),
                     }
                 }
-                continue;
-            }
-
-            if is_wildcard_pattern(pattern_key) && wildcard_match(pattern_key, normalized_identity)
-            {
-                let specificity = pattern_specificity(pattern_key);
-                let total_len = pattern_key.len();
-                match &result.wildcard {
-                    Some(existing)
-                        if existing.specificity > specificity
-                            || (existing.specificity == specificity
-                                && existing.pattern_len >= total_len) => {}
-                    _ => {
-                        result.wildcard =
-                            Some(ScoredLayer::new(cfg.clone(), total_len, specificity))
+                CompiledPattern::Wildcard(_) if compiled.matches(normalized_identity) => {
+                    let specificity = pattern_specificity(pattern_key);
+                    let total_len = pattern_key.len();
+                    match &result.wildcard {
+                        Some(existing)
+                            if existing.specificity > specificity
+                                || (existing.specificity == specificity
+                                    && existing.pattern_len >= total_len) => {}
+                        _ => {
+                            result.wildcard =
+                                Some(ScoredLayer::new(cfg.clone(), total_len, specificity))
+                        }
                     }
                 }
+                _ => {} // no match or already handled
             }
         }
 
@@ -673,7 +1036,80 @@ mod wildcard_tests {
         let res = cfg.get_player_config("VLC media player", "vlc_media_player");
         assert_eq!(res.app_id, "BUNDLED"); // inherited
         assert!(res.show_icon); // overridden by user regex
-        assert!(res.ignore); // inherited from bundled exact
+        assert!(res.ignore); // bundled exact ignore persists unless user explicitly clears it
+    }
+
+    #[test]
+    fn matched_player_entry_without_ignore_starts_enabled_from_default_policy() {
+        let mut cfg = Config::default();
+        cfg.bundled_player.insert(
+            "default".to_string(),
+            PlayerConfigLayer {
+                show_icon: Some(false),
+                ignore_unmatched: Some(true),
+                app_id: Some("MPRISENCE".to_string()),
+                ..Default::default()
+            },
+        );
+        cfg.user_player.insert(
+            "custom_player".to_string(),
+            PlayerConfigLayer {
+                app_id: Some("CUSTOM".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let custom = cfg.get_player_config("Custom Player", "custom_player");
+        assert_eq!(custom.app_id, "CUSTOM");
+        assert!(!custom.ignore);
+
+        let unknown = cfg.get_player_config("Unknown Player", "unknown_player");
+        assert_eq!(unknown.app_id, "MPRISENCE");
+        assert!(unknown.ignore);
+    }
+
+    #[test]
+    fn explicit_ignore_true_on_matched_player_still_wins() {
+        let mut cfg = Config::default();
+        cfg.bundled_player.insert(
+            "default".to_string(),
+            layer(Some(false), Some(true), Some("MPRISENCE")),
+        );
+        cfg.user_player.insert(
+            "custom_player".to_string(),
+            PlayerConfigLayer {
+                ignore: Some(true),
+                app_id: Some("CUSTOM".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let custom = cfg.get_player_config("Custom Player", "custom_player");
+        assert_eq!(custom.app_id, "CUSTOM");
+        assert!(custom.ignore);
+    }
+
+    #[test]
+    fn effective_player_configs_show_matched_entries_as_enabled() {
+        let mut cfg = Config::default();
+        cfg.bundled_player.insert(
+            "default".to_string(),
+            layer(Some(false), Some(true), Some("MPRISENCE")),
+        );
+        cfg.user_player.insert(
+            "custom_player".to_string(),
+            PlayerConfigLayer {
+                app_id: Some("CUSTOM".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let effective = cfg.effective_player_configs();
+        let custom = effective
+            .get("custom_player")
+            .expect("custom player config");
+        assert_eq!(custom.app_id, "CUSTOM");
+        assert!(!custom.ignore);
     }
 
     #[test]
@@ -1053,7 +1489,13 @@ impl From<StatusDisplayType> for discord_rich_presence::activity::StatusDisplayT
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PlayerConfigLayer {
     #[serde(default)]
+    pub name: Option<String>,
+
+    #[serde(default)]
     pub ignore: Option<bool>,
+
+    #[serde(default)]
+    pub ignore_unmatched: Option<bool>,
 
     #[serde(default)]
     pub app_id: Option<String>,
@@ -1076,6 +1518,9 @@ pub struct PlayerConfigLayer {
 
 impl PlayerConfigLayer {
     pub fn apply_over(&self, mut base: PlayerConfig) -> PlayerConfig {
+        if let Some(value) = &self.name {
+            base.name = Some(value.clone());
+        }
         if let Some(value) = self.ignore {
             base.ignore = value;
         }
@@ -1102,32 +1547,23 @@ impl PlayerConfigLayer {
     }
 
     pub fn merge_from(&mut self, other: PlayerConfigLayer) {
-        if other.ignore.is_some() {
-            self.ignore = other.ignore;
-        }
-        if other.app_id.is_some() {
-            self.app_id = other.app_id;
-        }
-        if other.icon.is_some() {
-            self.icon = other.icon;
-        }
-        if other.show_icon.is_some() {
-            self.show_icon = other.show_icon;
-        }
-        if other.allow_streaming.is_some() {
-            self.allow_streaming = other.allow_streaming;
-        }
-        if other.status_display_type.is_some() {
-            self.status_display_type = other.status_display_type;
-        }
-        if other.override_activity_type.is_some() {
-            self.override_activity_type = other.override_activity_type;
-        }
+        self.name = other.name.or(self.name.take());
+        self.ignore = other.ignore.or(self.ignore);
+        self.ignore_unmatched = other.ignore_unmatched.or(self.ignore_unmatched);
+        self.app_id = other.app_id.or(self.app_id.take());
+        self.icon = other.icon.or(self.icon.take());
+        self.show_icon = other.show_icon.or(self.show_icon);
+        self.allow_streaming = other.allow_streaming.or(self.allow_streaming);
+        self.status_display_type = other.status_display_type.or(self.status_display_type);
+        self.override_activity_type = other.override_activity_type.or(self.override_activity_type);
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerConfig {
+    #[serde(default)]
+    pub name: Option<String>,
+
     #[serde(default = "default_player_ignore")]
     pub ignore: bool,
 
@@ -1177,6 +1613,7 @@ fn default_player_status_display_type() -> StatusDisplayType {
 impl Default for PlayerConfig {
     fn default() -> PlayerConfig {
         PlayerConfig {
+            name: None,
             ignore: default_player_ignore(),
             app_id: default_player_app_id(),
             icon: default_player_icon(),
@@ -1186,4 +1623,608 @@ impl Default for PlayerConfig {
             override_activity_type: None,
         }
     }
+}
+
+/// Site-specific override applied on top of the resolved `PlayerConfig`
+/// whenever `xesam:url` matches `match_pattern`. Mirrors
+/// `PlayerConfigLayer` but adds the URL pattern.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WebPlayerConfigLayer {
+    #[serde(default)]
+    pub match_pattern: Option<String>,
+
+    #[serde(default)]
+    pub match_patterns: Option<Vec<String>>,
+
+    /// Optional title suffix used to infer this web_player when `xesam:url` is
+    /// absent (e.g. Chrome native MPRIS).  Example: `" | YouTube Music"`.
+    /// When matched, the suffix is stripped from the displayed title.
+    #[serde(default)]
+    pub title_suffix: Option<String>,
+
+    #[serde(default)]
+    pub name: Option<String>,
+
+    #[serde(default)]
+    pub ignore: Option<bool>,
+
+    #[serde(default)]
+    pub ignore_unmatched: Option<bool>,
+
+    #[serde(default)]
+    pub app_id: Option<String>,
+
+    #[serde(default)]
+    pub icon: Option<String>,
+
+    #[serde(default)]
+    pub show_icon: Option<bool>,
+
+    #[serde(default)]
+    pub allow_streaming: Option<bool>,
+
+    #[serde(default)]
+    pub status_display_type: Option<StatusDisplayType>,
+
+    #[serde(default)]
+    pub override_activity_type: Option<ActivityType>,
+}
+
+impl WebPlayerConfigLayer {
+    /// Combined view of `match_pattern` (singular) and `match_patterns`
+    /// (plural) entries from the TOML, in declared order.
+    pub fn effective_patterns(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        if let Some(p) = self.match_pattern.as_deref() {
+            if !p.is_empty() {
+                out.push(p);
+            }
+        }
+        if let Some(ps) = self.match_patterns.as_deref() {
+            for p in ps {
+                if !p.is_empty() {
+                    out.push(p.as_str());
+                }
+            }
+        }
+        out
+    }
+
+    pub fn merge_from(&mut self, other: WebPlayerConfigLayer) {
+        self.match_pattern = other.match_pattern.or(self.match_pattern.take());
+        self.match_patterns = other.match_patterns.or(self.match_patterns.take());
+        self.title_suffix = other.title_suffix.or(self.title_suffix.take());
+        self.name = other.name.or(self.name.take());
+        self.ignore = other.ignore.or(self.ignore);
+        self.app_id = other.app_id.or(self.app_id.take());
+        self.icon = other.icon.or(self.icon.take());
+        self.show_icon = other.show_icon.or(self.show_icon);
+        self.allow_streaming = other.allow_streaming.or(self.allow_streaming);
+        self.status_display_type = other.status_display_type.or(self.status_display_type);
+        self.override_activity_type = other.override_activity_type.or(self.override_activity_type);
+    }
+
+    fn apply_into_web_player(&self, mut base: WebPlayerConfig) -> WebPlayerConfig {
+        let patterns = self.effective_patterns();
+        if !patterns.is_empty() {
+            base.match_patterns = patterns.into_iter().map(|s| s.to_string()).collect();
+        }
+        if let Some(value) = &self.title_suffix {
+            base.title_suffix = Some(value.clone());
+        }
+        if let Some(value) = &self.name {
+            base.name = Some(value.clone());
+        }
+        if let Some(value) = self.ignore {
+            base.ignore = value;
+        }
+        if let Some(value) = &self.app_id {
+            base.app_id = Some(value.clone());
+        }
+        if let Some(value) = &self.icon {
+            base.icon = Some(value.clone());
+        }
+        if let Some(value) = self.show_icon {
+            base.show_icon = Some(value);
+        }
+        if let Some(value) = self.allow_streaming {
+            base.allow_streaming = Some(value);
+        }
+        if let Some(value) = self.status_display_type {
+            base.status_display_type = Some(value);
+        }
+        if let Some(value) = self.override_activity_type {
+            base.override_activity_type = Some(value);
+        }
+        base
+    }
+}
+
+/// Resolved, inspectable form of a web_player entry (used by CLI listing
+/// and to project into a `PlayerConfig` at runtime via
+/// `into_player_config`). Fields stay optional so callers can distinguish
+/// "web_player explicitly set this" from "fall back to mprisence default".
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WebPlayerConfig {
+    #[serde(default)]
+    pub match_patterns: Vec<String>,
+    #[serde(default)]
+    pub title_suffix: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub ignore: bool,
+    #[serde(default)]
+    pub app_id: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub show_icon: Option<bool>,
+    #[serde(default)]
+    pub allow_streaming: Option<bool>,
+    #[serde(default)]
+    pub status_display_type: Option<StatusDisplayType>,
+    #[serde(default)]
+    pub override_activity_type: Option<ActivityType>,
+}
+
+impl WebPlayerConfig {
+    /// Project the web_player's resolved fields onto a fresh `PlayerConfig`.
+    /// This is the authoritative-replace operation: every policy field
+    /// either takes the web_player's explicit value or falls back to the
+    /// mprisence default. The browser's `[player.*]` config does NOT
+    /// contribute, which is the whole point of the web_player override.
+    pub fn into_player_config(self) -> PlayerConfig {
+        let mut p = PlayerConfig::default();
+        if let Some(name) = self.name {
+            p.name = Some(name);
+        }
+        p.ignore = self.ignore;
+        if let Some(app_id) = self.app_id {
+            p.app_id = app_id;
+        }
+        if let Some(icon) = self.icon {
+            p.icon = icon;
+        }
+        if let Some(show_icon) = self.show_icon {
+            p.show_icon = show_icon;
+        }
+        if let Some(allow_streaming) = self.allow_streaming {
+            p.allow_streaming = allow_streaming;
+        }
+        if let Some(sdt) = self.status_display_type {
+            p.status_display_type = sdt;
+        }
+        if let Some(act) = self.override_activity_type {
+            p.override_activity_type = Some(act);
+        }
+        p
+    }
+}
+
+fn url_host_for_match(url: &str) -> String {
+    if let Ok(parsed) = Url::parse(url) {
+        if let Some(host) = parsed.host_str() {
+            return host.to_string();
+        }
+    }
+    url.to_string()
+}
+
+fn is_http_url(url: &str) -> bool {
+    Url::parse(url)
+        .map(|p| matches!(p.scheme(), "http" | "https"))
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod web_player_tests {
+    use super::*;
+
+    fn web_player(match_pattern: &str, app_id: Option<&str>) -> WebPlayerConfigLayer {
+        WebPlayerConfigLayer {
+            match_pattern: Some(match_pattern.to_string()),
+            app_id: app_id.map(|s| s.to_string()),
+            allow_streaming: Some(true),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn website_into_player_config_projects_fields_and_falls_back_to_defaults() {
+        let layer = WebPlayerConfigLayer {
+            match_pattern: Some("music.youtube.com".to_string()),
+            name: Some("YouTube Music".into()),
+            app_id: Some("WEB_PLAYER".into()),
+            icon: Some("yt-icon".into()),
+            allow_streaming: Some(true),
+            ..Default::default()
+        };
+        let resolved = layer.apply_into_web_player(WebPlayerConfig::default());
+        let player = resolved.into_player_config();
+
+        assert_eq!(player.app_id, "WEB_PLAYER");
+        assert_eq!(player.icon, "yt-icon");
+        assert_eq!(player.name.as_deref(), Some("YouTube Music"));
+        assert!(player.allow_streaming);
+        // ignore wasn't set in the layer -> uses WebPlayerConfig::default
+        // (false), matching the new authoritative-replace semantics.
+        assert!(!player.ignore);
+        // show_icon wasn't set -> falls back to mprisence default (false).
+        assert!(!player.show_icon);
+    }
+
+    fn build_cfg(setup: impl FnOnce(&mut Config)) -> Config {
+        let mut cfg = Config::default();
+        setup(&mut cfg);
+        cfg.rebuild_merged_web_player();
+        cfg.precompile_patterns();
+        cfg
+    }
+
+    #[test]
+    fn web_player_match_host_swaps_app_id() {
+        let cfg = build_cfg(|cfg| {
+            cfg.bundled_web_player.insert(
+                "youtube_music".into(),
+                web_player("music.youtube.com", Some("YT")),
+            );
+        });
+
+        let resolved = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://music.youtube.com/watch?v=abc"),
+        );
+        assert_eq!(resolved.app_id, "YT");
+        assert!(resolved.allow_streaming);
+    }
+
+    #[test]
+    fn web_player_match_patterns_plural_any_entry_matches() {
+        let cfg = build_cfg(|cfg| {
+            cfg.bundled_web_player.insert(
+                "soundcloud".into(),
+                WebPlayerConfigLayer {
+                    match_patterns: Some(vec!["soundcloud.com".into(), "snd.sc".into()]),
+                    app_id: Some("SC".into()),
+                    allow_streaming: Some(true),
+                    ..Default::default()
+                },
+            );
+        });
+
+        let resolved_long = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://soundcloud.com/discover/sets/x"),
+        );
+        assert_eq!(resolved_long.app_id, "SC");
+        assert!(resolved_long.allow_streaming);
+
+        let resolved_short =
+            cfg.get_player_config_with_url("Firefox", "firefox", Some("https://snd.sc/abc"));
+        assert_eq!(resolved_short.app_id, "SC");
+        assert!(resolved_short.allow_streaming);
+    }
+
+    #[test]
+    fn web_player_match_regex_on_host() {
+        let cfg = build_cfg(|cfg| {
+            cfg.bundled_web_player.insert(
+                "bandcamp".into(),
+                web_player("re:.*\\.bandcamp\\.com$", Some("BC")),
+            );
+        });
+
+        let resolved = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://artist.bandcamp.com/track/y"),
+        );
+        assert_eq!(resolved.app_id, "BC");
+    }
+
+    #[test]
+    fn website_unknown_http_url_forces_ignore() {
+        let cfg = build_cfg(|cfg| {
+            cfg.bundled_web_player.insert(
+                "youtube_music".into(),
+                web_player("music.youtube.com", Some("YT")),
+            );
+        });
+
+        let resolved = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://github.com/lazykern/mprisence"),
+        );
+        assert!(
+            resolved.ignore,
+            "unknown http URL should auto-ignore so random browser audio stays hidden"
+        );
+    }
+
+    #[test]
+    fn website_non_http_scheme_falls_through_to_base() {
+        let cfg = build_cfg(|cfg| {
+            cfg.bundled_web_player.insert(
+                "youtube_music".into(),
+                web_player("music.youtube.com", Some("YT")),
+            );
+        });
+        let baseline = cfg.get_player_config("Spotify", "spotify");
+
+        let resolved =
+            cfg.get_player_config_with_url("Spotify", "spotify", Some("spotify:track:abc123"));
+        assert_eq!(resolved.app_id, baseline.app_id);
+        assert_eq!(resolved.ignore, baseline.ignore);
+    }
+
+    #[test]
+    fn website_file_url_falls_through_to_base() {
+        let cfg = build_cfg(|cfg| {
+            cfg.bundled_web_player.insert(
+                "youtube_music".into(),
+                web_player("music.youtube.com", Some("YT")),
+            );
+        });
+        let baseline = cfg.get_player_config("VLC", "vlc");
+
+        let resolved =
+            cfg.get_player_config_with_url("VLC", "vlc", Some("file:///home/user/track.flac"));
+        assert_eq!(resolved.ignore, baseline.ignore);
+    }
+
+    #[test]
+    fn website_no_url_returns_base_player_config() {
+        let cfg = build_cfg(|cfg| {
+            cfg.bundled_web_player.insert(
+                "youtube_music".into(),
+                web_player("music.youtube.com", Some("YT")),
+            );
+        });
+        let baseline = cfg.get_player_config("Firefox", "firefox");
+
+        let resolved = cfg.get_player_config_with_url("Firefox", "firefox", None);
+        assert_eq!(resolved.app_id, baseline.app_id);
+    }
+
+    #[test]
+    fn website_user_overrides_bundled() {
+        let cfg = build_cfg(|cfg| {
+            cfg.bundled_web_player.insert(
+                "youtube_music".into(),
+                web_player("music.youtube.com", Some("BUNDLED")),
+            );
+            cfg.user_web_player.insert(
+                "youtube_music".into(),
+                web_player("music.youtube.com", Some("USER")),
+            );
+        });
+
+        let resolved = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://music.youtube.com/watch?v=x"),
+        );
+        assert_eq!(resolved.app_id, "USER");
+    }
+
+    #[test]
+    fn website_ignore_propagates_to_resolved_player_config() {
+        let cfg = build_cfg(|cfg| {
+            cfg.bundled_web_player.insert(
+                "spotify_web".into(),
+                WebPlayerConfigLayer {
+                    match_pattern: Some("open.spotify.com".into()),
+                    ignore: Some(true),
+                    ..Default::default()
+                },
+            );
+        });
+
+        let resolved = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://open.spotify.com/track/abc"),
+        );
+        assert!(resolved.ignore);
+    }
+
+    #[test]
+    fn website_pattern_more_specific_than_substring_wins() {
+        let cfg = build_cfg(|cfg| {
+            // Both patterns would match the URL; exact host should win over substring.
+            cfg.bundled_web_player.insert(
+                "youtube_dot_com".into(),
+                web_player("youtube.com", Some("GENERIC")),
+            );
+            cfg.bundled_web_player.insert(
+                "youtube_music".into(),
+                web_player("music.youtube.com", Some("SPECIFIC")),
+            );
+        });
+
+        let resolved = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://music.youtube.com/watch?v=x"),
+        );
+        assert_eq!(resolved.app_id, "SPECIFIC");
+    }
+
+    #[test]
+    fn user_patternless_layer_inherits_bundled_patterns() {
+        // The whole reason `merged_web_player` exists: a user entry like
+        // `[web_player.youtube]\nignore = false` (no patterns) used to be
+        // silently skipped by `find_matching_website_layer` because its
+        // `effective_patterns()` returned empty. After per-key merge the
+        // bundled patterns flow through, so the user's `ignore` flip
+        // actually takes effect.
+        let cfg = build_cfg(|cfg| {
+            cfg.bundled_web_player.insert(
+                "youtube".into(),
+                WebPlayerConfigLayer {
+                    match_patterns: Some(vec!["youtube.com".into(), "youtu.be".into()]),
+                    app_id: Some("YT_BUNDLED".into()),
+                    ignore: Some(true),
+                    allow_streaming: Some(true),
+                    ..Default::default()
+                },
+            );
+            cfg.user_web_player.insert(
+                "youtube".into(),
+                WebPlayerConfigLayer {
+                    ignore: Some(false),
+                    ..Default::default()
+                },
+            );
+        });
+
+        let resolved = cfg.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://www.youtube.com/watch?v=x"),
+        );
+        assert!(
+            !resolved.ignore,
+            "user override should flip ignore to false"
+        );
+        assert_eq!(
+            resolved.app_id, "YT_BUNDLED",
+            "bundled app_id should still apply since user didn't override it"
+        );
+        assert!(
+            resolved.allow_streaming,
+            "bundled allow_streaming should still apply"
+        );
+    }
+
+    #[test]
+    fn website_fully_replaces_browser_player_config() {
+        // The browser's [player.*] config (ignore=true, app_id=BROWSER) must
+        // NOT bleed into the resolved config when the URL matches a web_player.
+        // Only the web_player's fields plus mprisence defaults survive.
+        let cfg = build_cfg(|cfg| {
+            cfg.bundled_player.insert(
+                "firefox".into(),
+                PlayerConfigLayer {
+                    ignore: Some(true),
+                    app_id: Some("BROWSER".into()),
+                    icon: Some("browser-icon".into()),
+                    allow_streaming: Some(true),
+                    ..Default::default()
+                },
+            );
+            cfg.bundled_web_player
+                .insert("youtube".into(), web_player("youtube.com", Some("YT_SITE")));
+        });
+
+        let resolved = cfg.get_player_config_with_url(
+            "Mozilla Firefox",
+            "firefox",
+            Some("https://www.youtube.com/watch?v=x"),
+        );
+        assert_eq!(
+            resolved.app_id, "YT_SITE",
+            "web_player app_id must win, not browser's"
+        );
+        assert!(
+            !resolved.ignore,
+            "web_player's ignore=false (default) must replace browser's ignore=true"
+        );
+        assert_ne!(
+            resolved.icon, "browser-icon",
+            "browser icon must not leak through when web_player matches"
+        );
+    }
+
+    #[test]
+    fn matched_web_player_for_url_returns_key_and_config() {
+        let cfg = build_cfg(|cfg| {
+            cfg.bundled_web_player.insert(
+                "youtube".into(),
+                WebPlayerConfigLayer {
+                    match_patterns: Some(vec!["youtube.com".into(), "youtu.be".into()]),
+                    app_id: Some("YT".into()),
+                    ..Default::default()
+                },
+            );
+        });
+
+        let (key, resolved) = cfg
+            .matched_web_player_for_url(Some("https://www.youtube.com/watch?v=x"))
+            .expect("youtube.com should match");
+        assert_eq!(key, "youtube");
+        assert_eq!(resolved.app_id.as_deref(), Some("YT"));
+
+        assert!(cfg
+            .matched_web_player_for_url(Some("https://unrelated.example/"))
+            .is_none());
+        assert!(cfg.matched_web_player_for_url(None).is_none());
+    }
+}
+
+/// Returns the key and most specific matching web_player layer from a single source map.
+/// Priority: exact host > regex > wildcard > plain substring fallback.
+/// Use `.map(|(_, layer)| layer)` to discard the key when not needed.
+fn find_matching_web_player_entry(
+    compiled_patterns: &HashMap<String, Vec<CompiledPattern>>,
+    source: &HashMap<String, WebPlayerConfigLayer>,
+    url_host: &str,
+) -> Option<(String, WebPlayerConfigLayer)> {
+    let mut best: Option<(String, WebPlayerConfigLayer, (u8, usize))> = None;
+
+    for (key, layer) in source.iter() {
+        if key == "default" {
+            continue;
+        }
+        let compiled_list: std::borrow::Cow<Vec<CompiledPattern>> = match compiled_patterns.get(key)
+        {
+            Some(c) => std::borrow::Cow::Borrowed(c),
+            None => {
+                // Fallback: compile on-demand (tests that bypass precompile_patterns).
+                let list: Vec<CompiledPattern> = layer
+                    .effective_patterns()
+                    .iter()
+                    .map(|p| Config::compile_single_pattern(p))
+                    .collect();
+                std::borrow::Cow::Owned(list)
+            }
+        };
+
+        for (idx, compiled) in compiled_list.iter().enumerate() {
+            // For the score, we need the raw pattern string from effective_patterns.
+            // Re-derive the raw pattern for specificity scoring.
+            let raw_patterns = layer.effective_patterns();
+            let raw = raw_patterns.get(idx).copied().unwrap_or("");
+
+            let score: Option<(u8, usize)> = match compiled {
+                CompiledPattern::Exact(p) if p == url_host => Some((3, raw.len())),
+                CompiledPattern::Regex(_) if compiled.matches(url_host) => Some((2, raw.len())),
+                CompiledPattern::Wildcard(_) if compiled.matches(url_host) => {
+                    Some((1, pattern_specificity(raw)))
+                }
+                _ => {
+                    // Fallback: contains match (only for non-regex, non-wildcard strings)
+                    if !is_regex_pattern(raw) && !is_wildcard_pattern(raw) && url_host.contains(raw)
+                    {
+                        Some((0, raw.len()))
+                    } else {
+                        None
+                    }
+                }
+            };
+
+            let Some(score) = score else { continue };
+
+            match &best {
+                Some((_, _, current)) if *current >= score => {}
+                _ => best = Some((key.clone(), layer.clone(), score)),
+            }
+        }
+    }
+
+    best.map(|(key, layer, _)| (key, layer))
 }

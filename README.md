@@ -3,23 +3,11 @@
 [![AUR version](https://img.shields.io/aur/version/mprisence)](https://aur.archlinux.org/packages/mprisence)
 [![Nixpkgs](https://img.shields.io/badge/NixOS-nixpkgs-blue?logo=nixos)](https://search.nixos.org/packages?query=mprisence)
 
-Highly customizable Discord Rich Presence client for MPRIS media players. Supports VLC, MPV, RhythmBox, and many other Linux music and media players.
+Highly customizable Discord Rich Presence client for MPRIS media players. Supports VLC, MPV, Rhythmbox, and many other Linux music and media players.
 
 <img src="/assets/example.gif" width="548" height="548"/>
 
 _(Note: Actual appearance depends on your configuration and the specific media player)_
-
-## Preconfigured Players
-
-Ready to use with popular media players (configured in [`config.default.toml`](./config/config.default.toml)):
-
-- **Media Players**: VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer, Supersonic, Feishin, kew, Quod Libet, Euphonica
-- **Streaming**: YouTube Music, Spotify (disabled by default)
-- **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
-
-Note: MPD frontends (e.g., Euphonica) will also show MPD rich presence in Discord; you can disable the MPD entry in your config (see [Configuration Reference](#configuration-reference)
-
-Feel free to create a new issue if you want your player name+icon to be recognized by mprisence!
 
 ## Features
 
@@ -31,19 +19,32 @@ Feel free to create a new issue if you want your player name+icon to be recogniz
 - **Smart activity type**: “Listening” / “Watching” / etc. based on content (configurable)
 - **Per-player overrides**: app IDs, icons, status, and more
 - **Rich metadata**: access detailed fields (including technical audio info) inside templates
+- **Web player integration**: use browser-published MPRIS metadata, or the optional extension bridge for richer metadata, cover art, and controls
 
-## Prerequisites
+## Supported Players
+
+Ready to use with popular local players and web players. The full bundled support list lives in [`config.default.toml`](./config/config.default.toml):
+
+- **Media players**: VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer, Supersonic, Feishin, kew, Quod Libet, Euphonica
+- **Streaming apps**: YouTube Music, Spotify (disabled by default)
+- **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
+- **Web players**: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music, YouTube (ignored by default)
+
+Note: MPD frontends (e.g., Euphonica) will also show MPD rich presence in Discord; you can disable the MPD entry in your config (see [Configuration Reference](#configuration-reference)).
+
+Feel free to create a new issue if you want your player name+icon to be recognized by mprisence!
+
+---
+
+## Quick Install
+
+### Prerequisites
 
 - **For running:** A desktop environment with an active D-Bus session (standard on most Linux desktops).
 - **For service management:** `systemd` (user instance).
 - **For manual installation/building from source:**
   - `rustc` and `cargo` (latest stable version recommended)
   - `git` (to clone the repository)
-
-## Installation and Setup
-
-<details>
-<summary><b>Expand installation and setup steps</b></summary>
 
 ### Package Manager
 
@@ -191,8 +192,6 @@ journalctl --user -u mprisence -f
 systemctl --user disable --now mprisence
 ```
 
-</details>
-
 ## Configuration
 
 `mprisence` is highly configurable via `~/.config/mprisence/config.toml` (or `$XDG_CONFIG_HOME/mprisence/config.toml`).
@@ -260,159 +259,114 @@ status_display_type = "details"
 - [`config.default.toml`](./config/config.default.toml): Default configurations for popular players.
 - [`src/metadata.rs`](./src/metadata.rs): Definitive source for all available template variables.
 
----
+## Web Player Integration
 
-<details>
-<summary>Basic Configuration Example</summary>
+mprisence can integrate web players through the metadata your browser already exposes over MPRIS. If that metadata is too limited — missing rich fields, cover art, or reliable controls — use the optional browser extension bridge. Both paths use the same `[web_player.*]` configuration.
 
-```toml
-# Basic settings
-# When true (default), mprisence subscribes to MPRIS `PropertiesChanged` /
-# `Seeked` signals and pushes Discord updates the moment they fire. When
-# false, mprisence falls back to polling every `interval` ms. The polling
-# path is preserved as an escape hatch; restart mprisence to switch modes.
-event_driven = true
+### How it works
 
-# Event-driven mode only: how often to scan the D-Bus session bus for
-# newly-launched or quit players (milliseconds). Lower = faster recovery
-# from a player restart; higher = less idle D-Bus chatter.
-discovery_interval = 5000
+- **Browser MPRIS metadata:** Some browsers publish the active media tab as an MPRIS player and include the page URL in `xesam:url`. mprisence matches that URL against `[web_player.*]` entries and applies the site's app ID, icon, name, and behavior instead of treating it as a generic browser.
+- **Extension bridge:** The extension reads richer metadata directly from supported pages, sends it to the local native messaging host (`mprisence-web-bridge`), and the bridge publishes per-tab MPRIS players on D-Bus. mprisence discovers those players like any other MPRIS player.
 
-# Polling fallback only: how often to poll each player (milliseconds).
-# Ignored when event_driven = true except as a sanity timeout in code paths
-# that compare positions.
-interval = 2000
+### Supported web players
 
-# Restrict discovery to specific players (identities, wildcards, or regex).
-# Matches against player identity or the bus-name "player" part (e.g., "vlc"),
-# not the full D-Bus name. Leave empty to allow all players.
-allowed_players = []
+Bundled `[web_player.*]` entries: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music, and YouTube.
 
-# Note: Triple braces `{{{variable}}}` are used to prevent HTML escaping,
-# which is generally desired for Discord presence fields.
-# See: https://handlebarsjs.com/guide/#html-escaping
-# Extra helpers: `eq`, `contains`, `icontains`, `regex_is_match`, and `regex_captures`
+Most bundled web players are enabled (`ignore = false`). YouTube is ignored by default, and unmatched http/https browser URLs are ignored so random tabs do not show in Discord.
 
-# Display template
-[template]
-# First line in Discord presence
-details = "{{{title}}}"
+Extension bridge support currently covers: YouTube Music, YouTube, SoundCloud, Bandcamp, TIDAL, and Apple Music.
 
-# Second line in Discord presence - using Handlebars array iteration
-state = "{{#each artists}}{{this}}{{#unless @last}} & {{/unless}}{{/each}}"
-# or just use
-# state = "{{{artist_display}}}"
+### Configure a web player
 
-# Text shown when hovering over the large image - using conditional helpers
-large_text = "{{#if album}}{{{album}}}{{#if year}} ({{{year}}}){{/if}}{{/if}}"
-
-# Text shown when hovering over the small image (player icon)
-# Only visible when show_icon = true in player settings
-small_text = "{{#if player}}{{{player}}}{{else}}MPRIS{{/if}}"
-
-# Match substrings or regex patterns in helpers
-# details = "{{#if (contains player \"Spotify\")}}{{{title}}}{{else}}{{{player}}}{{/if}}"
-# details = "{{#if (icontains player \"spotify\")}}{{{title}}}{{else}}{{{player}}}{{/if}}"
-# small_text = "{{#if (regex_is_match pattern=\"^(mpv|vlc)$\" on=player_bus_name)}}Video{{else}}Audio{{/if}}"
-
-# Activity type settings
-[activity_type]
-# Auto-detect type (audio -> "listening", video -> "watching")
-use_content_type = true
-# Default type: "listening", "watching", "playing", or "competing"
-default = "listening"
-
-# Time display settings
-[time]
-# Show progress bar/time in Discord
-show = true
-# true = show elapsed time, false = show remaining time
-as_elapsed = true
-```
-
-</details>
-
----
-
-<details>
-<summary>Cover Art Setup</summary>
+Bundled defaults already include patterns, names, app IDs, icons, and `allow_streaming` for supported web players. Add a `[web_player.*]` block only when you want to change those defaults.
 
 ```toml
-[cover]
-# File names (without extension) to search for local art (e.g., cover.jpg, folder.png)
-file_names = ["cover", "folder", "front", "album", "art"]
-# How many parent directories to search upwards for local art (0 = same dir only)
-local_search_depth = 2
-
-[cover.provider]
-# Cover art providers in order of preference
-# (catbox+litter is the default first re-hosting option)
-provider = ["catbox", "musicbrainz"] # Also checks local files first based on above
-
-[cover.provider.musicbrainz]
-# Minimum score (0-100) for MusicBrainz matches. Higher = stricter.
-min_score = 100
-
-[cover.provider.catbox]
-# user_hash = "your_user_hash" # optional: lets you delete uploads later
-use_litter = true             # default: upload to temporary Litterbox before permanent Catbox storage
-litter_hours = 24             # valid values: 1, 12, 24, 72
-
-[cover.provider.imgbb]
-# Your ImgBB API key (get one at: https://api.imgbb.com/)
-api_key = "YOUR_API_KEY_HERE"
-# How long to keep uploaded images (in seconds, default: 1 day)
-expiration = 86400
+# Example: override bundled YouTube Music settings.
+# Defaults are documented in config/config.default.toml and config/config.example.toml.
+#
+# [web_player.youtube_music]
+# match_patterns = ["music.youtube.com"]
+# ignore = false
+# app_id = "1121632048155742288"
 ```
 
-</details>
+Notes:
 
----
+- User entries merge with bundled entries: fields you leave unset fall through to the bundled entry (including `match_pattern`/`match_patterns`).
+- Unmatched http/https URLs are auto-ignored. Opt back in by adding a `[web_player.*]` entry.
+- Inspect resolved entries with `mprisence config` or `mprisence players list -d`.
 
-<details>
-<summary>Player-Specific Configuration</summary>
+### Extension bridge setup
 
-```toml
-# Use 'mprisence players list' to get the correct player identity (e.g., vlc_media_player)
+Install this only if browser-provided MPRIS metadata is not rich enough for the web players you use.
 
-# Default settings applied to ALL players unless overridden below
-[player.default]
-ignore = false # Set to true to disable presence for all players by default
-app_id = "1121632048155742288" # Default Discord Application ID
-icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png" # Default icon URL
-show_icon = false # Show player icon as small image by default?
-allow_streaming = false # Allow HTTP/HTTPS streaming content? False clears Discord activity for those players.
-status_display_type = "name" # Controls status text; bundled app ID would show "mprisence", so it maps to "state".
-                              # For example:
-                              # "name"    -> Player/app name
-                              # "state"   -> Rendered template.state value (default: "{{{artists}}}")
-                              # "details" -> Rendered template.details value (default: "{{{title}}}")
+#### Bridge prerequisites
 
-# Override settings for a specific player (VLC in this example)
-[player.vlc_media_player]
-# You can override any key from [player.default] here
-app_id = "YOUR_VLC_APP_ID_HERE" # Use a VLC-specific Discord App ID
-icon = "https://example.com/vlc-icon.png" # Use a VLC-specific icon
-show_icon = true # Show the VLC icon
-allow_streaming = true # Allow streaming content for VLC
-# You could also add 'override_activity_type = "watching"' here if desired
-status_display_type = "details"
+- Rust/Cargo to build `mprisence-web-bridge`
+- Node.js/npm to build the extension
+- Firefox or a Chromium-based browser with native messaging support
+- Running `mprisence` daemon
 
-# Example: Ignore Spotify
-# [player.spotify]
-# ignore = true
+#### Build & install bridge
 
-# Example: Wildcard matches
-[player."*youtube_music*"]
-show_icon = true
-allow_streaming = true
+```bash
+# 1. Build the native bridge
+cargo build --release -p mprisence-web-bridge
+
+# 2. Register native messaging manifests (so browser trusts the bridge)
+./target/release/mprisence-web-bridge install
+
+# 3. Verify setup
+./target/release/mprisence-web-bridge doctor
+
+# 4. Build the browser extension
+cd extension
+npm install
+npm run build:firefox   # or: npm run build:chromium
+cd ..
 ```
 
-When `allow_streaming` is `false`, mprisence will skip HTTP/HTTPS sources for that player and clear any previously published Discord activity so browsers stay hidden unless explicitly enabled.
+#### Load extension in browser
 
-</details>
+Temporary local install:
 
-Player config priority: user entries always override bundled ones. The resolver tries user exact > user regex > user wildcard > bundled exact > bundled regex > bundled wildcard; any field left unset on a higher-priority match is filled from the next match down, falling back to `[player.default]` (user, then bundled) and finally built-in defaults. When identity and bus-name differ (for example with proxies like `playerctld`), an exact user bus-name entry wins over identity-derived matches.
+**Firefox:**
+1. Navigate to `about:debugging#/runtime/this-firefox`
+2. Click **Load Temporary Add-on**
+3. Select `extension/dist/firefox/manifest.json`
+
+**Chromium (Chrome, Edge, Brave):**
+1. Navigate to `chrome://extensions`
+2. Enable **Developer mode** (top-right)
+3. Click **Load unpacked**
+4. Select the `extension/dist/chromium/` folder
+
+#### Run & verify
+
+```bash
+# Start mprisence
+mprisence
+
+# Visit a supported site and play media, then check for bridge players
+playerctl -l | grep mprisence_web
+
+# Test controls
+playerctl -p mprisence_web.youtube_music.* play-pause
+playerctl -p mprisence_web.youtube_music.* position 30+
+```
+
+Bridge logs:
+
+```bash
+tail -f /tmp/bridge-stderr.log
+```
+
+Uninstall bridge manifests:
+
+```bash
+./target/release/mprisence-web-bridge uninstall
+# Then remove the extension from the browser Extensions page
+```
 
 ## CLI Commands
 
@@ -441,9 +395,6 @@ RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
 
 ## Troubleshooting
 
-<details>
-<summary><b>Expand troubleshooting tips</b></summary>
-
 ### Common Issues
 
 1. **Discord Presence Not Showing / Updating**
@@ -465,13 +416,11 @@ RUST_LOG=debug mprisence # or RUST_LOG=trace mprisence
    - **Cache:** Try clearing the cache (`rm -rf ~/.cache/mprisence/cover_art`) if you suspect stale entries.
 
 3. **Service Issues**
-   - Use the commands mentioned in the [Autostarting / Service Management](#autostarting--service-management) section to check status (`status`), view logs (`journalctl`), and manage the service (`start`, `stop`, `restart`).
+   - Use the commands in [Managing the Service](#managing-the-service) to check status, view logs, restart, or stop the service.
 
 4. **Configuration Issues**
-   _**Syntax Errors:** Validate your `config.toml` using an online TOML validator or `toml-lint`.
-   _ **Defaults:** If unsure, temporarily remove your `~/.config/mprisence/config.toml` to test with the built-in defaults.
-
-</details>
+   - **Syntax Errors:** Validate your `config.toml` using an online TOML validator or `toml-lint`.
+   - **Defaults:** If unsure, temporarily remove your `~/.config/mprisence/config.toml` to test with the built-in defaults.
 
 ## Contributing
 

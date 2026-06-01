@@ -1,11 +1,15 @@
-use std::{fmt::Display, time::Duration};
+use std::{collections::HashMap, fmt::Display, time::Duration};
 
-use log::{debug, info};
+use log::{debug, info, trace};
 use mpris::{DBusError, PlaybackStatus, Player};
 use smol_str::SmolStr;
+use url::Url;
+
+use crate::utils;
 
 pub mod cmus;
 pub mod events;
+pub mod health;
 
 const MPRIS_BUS_PREFIX: &str = "org.mpris.MediaPlayer2.";
 const PLAYERCTLD_NO_ACTIVE_PLAYER_ERROR: &str = "com.github.altdesktop.playerctld.NoActivePlayer";
@@ -47,6 +51,8 @@ pub struct PlaybackState {
     pub title: Option<Box<str>>,
     pub position: Option<u32>,
     pub volume: Option<u8>,
+    pub url: Option<Box<str>>,
+    pub art_url: Option<Box<str>>,
 }
 
 impl Display for PlaybackState {
@@ -71,9 +77,28 @@ impl Display for PlaybackState {
 impl From<&Player> for PlaybackState {
     fn from(player: &Player) -> Self {
         let metadata = player.get_metadata().ok();
+        let playback_status = player.get_playback_status().ok();
+        Self::from_parts(player, playback_status, metadata.as_ref())
+    }
+}
 
+impl PlaybackState {
+    /// Construct `PlaybackState` from an already-fetched status and metadata.
+    /// Avoids redundant D-Bus calls when the caller already has both values.
+    pub fn from_with_status(
+        player: &Player,
+        playback_status: PlaybackStatus,
+        metadata: &mpris::Metadata,
+    ) -> Self {
+        Self::from_parts(player, Some(playback_status), Some(metadata))
+    }
+
+    fn from_parts(
+        player: &Player,
+        playback_status: Option<PlaybackStatus>,
+        metadata: Option<&mpris::Metadata>,
+    ) -> Self {
         let track_identifier = metadata
-            .as_ref()
             .and_then(|m| {
                 m.track_id()
                     .map(|s| s.to_string())
@@ -82,13 +107,16 @@ impl From<&Player> for PlaybackState {
             .map(|s| s.into_boxed_str());
 
         Self {
-            playback_status: player.get_playback_status().ok(),
+            playback_status,
             track_identifier,
-            title: metadata
-                .as_ref()
-                .and_then(|m| m.title().map(|s| s.to_string().into_boxed_str())),
+            title: metadata.and_then(|m| m.title().map(|s| s.to_string().into_boxed_str())),
             position: player.get_position().map(|d| d.as_secs() as u32).ok(),
             volume: player.get_volume().map(|v| (v * 100.0) as u8).ok(),
+            url: metadata.and_then(|m| m.url().map(|s| s.to_string().into_boxed_str())),
+            art_url: metadata.and_then(|m| {
+                m.art_url()
+                    .map(|s| utils::normalize_art_url(&s).into_boxed_str())
+            }),
         }
     }
 }
@@ -112,6 +140,148 @@ pub fn canonical_player_bus_name(raw_bus_name: &str) -> String {
 /// Proxy buses forward MPRIS events from another player rather than being the source.
 pub fn is_proxy_bus_name(canonical_bus_name: &str) -> bool {
     canonical_bus_name == "playerctld"
+}
+
+/// Returns true if this is a bridge MPRIS player from mprisence-web-bridge.
+/// Detects by bus prefix: all bridge players share the `mprisence_web` namespace.
+/// Uses the raw bus name (before canonicalization) for reliable detection.
+pub fn is_mprisence_web_bridge_bus(raw_bus_name: &str) -> bool {
+    let canon = canonical_player_bus_name(raw_bus_name);
+    canon.starts_with("mprisence_web")
+}
+
+/// Known native browser MPRIS bus prefixes (canonical, instance suffix stripped).
+const NATIVE_BROWSER_BUSES: &[(&str, &str)] = &[
+    ("firefox", "firefox"),
+    ("chromium", "chromium"),
+    ("chrome", "chromium"),
+    ("brave", "brave"),
+    ("vivaldi", "vivaldi"),
+    // plasma-browser-integration proxies whichever browser KDE is integrated
+    // with; treat it as a native browser bus with unknown specific browser.
+    ("plasma-browser-integration", "plasma"),
+];
+
+/// Maps a native browser bus name to the browser key the bridge reports in
+/// `mprisence:browser` (e.g. `"firefox"`). Returns None for non-browser buses.
+pub fn native_browser_of(canonical_bus_name: &str) -> Option<&'static str> {
+    NATIVE_BROWSER_BUSES
+        .iter()
+        .find(|(prefix, _)| canonical_bus_name.starts_with(prefix))
+        .map(|(_, browser)| *browser)
+}
+
+/// Pure: should this native browser bus be suppressed because it exposes the
+/// same URL as a live bridge player? `plasma` matches any browser because KDE's
+/// proxy cannot be attributed to a specific browser.
+pub fn should_suppress_native(
+    canonical_bus_name: &str,
+    native_url: Option<&str>,
+    bridged_sources: &[(String, String)],
+) -> bool {
+    let Some(native_url) = native_url.filter(|u| !u.is_empty()) else {
+        return false;
+    };
+
+    match native_browser_of(canonical_bus_name) {
+        Some("plasma") => bridged_sources
+            .iter()
+            .any(|(_, bridged_url)| same_url_or_origin(native_url, bridged_url)),
+        Some(browser) => bridged_sources
+            .iter()
+            .any(|(bridged_browser, bridged_url)| {
+                bridged_browser == browser && same_url_or_origin(native_url, bridged_url)
+            }),
+        None => false,
+    }
+}
+
+fn same_url_or_origin(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    match (origin_of(a), origin_of(b)) {
+        (Some(origin_a), Some(origin_b)) => {
+            origin_a == origin_b && (is_origin_only(a) || is_origin_only(b))
+        }
+        _ => false,
+    }
+}
+
+/// Extracts the `mprisence:browser` value from a bridge player's metadata.
+pub fn bridge_browser(metadata: &mpris::Metadata) -> Option<String> {
+    metadata
+        .get("mprisence:browser")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+/// The stable config key all bridge MPRIS players resolve to.
+/// Instead of `mprisence_web.youtube_music.abc123` matching individual config,
+/// all bridge players use `mprisence_web` as their config lookup key.
+pub const BRIDGE_CONFIG_KEY: &str = "mprisence_web";
+
+/// Score a player's metadata richness (higher = richer).
+/// Used to break ties when multiple bus names expose the same content.
+pub(crate) fn metadata_richness(player: &Player) -> u8 {
+    let mut score: u8 = 0;
+    if let Ok(meta) = player.get_metadata() {
+        if meta.title().is_some() {
+            score += 1;
+        }
+        if meta.album_name().is_some_and(|a| !a.is_empty()) {
+            score += 2;
+        }
+        if meta
+            .artists()
+            .is_some_and(|a| a.iter().any(|s| !s.is_empty()))
+        {
+            score += 2;
+        }
+        if meta.art_url().is_some() {
+            score += 3;
+        }
+        if meta.length().is_some() {
+            score += 1;
+        }
+    }
+    score
+}
+
+/// Given a group of `Player`s that represent the same content (merged by URL),
+/// returns the index of the one with the richest metadata.
+/// Falls back to `select_winner_idx` tie-breaking if scores are equal.
+pub fn select_richest_player(players: &[Player], current_bus: Option<&str>) -> usize {
+    if players.len() <= 1 {
+        return 0;
+    }
+
+    let ids: Vec<PlayerIdentifier> = players.iter().map(PlayerIdentifier::from).collect();
+
+    // Find the richest player.
+    let mut best_idx = 0;
+    let mut best_score = metadata_richness(&players[0]);
+    for (i, player) in players.iter().enumerate().skip(1) {
+        let score = metadata_richness(player);
+        if score > best_score {
+            best_score = score;
+            best_idx = i;
+        }
+    }
+
+    // Prefer stability only when the current bus is equally rich.
+    if let Some(current) = current_bus {
+        if let Some(idx) = ids
+            .iter()
+            .position(|id| id.player_bus_name.as_str() == current)
+        {
+            if metadata_richness(&players[idx]) >= best_score {
+                return idx;
+            }
+        }
+    }
+
+    best_idx
 }
 
 /// Given a slice of `PlayerIdentifier`s that all share the same player identity,
@@ -158,6 +328,27 @@ impl PlaybackState {
     pub fn has_significant_changes(&self, previous: &Self) -> bool {
         if self.track_identifier != previous.track_identifier {
             debug!("Track identity changed");
+            return true;
+        }
+
+        // URL change is significant even when track_id is static (e.g. plasma-
+        // browser-integration reuses the same mpris:trackid across tracks).
+        // This allows the stale-URL quarantine to exit when plasma finally
+        // updates xesam:url to the correct value.
+        if self.url != previous.url {
+            debug!("URL changed: {:?} -> {:?}", previous.url, self.url);
+            return true;
+        }
+
+        // Art URL changes are significant even when the title/track id/url are
+        // unchanged. plasma-browser-integration often fixes mpris:artUrl a few
+        // seconds after the track title changes; reaching update_activity lets
+        // the generation gate cancel stale cover fetches and spawn the fresh one.
+        if self.art_url != previous.art_url {
+            debug!(
+                "Art URL changed: {:?} -> {:?}",
+                previous.art_url, self.art_url
+            );
             return true;
         }
 
@@ -211,9 +402,294 @@ impl PlaybackState {
     }
 }
 
+/// Per-group snapshot used to compute URL-based merges deterministically,
+/// decoupled from D-Bus I/O so the merge contract is unit-testable.
+#[derive(Debug, Clone)]
+struct GroupSnapshot {
+    norm_id: SmolStr,
+    max_richness: u8,
+    urls: Vec<String>,
+}
+
+/// Returns the scheme+host origin of a URL, e.g. `"https://www.youtube.com"`.
+fn origin_of(url_str: &str) -> Option<String> {
+    Url::parse(url_str).ok().and_then(|u| {
+        let host = u.host_str()?;
+        Some(format!("{}://{}", u.scheme(), host))
+    })
+}
+
+/// Returns true if the URL has no meaningful path/query beyond the origin
+/// (e.g. `"https://www.youtube.com/"` or `"https://www.youtube.com"`).
+/// These are reported by plasma-browser-integration when it lacks a specific
+/// track URL, and should be treated as wildcards for same-origin merging.
+fn is_origin_only(url_str: &str) -> bool {
+    Url::parse(url_str).ok().is_some_and(|u| {
+        let path = u.path();
+        (path.is_empty() || path == "/") && u.query().is_none()
+    })
+}
+
+/// Pure: given a per-group snapshot, return the (from, into) merges to apply.
+/// Iteration order is deterministic — richer metadata first, then norm_id asc —
+/// so the merge target is stable across ticks regardless of `HashMap` order.
+///
+/// In addition to exact URL matches, this merges groups where one reports only
+/// an origin-level URL (e.g. `https://www.youtube.com/`) and another reports a
+/// specific URL on the same origin (plasma-browser-integration behaviour).
+///
+/// Bridge players are excluded by the caller, so this only ever sees native
+/// players.
+fn compute_url_merges(groups: &[GroupSnapshot]) -> Vec<(SmolStr, SmolStr)> {
+    let mut sorted: Vec<&GroupSnapshot> = groups.iter().collect();
+    sorted.sort_by(|a, b| {
+        b.max_richness
+            .cmp(&a.max_richness)
+            .then_with(|| a.norm_id.cmp(&b.norm_id))
+    });
+
+    let mut url_to_norm: HashMap<String, SmolStr> = HashMap::new();
+    // Maps `"https://example.com"` -> norm_id for groups registered via an
+    // origin-only URL. Only populated by origin-only entries.
+    let mut origin_to_norm: HashMap<String, SmolStr> = HashMap::new();
+    let mut merges: Vec<(SmolStr, SmolStr)> = Vec::new();
+
+    'group: for group in sorted {
+        for url in &group.urls {
+            if url.is_empty() {
+                continue;
+            }
+
+            // Exact URL match. Sorting picks the preferred target first.
+            if let Some(existing) = url_to_norm.get(url.as_str()) {
+                if existing != &group.norm_id {
+                    merges.push((group.norm_id.clone(), existing.clone()));
+                    break 'group;
+                }
+                continue;
+            }
+
+            let origin = origin_of(url);
+
+            if is_origin_only(url) {
+                if let Some(ref origin_str) = origin {
+                    // Another origin-only group already claimed this origin.
+                    if let Some(existing) = origin_to_norm.get(origin_str.as_str()) {
+                        if existing != &group.norm_id {
+                            merges.push((group.norm_id.clone(), existing.clone()));
+                            break 'group;
+                        }
+                    }
+                    // A richer group with a specific URL on this origin was
+                    // registered before us — merge into it.
+                    if let Some(existing) = url_to_norm
+                        .iter()
+                        .find(|(k, v)| {
+                            *v != &group.norm_id && origin_of(k).as_deref() == Some(origin_str)
+                        })
+                        .map(|(_, v)| v.clone())
+                    {
+                        merges.push((group.norm_id.clone(), existing));
+                        break 'group;
+                    }
+                }
+                // No match: register in both maps.
+                url_to_norm.insert(url.clone(), group.norm_id.clone());
+                if let Some(origin_str) = origin {
+                    origin_to_norm.insert(origin_str, group.norm_id.clone());
+                }
+            } else {
+                // Specific URL: check if an origin-only group already claimed
+                // this origin.
+                if let Some(ref origin_str) = origin {
+                    if let Some(existing) = origin_to_norm.get(origin_str.as_str()) {
+                        if existing != &group.norm_id {
+                            merges.push((group.norm_id.clone(), existing.clone()));
+                            break 'group;
+                        }
+                    }
+                }
+                url_to_norm.insert(url.clone(), group.norm_id.clone());
+            }
+        }
+    }
+
+    merges
+}
+
+/// Merge identity groups that share the same xesam:url.
+///
+/// Handles plasma-browser-integration and the native browser MPRIS endpoint
+/// both exposing the same tab. Bridge players are one-per-tab and are never
+/// merged — they pass through untouched.
+pub fn merge_url_duplicates(
+    mut candidates: HashMap<SmolStr, Vec<Player>>,
+) -> HashMap<SmolStr, Vec<Player>> {
+    if candidates.len() < 2 {
+        return candidates;
+    }
+
+    let snapshots: Vec<GroupSnapshot> = candidates
+        .iter()
+        .filter(|(_, players)| {
+            !players
+                .iter()
+                .any(|p| is_mprisence_web_bridge_bus(p.bus_name()))
+        })
+        .map(|(norm_id, players)| {
+            let max_richness = players.iter().map(metadata_richness).max().unwrap_or(0);
+            let urls = players
+                .iter()
+                .map(|p| {
+                    p.get_metadata()
+                        .ok()
+                        .and_then(|m| m.url().map(|s| s.to_string()))
+                        .unwrap_or_default()
+                })
+                .collect();
+            GroupSnapshot {
+                norm_id: norm_id.clone(),
+                max_richness,
+                urls,
+            }
+        })
+        .collect();
+
+    for (from, into) in compute_url_merges(&snapshots) {
+        if from == into {
+            continue;
+        }
+        if let Some(players) = candidates.remove(&from) {
+            trace!(
+                "Merging duplicate player group '{}' into '{}' (same URL or origin)",
+                from,
+                into
+            );
+            candidates.entry(into).or_default().extend(players);
+        }
+    }
+
+    candidates
+}
+
+/// Post-merge bucket summary used to decide presence-key migrations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BucketSummary {
+    pub norm_id: SmolStr,
+    pub bus_names: Vec<SmolStr>,
+    pub winner_bus: SmolStr,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PresenceMigration {
+    pub from_key: SmolStr,
+    pub to_key: SmolStr,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PresenceDrop {
+    pub key: SmolStr,
+    pub superseded_by: SmolStr,
+}
+
+/// Decide which existing `Presence` entries (keyed by their current
+/// `media_players` key, mapped to the canonical bus they are bound to)
+/// need to be re-keyed to match a post-merge bucket norm_id, and which
+/// need to be dropped because two presences contend for the same bucket.
+///
+/// Caller applies drops first (`destroy_discord_client` + `stop_listener`),
+/// then migrations (`HashMap::remove` + `HashMap::insert` under the new
+/// key, preserving Discord IPC client + listener thread + cached state).
+///
+/// Tiebreak for multi-match: prefer the entry already keyed under the
+/// bucket norm_id (avoids any rekey), else prefer the entry whose bus
+/// equals the bucket's `winner_bus`, else alphabetical by existing key.
+pub fn compute_presence_migrations(
+    existing: &HashMap<SmolStr, SmolStr>,
+    buckets: &[BucketSummary],
+) -> (Vec<PresenceMigration>, Vec<PresenceDrop>) {
+    let mut migrations = Vec::new();
+    let mut drops = Vec::new();
+
+    for bucket in buckets {
+        let mut matches: Vec<(&SmolStr, &SmolStr)> = existing
+            .iter()
+            .filter(|(_, bus)| bucket.bus_names.contains(bus))
+            .collect();
+
+        if matches.is_empty() {
+            continue;
+        }
+
+        matches.sort_by(|a, b| {
+            let a_correct = a.0 == &bucket.norm_id;
+            let b_correct = b.0 == &bucket.norm_id;
+            if a_correct != b_correct {
+                return b_correct.cmp(&a_correct);
+            }
+            let a_winner = a.1 == &bucket.winner_bus;
+            let b_winner = b.1 == &bucket.winner_bus;
+            if a_winner != b_winner {
+                return b_winner.cmp(&a_winner);
+            }
+            a.0.cmp(b.0)
+        });
+
+        let (winner_key, _) = matches[0];
+        if winner_key != &bucket.norm_id {
+            migrations.push(PresenceMigration {
+                from_key: winner_key.clone(),
+                to_key: bucket.norm_id.clone(),
+            });
+        }
+        for (loser_key, _) in &matches[1..] {
+            drops.push(PresenceDrop {
+                key: (*loser_key).clone(),
+                superseded_by: winner_key.clone(),
+            });
+        }
+    }
+
+    (migrations, drops)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::canonical_player_bus_name;
+    use super::{
+        canonical_player_bus_name, compute_presence_migrations, compute_url_merges, BucketSummary,
+        GroupSnapshot, PlaybackState, PresenceDrop, PresenceMigration,
+    };
+    use mpris::PlaybackStatus;
+    use smol_str::SmolStr;
+    use std::collections::HashMap;
+
+    fn playback_state(art_url: Option<&str>) -> PlaybackState {
+        PlaybackState {
+            playback_status: Some(PlaybackStatus::Playing),
+            track_identifier: Some("track-1".into()),
+            title: Some("Song".into()),
+            position: Some(10),
+            volume: Some(50),
+            url: Some("https://music.example/track-1".into()),
+            art_url: art_url.map(Into::into),
+        }
+    }
+
+    #[test]
+    fn art_url_change_is_significant() {
+        let previous = playback_state(Some("file:///tmp/old-cover.jpg"));
+        let current = playback_state(Some("file:///tmp/new-cover.jpg"));
+
+        assert!(current.has_significant_changes(&previous));
+    }
+
+    #[test]
+    fn unchanged_art_url_is_not_significant_by_itself() {
+        let previous = playback_state(Some("file:///tmp/cover.jpg"));
+        let current = playback_state(Some("file:///tmp/cover.jpg"));
+
+        assert!(!current.has_significant_changes(&previous));
+    }
 
     #[test]
     fn keeps_reverse_dns_player_names() {
@@ -234,5 +710,345 @@ mod tests {
     fn trims_prefix_for_simple_names() {
         let bus_name = "org.mpris.MediaPlayer2.spotify";
         assert_eq!(canonical_player_bus_name(bus_name), "spotify");
+    }
+
+    fn snap(norm_id: &str, richness: u8, urls: &[&str]) -> GroupSnapshot {
+        GroupSnapshot {
+            norm_id: SmolStr::new(norm_id),
+            max_richness: richness,
+            urls: urls.iter().map(|s| (*s).to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn merge_target_is_richer_group_regardless_of_input_order() {
+        // mozilla_zen (firefox, no art_url): lower richness.
+        // zen_browser (plasma-browser-integration, with art_url): higher richness.
+        // Both expose the same YouTube URL.
+        let firefox = snap("mozilla_zen", 3, &["https://youtube.com/watch?v=x"]);
+        let plasma = snap("zen_browser", 6, &["https://youtube.com/watch?v=x"]);
+
+        let order1 = compute_url_merges(&[firefox.clone(), plasma.clone()]);
+        let order2 = compute_url_merges(&[plasma, firefox]);
+
+        assert_eq!(order1, order2);
+        assert_eq!(order1.len(), 1);
+        let (from, into) = &order1[0];
+        assert_eq!(into.as_str(), "zen_browser");
+        assert_eq!(from.as_str(), "mozilla_zen");
+    }
+
+    #[test]
+    fn merge_target_breaks_ties_alphabetically() {
+        let a = snap("mozilla_zen", 5, &["https://example.com/"]);
+        let b = snap("zen_browser", 5, &["https://example.com/"]);
+
+        let merges = compute_url_merges(&[a.clone(), b.clone()]);
+        assert_eq!(merges.len(), 1);
+        assert_eq!(merges[0].1.as_str(), "mozilla_zen");
+        assert_eq!(merges[0].0.as_str(), "zen_browser");
+
+        let merges_rev = compute_url_merges(&[b, a]);
+        assert_eq!(merges, merges_rev);
+    }
+
+    #[test]
+    fn no_merge_when_urls_differ() {
+        let a = snap("a", 5, &["https://example.com/one"]);
+        let b = snap("b", 5, &["https://example.com/two"]);
+        assert!(compute_url_merges(&[a, b]).is_empty());
+    }
+
+    #[test]
+    fn empty_url_is_ignored() {
+        let a = snap("a", 5, &["", "https://shared/"]);
+        let b = snap("b", 5, &["https://shared/"]);
+        let merges = compute_url_merges(&[a, b]);
+        assert_eq!(merges.len(), 1);
+        assert_eq!(merges[0].1.as_str(), "a");
+    }
+
+    #[test]
+    fn single_group_produces_no_merge() {
+        let a = snap("a", 5, &["https://example.com/"]);
+        assert!(compute_url_merges(&[a]).is_empty());
+    }
+
+    // Origin-level matching: plasma reports "https://www.youtube.com/" (origin-only),
+    // firefox reports the full video URL. Should merge into the richer group.
+    #[test]
+    fn origin_only_merges_with_specific_url_rich_origin_first() {
+        let plasma = snap("zen_browser", 6, &["https://www.youtube.com/"]);
+        let firefox = snap("mozilla_zen", 3, &["https://www.youtube.com/watch?v=abc"]);
+
+        let order1 = compute_url_merges(&[plasma.clone(), firefox.clone()]);
+        let order2 = compute_url_merges(&[firefox, plasma]);
+
+        assert_eq!(order1, order2);
+        assert_eq!(order1.len(), 1);
+        assert_eq!(order1[0].1.as_str(), "zen_browser");
+        assert_eq!(order1[0].0.as_str(), "mozilla_zen");
+    }
+
+    #[test]
+    fn origin_only_merges_with_specific_url_rich_specific_first() {
+        let firefox = snap("mozilla_zen", 6, &["https://www.youtube.com/watch?v=abc"]);
+        let plasma = snap("zen_browser", 3, &["https://www.youtube.com/"]);
+
+        let order1 = compute_url_merges(&[firefox.clone(), plasma.clone()]);
+        let order2 = compute_url_merges(&[plasma, firefox]);
+
+        assert_eq!(order1, order2);
+        assert_eq!(order1.len(), 1);
+        assert_eq!(order1[0].1.as_str(), "mozilla_zen");
+        assert_eq!(order1[0].0.as_str(), "zen_browser");
+    }
+
+    // Two different specific URLs on the same origin must NOT merge — they are
+    // different tabs/tracks on the same site.
+    #[test]
+    fn two_specific_urls_same_origin_no_merge() {
+        let a = snap("a", 5, &["https://www.youtube.com/watch?v=aaa"]);
+        let b = snap("b", 5, &["https://www.youtube.com/watch?v=bbb"]);
+        assert!(compute_url_merges(&[a, b]).is_empty());
+    }
+
+    fn bucket(norm_id: &str, buses: &[&str], winner: &str) -> BucketSummary {
+        BucketSummary {
+            norm_id: SmolStr::new(norm_id),
+            bus_names: buses.iter().map(|b| SmolStr::new(*b)).collect(),
+            winner_bus: SmolStr::new(winner),
+        }
+    }
+
+    fn existing_from(pairs: &[(&str, &str)]) -> HashMap<SmolStr, SmolStr> {
+        pairs
+            .iter()
+            .map(|(k, v)| (SmolStr::new(*k), SmolStr::new(*v)))
+            .collect()
+    }
+
+    #[test]
+    fn migration_coalesce_renames_old_key() {
+        // Existing presence keyed `mozilla_zen` bound to Firefox native bus.
+        // Post-merge bucket `zen_browser` contains both Firefox bus + plasma bus.
+        let existing = existing_from(&[("mozilla_zen", "firefox")]);
+        let buckets = vec![bucket(
+            "zen_browser",
+            &["firefox", "plasma-browser-integration"],
+            "plasma-browser-integration",
+        )];
+
+        let (migrations, drops) = compute_presence_migrations(&existing, &buckets);
+
+        assert_eq!(
+            migrations,
+            vec![PresenceMigration {
+                from_key: SmolStr::new("mozilla_zen"),
+                to_key: SmolStr::new("zen_browser"),
+            }]
+        );
+        assert!(drops.is_empty());
+    }
+
+    #[test]
+    fn migration_split_renames_old_key() {
+        // Plasma vanished; existing presence keyed `zen_browser` bound to
+        // Firefox bus must be re-keyed to `mozilla_zen`.
+        let existing = existing_from(&[("zen_browser", "firefox")]);
+        let buckets = vec![bucket("mozilla_zen", &["firefox"], "firefox")];
+
+        let (migrations, drops) = compute_presence_migrations(&existing, &buckets);
+
+        assert_eq!(
+            migrations,
+            vec![PresenceMigration {
+                from_key: SmolStr::new("zen_browser"),
+                to_key: SmolStr::new("mozilla_zen"),
+            }]
+        );
+        assert!(drops.is_empty());
+    }
+
+    #[test]
+    fn migration_no_change_when_key_already_correct() {
+        let existing = existing_from(&[("zen_browser", "plasma-browser-integration")]);
+        let buckets = vec![bucket(
+            "zen_browser",
+            &["firefox", "plasma-browser-integration"],
+            "plasma-browser-integration",
+        )];
+
+        let (migrations, drops) = compute_presence_migrations(&existing, &buckets);
+
+        assert!(migrations.is_empty());
+        assert!(drops.is_empty());
+    }
+
+    #[test]
+    fn migration_double_match_prefers_winner_bus() {
+        // Both presences pre-exist independently; bucket coalesces them.
+        // Winner bus is plasma, so the plasma-bound presence wins.
+        let existing = existing_from(&[
+            ("mozilla_zen", "firefox"),
+            ("zen_browser", "plasma-browser-integration"),
+        ]);
+        let buckets = vec![bucket(
+            "zen_browser",
+            &["firefox", "plasma-browser-integration"],
+            "plasma-browser-integration",
+        )];
+
+        let (migrations, drops) = compute_presence_migrations(&existing, &buckets);
+
+        // zen_browser already correctly keyed → no migration emitted.
+        assert!(migrations.is_empty());
+        assert_eq!(
+            drops,
+            vec![PresenceDrop {
+                key: SmolStr::new("mozilla_zen"),
+                superseded_by: SmolStr::new("zen_browser"),
+            }]
+        );
+    }
+
+    #[test]
+    fn migration_double_match_alphabetical_when_neither_is_winner() {
+        // Both presences pre-exist; winner bus matches neither's bound bus.
+        // Neither is correctly keyed (bucket norm_id is "youtube_app"), and
+        // neither bus equals winner_bus ("c") → alphabetical wins.
+        let existing = existing_from(&[("zoo", "a"), ("abc", "b")]);
+        let buckets = vec![bucket("youtube_app", &["a", "b"], "c")];
+
+        let (migrations, drops) = compute_presence_migrations(&existing, &buckets);
+
+        assert_eq!(
+            migrations,
+            vec![PresenceMigration {
+                from_key: SmolStr::new("abc"),
+                to_key: SmolStr::new("youtube_app"),
+            }]
+        );
+        assert_eq!(
+            drops,
+            vec![PresenceDrop {
+                key: SmolStr::new("zoo"),
+                superseded_by: SmolStr::new("abc"),
+            }]
+        );
+    }
+
+    #[test]
+    fn migration_unrelated_presence_not_migrated() {
+        // Two browsers playing different videos: each presence is bound to
+        // its own bus, buckets are disjoint, no migration emitted.
+        let existing = existing_from(&[
+            ("zen_browser", "plasma-browser-integration"),
+            ("firefox", "plasma-browser-integration-1285737"),
+        ]);
+        let buckets = vec![
+            bucket(
+                "zen_browser",
+                &["firefox", "plasma-browser-integration"],
+                "plasma-browser-integration",
+            ),
+            bucket(
+                "firefox",
+                &["firefox", "plasma-browser-integration-1285737"],
+                "plasma-browser-integration-1285737",
+            ),
+        ];
+
+        let (migrations, drops) = compute_presence_migrations(&existing, &buckets);
+
+        assert!(migrations.is_empty());
+        assert!(drops.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod bridge_tests {
+    use super::*;
+
+    #[test]
+    fn detects_bridge_bus_by_prefix() {
+        assert!(is_mprisence_web_bridge_bus(
+            "org.mpris.MediaPlayer2.mprisence_web.youtube_music.habc1234"
+        ));
+        assert!(is_mprisence_web_bridge_bus(
+            "org.mpris.MediaPlayer2.mprisence_web.soundcloud.hdef5678"
+        ));
+        assert!(!is_mprisence_web_bridge_bus(
+            "org.mpris.MediaPlayer2.spotify"
+        ));
+        assert!(!is_mprisence_web_bridge_bus(
+            "org.mpris.MediaPlayer2.plasma-browser-integration"
+        ));
+    }
+
+    #[test]
+    fn canonical_player_bus_name_preserves_bridge_prefix() {
+        let canon = canonical_player_bus_name(
+            "org.mpris.MediaPlayer2.mprisence_web.youtube_music.habc1234",
+        );
+        assert!(canon.starts_with("mprisence_web"));
+        assert!(canon.contains("youtube_music"));
+    }
+
+    #[test]
+    fn suppresses_native_browser_when_bridge_present() {
+        assert!(native_browser_of("firefox.instance_1_5376").is_some());
+        assert!(native_browser_of("plasma-browser-integration").is_some());
+        assert!(native_browser_of("spotify").is_none());
+        assert!(native_browser_of("mprisence_web.youtube.abc").is_none());
+
+        assert_eq!(
+            native_browser_of("firefox.instance_1_5376"),
+            Some("firefox")
+        );
+        assert_eq!(native_browser_of("chromium.instance_2"), Some("chromium"));
+        assert_eq!(native_browser_of("spotify"), None);
+
+        let bridged_sources = [(
+            "firefox".to_string(),
+            "https://www.youtube.com/watch?v=abc".to_string(),
+        )];
+
+        // firefox native bus suppressed only when it exposes a bridged URL
+        assert!(should_suppress_native(
+            "firefox.instance_1_5376",
+            Some("https://www.youtube.com/watch?v=abc"),
+            &bridged_sources
+        ));
+        // firefox native bus kept when it exposes a different browser tab
+        assert!(!should_suppress_native(
+            "firefox.instance_1_5376",
+            Some("https://soundcloud.com/discover"),
+            &bridged_sources
+        ));
+        // chromium native bus kept because chromium is not bridged
+        assert!(!should_suppress_native(
+            "chromium.instance_2",
+            Some("https://www.youtube.com/watch?v=abc"),
+            &bridged_sources
+        ));
+
+        // plasma-browser-integration is suppressed when it exposes a bridged URL
+        // (it cannot be attributed to a specific browser).
+        assert!(should_suppress_native(
+            "plasma-browser-integration",
+            Some("https://www.youtube.com/watch?v=abc"),
+            &bridged_sources
+        ));
+        assert!(!should_suppress_native(
+            "plasma-browser-integration",
+            Some("https://soundcloud.com/discover"),
+            &bridged_sources
+        ));
+        assert!(!should_suppress_native(
+            "plasma-browser-integration",
+            Some("https://x"),
+            &[]
+        ));
     }
 }

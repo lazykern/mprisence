@@ -1,6 +1,12 @@
+[workspace]
+resolver = "2"
+members = [
+    "mprisence-web-bridge",
+]
+
 [package]
 name = "mprisence"
-version = "1.6.0"
+version = "1.7.0-beta.2"
 edition = "2021"
 authors = ["Phusit Somboonyingsuk"]
 readme = "README.md"
@@ -34,7 +40,8 @@ serde = { version = "1.0.219", features = ["derive"] }
 smallvec = "1.15"
 smol_str = "0.3.6"
 thiserror = "2.0.17"
-tokio = { version = "1.50.0", features = ["full"] }
+tokio = { version = "1.50.0", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "process"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 toml = "1.1.0"
 url = "2.5.7"
 blake3 = "1.8.2"
@@ -52,6 +59,7 @@ walkdir = "2.5.0"
 interprocess = "2.4.0"
 regex = "1"
 catbox = "0.8.2"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 
 [dev-dependencies]
 

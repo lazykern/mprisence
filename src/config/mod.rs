@@ -1,3 +1,4 @@
+use crate::player::{is_mprisence_web_bridge_bus, BRIDGE_CONFIG_KEY};
 use crate::utils::normalize_player_identity;
 use figment::providers::{Format, Toml};
 use figment::Figment;
@@ -47,8 +48,12 @@ impl ConfigManager {
         })
     }
 
+    /// Construct from an in-memory `Config`. Used by the integration test crate;
+    /// `#[allow(dead_code)]` because integration tests are compiled separately
+    /// and the production binary build sees no caller.
     #[allow(dead_code)]
-    pub fn new_with_config(config: Config) -> Self {
+    pub fn new_with_config(mut config: Config) -> Self {
+        config.precompile_patterns();
         let (tx, _) = broadcast::channel(16);
 
         Self {
@@ -58,6 +63,8 @@ impl ConfigManager {
         }
     }
 
+    /// Used by the integration test crate (`tests/integration_tests.rs`);
+    /// see `new_with_config` above for the `#[allow(dead_code)]` rationale.
     #[allow(dead_code)]
     pub fn create_with_templates(
         detail_template: &str,
@@ -89,11 +96,11 @@ impl ConfigManager {
             .event_driven
     }
 
-    pub fn discovery_interval(&self) -> u64 {
+    pub fn fallback_poll_interval(&self) -> u64 {
         self.config
             .read()
             .expect("Failed to read config: RwLock poisoned")
-            .discovery_interval
+            .fallback_poll_interval
     }
 
     pub fn allowed_players(&self) -> Vec<String> {
@@ -124,6 +131,59 @@ impl ConfigManager {
             .read()
             .expect("Failed to read config: RwLock poisoned")
             .get_player_config(identity, player_bus_name)
+    }
+
+    /// Get player config using title-suffix inference when URL is unavailable.
+    /// Returns (effective_config, suffix_to_strip).
+    pub fn get_player_config_with_title_fallback(
+        &self,
+        identity: &str,
+        player_bus_name: &str,
+        url: Option<&str>,
+        title: Option<&str>,
+    ) -> (schema::PlayerConfig, Option<String>) {
+        let guard = self
+            .config
+            .read()
+            .expect("Failed to read config: RwLock poisoned");
+
+        // Bridge players all resolve to the stable [player.mprisence_web] config key.
+        // This allows a single config entry to set ignore=true for all bridge players,
+        // with individual sites un-ignored by [web_player.*] overrides.
+        let (config_identity, config_bus) = if is_mprisence_web_bridge_bus(player_bus_name) {
+            (BRIDGE_CONFIG_KEY, BRIDGE_CONFIG_KEY)
+        } else {
+            (identity, player_bus_name)
+        };
+
+        if url.is_some() {
+            return (
+                guard.get_player_config_with_url(config_identity, config_bus, url),
+                None,
+            );
+        }
+        let base = guard.get_player_config(config_identity, config_bus);
+        guard.apply_web_player_overrides_by_title(base, title)
+    }
+
+    pub fn web_player_configs(&self) -> HashMap<String, schema::WebPlayerConfig> {
+        self.config
+            .read()
+            .expect("Failed to read config: RwLock poisoned")
+            .effective_web_player_configs()
+    }
+
+    /// Returns the matched web_player key and its resolved config for a URL,
+    /// if any `[web_player.*]` entry applies. Used by the CLI to surface which
+    /// override the runtime would project onto a player.
+    pub fn matched_web_player_for_url(
+        &self,
+        url: Option<&str>,
+    ) -> Option<(String, schema::WebPlayerConfig)> {
+        self.config
+            .read()
+            .expect("Failed to read config: RwLock poisoned")
+            .matched_web_player_for_url(url)
     }
 
     pub fn time_config(&self) -> schema::TimeConfig {
@@ -161,40 +221,21 @@ impl ConfigManager {
         self.path.clone()
     }
 
-    #[allow(dead_code)]
-    pub fn read(&self) -> Result<impl std::ops::Deref<Target = Config> + '_, ConfigError> {
-        self.config
-            .read()
-            .map_err(|e| ConfigError::Lock(e.to_string()))
-    }
-
     pub fn write(&self) -> Result<impl std::ops::DerefMut<Target = Config> + '_, ConfigError> {
         self.config
             .write()
             .map_err(|e| ConfigError::Lock(e.to_string()))
     }
 
-    // Subscribe to config changes
     pub fn subscribe(&self) -> ConfigChangeReceiver {
         self.change_tx.subscribe()
     }
 
-    // Save config to file
-    #[allow(dead_code)]
-    pub fn save(&self) -> Result<(), ConfigError> {
-        let config = self.read()?;
-        let config_str = toml::to_string_pretty(&*config).map_err(ConfigError::Serialize)?;
-        std::fs::write(&self.path, config_str).map_err(ConfigError::IO)?;
-        Ok(())
-    }
-
-    // Reload config from file
     pub fn reload(&self) -> Result<(), ConfigError> {
         log::info!("Reloading configuration from {}", self.path.display());
 
         wait_for_config_ready(&self.path);
 
-        // Use the same loading logic as initial load
         let new_config = load_config_from_file(&self.path)?;
 
         let mut config = self.write()?;
@@ -242,19 +283,17 @@ fn setup_file_watcher(config_path: PathBuf, config: Arc<ConfigManager>) -> Resul
             "Could not extract filename from config path: {}",
             config_path.display()
         );
-        // Handle error appropriately, maybe return Err or panic depending on requirements
         return Err(ConfigError::IO(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "Invalid config path",
         )));
     }
-    let config_filename = config_filename.unwrap(); // Safe due to check above
+    let config_filename = config_filename.unwrap();
 
     let mut last_reload = Instant::now();
     const DEBOUNCE_DURATION: Duration = Duration::from_millis(250);
 
     std::thread::spawn(move || {
-        // Need to clone necessary items for the move closure
         let config_manager_clone = config.clone();
         let change_tx_clone = config.change_tx.clone();
 
@@ -288,7 +327,6 @@ fn setup_file_watcher(config_path: PathBuf, config: Arc<ConfigManager>) -> Resul
                             );
                             let now = Instant::now();
                             if now.duration_since(last_reload) >= DEBOUNCE_DURATION {
-                                // Use the cloned Arc for reload
                                 match config_manager_clone.reload() {
                                     Ok(_) => {
                                         last_reload = now; // Update timestamp on success
@@ -324,7 +362,6 @@ fn setup_file_watcher(config_path: PathBuf, config: Arc<ConfigManager>) -> Resul
                     }
                     Err(e) => {
                         log::error!("File watch error: {}", e);
-                        // Use the cloned sender
                         let _ = change_tx_clone.send(ConfigChange::Error(e.to_string()));
                     }
                 }
@@ -424,6 +461,10 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     config.bundled_player = bundled.player;
     config.user_player = load_user_player_configs(path)?;
     config.user_player_patterns = collect_user_player_patterns(path)?;
+    config.bundled_web_player = bundled.web_player;
+    config.user_web_player = load_user_web_player_configs(path)?;
+    config.rebuild_merged_web_player();
+    config.precompile_patterns();
     Ok(config)
 }
 
@@ -489,6 +530,25 @@ fn load_user_player_configs(
     let contents = std::fs::read_to_string(path)?;
     let parsed: PlayerOnly = toml::from_str(&contents)?;
     Ok(parsed.player)
+}
+
+fn load_user_web_player_configs(
+    path: &Path,
+) -> Result<HashMap<String, schema::WebPlayerConfigLayer>, ConfigError> {
+    if !path.exists() {
+        return Ok(HashMap::new());
+    }
+
+    #[derive(serde::Deserialize)]
+    struct WebPlayerOnly {
+        #[serde(default)]
+        #[serde(with = "schema::normalized_web_player_string")]
+        web_player: HashMap<String, schema::WebPlayerConfigLayer>,
+    }
+
+    let contents = std::fs::read_to_string(path)?;
+    let parsed: WebPlayerOnly = toml::from_str(&contents)?;
+    Ok(parsed.web_player)
 }
 
 fn collect_user_player_patterns(path: &Path) -> Result<HashSet<String>, ConfigError> {
@@ -606,6 +666,36 @@ mod tests {
 
         let config = load_config_from_file(&config_path).expect("config should load");
         assert_eq!(config.template.details.as_ref(), "new override");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn user_web_player_overrides_bundled_at_load_time() {
+        let temp_dir = temp_config_dir();
+        let config_path = temp_dir.join("config.toml");
+
+        fs::write(
+            &config_path,
+            r#"
+[web_player.youtube_music]
+match_pattern = "music.youtube.com"
+app_id = "USER_APP"
+icon = "user-icon"
+allow_streaming = true
+"#,
+        )
+        .expect("failed to write config");
+
+        let config = load_config_from_file(&config_path).expect("config should load");
+        let resolved = config.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://music.youtube.com/watch?v=x"),
+        );
+        assert_eq!(resolved.app_id, "USER_APP");
+        assert_eq!(resolved.icon, "user-icon");
+        assert!(resolved.allow_streaming);
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

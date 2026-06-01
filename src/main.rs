@@ -1,6 +1,3 @@
-// #[cfg(not(target_os = "linux"))]
-// compile_error!("mprisence only supports Linux systems as it relies on MPRIS (Media Player Remote Interfacing Specification)");
-
 use clap::Parser;
 use config::{get_config, ConfigManager};
 use cover::CoverManager;
@@ -9,8 +6,11 @@ use log::{debug, error, info, trace, warn};
 use mpris::Event as MprisEvent;
 use mpris::PlayerFinder;
 use player::{
+    bridge_browser, canonical_player_bus_name, compute_presence_migrations,
     events::{EventOutcome, PlayerEvent, PlayerEventKind},
-    is_playerctld_no_active_error, select_winner_idx, PlayerIdentifier,
+    is_mprisence_web_bridge_bus, is_playerctld_no_active_error, merge_url_duplicates,
+    select_richest_player, select_winner_idx, should_suppress_native, BucketSummary,
+    PlayerIdentifier,
 };
 use presence::Presence;
 use smol_str::SmolStr;
@@ -112,9 +112,14 @@ impl Mprisence {
 
         for (_norm_id, presence) in self.media_players.iter_mut() {
             let pid = presence.player_id();
-            let player_config = self
-                .config
-                .get_player_config(&pid.identity, &pid.player_bus_name);
+            let url = presence.current_url();
+            let title = presence.current_title();
+            let (player_config, _) = self.config.get_player_config_with_title_fallback(
+                &pid.identity,
+                &pid.player_bus_name,
+                url.as_deref(),
+                title.as_deref(),
+            );
             let is_allowed = self
                 .config
                 .is_player_allowed(&pid.identity, &pid.player_bus_name);
@@ -140,10 +145,15 @@ impl Mprisence {
 
         self.media_players.retain(|_norm_id, presence| {
             let pid = presence.player_id();
-            !self
-                .config
-                .get_player_config(&pid.identity, &pid.player_bus_name)
-                .ignore
+            let url = presence.current_url();
+            let title = presence.current_title();
+            let (player_config, _) = self.config.get_player_config_with_title_fallback(
+                &pid.identity,
+                &pid.player_bus_name,
+                url.as_deref(),
+                title.as_deref(),
+            );
+            !player_config.ignore
                 && self
                     .config
                     .is_player_allowed(&pid.identity, &pid.player_bus_name)
@@ -197,16 +207,141 @@ impl Mprisence {
                 continue;
             }
 
-            let player_config = self
-                .config
-                .get_player_config(&id.identity, &id.player_bus_name);
+            let metadata = player.get_metadata().ok();
+            let url = metadata
+                .as_ref()
+                .and_then(|m| m.url().map(|s| s.to_string()));
+            let title = metadata
+                .as_ref()
+                .and_then(|m| m.title().map(|s| s.to_string()));
+            let (player_config, _) = self.config.get_player_config_with_title_fallback(
+                &id.identity,
+                &id.player_bus_name,
+                url.as_deref(),
+                title.as_deref(),
+            );
             if player_config.ignore {
-                trace!("Skipping ignored player: {}", id.identity);
+                trace!(
+                    "Skipping ignored player: {} ({})",
+                    id.identity,
+                    url.as_deref().unwrap_or("no URL")
+                );
                 continue;
             }
 
-            let norm_id = SmolStr::new(utils::normalize_player_identity(&id.identity));
+            // Bridge players are one-per-tab: their canonical bus name
+            // (`mprisence_web.<site>.<hash>`) is unique per tab, so key by it.
+            // Native players are keyed by normalized identity so multiple bus
+            // names for the same player still collapse to one.
+            let norm_id = if is_mprisence_web_bridge_bus(&id.player_bus_name) {
+                id.player_bus_name.clone()
+            } else {
+                SmolStr::new(utils::normalize_player_identity(&id.identity))
+            };
             candidates.entry(norm_id).or_default().push(player);
+        }
+
+        // Phase 1.5: merge identity groups that share the same xesam:url, so
+        // that e.g. plasma-browser-integration and the native browser MPRIS
+        // endpoint exposing the same tab are tracked as one logical player.
+        let candidates = merge_url_duplicates(candidates);
+
+        // Phase 1.6a: when a native browser MPRIS endpoint exposes the same
+        // tab as a live bridge player, suppress the native endpoint so the tab
+        // is not double-counted. Keep unrelated native browser entries (e.g.
+        // SoundCloud in the browser when only YouTube tabs are bridged).
+        let bridged_sources: Vec<(String, String)> = candidates
+            .values()
+            .flatten()
+            .filter(|p| is_mprisence_web_bridge_bus(p.bus_name()))
+            // A D-Bus metadata error silently skips the player for this scan cycle.
+            .filter_map(|p| {
+                let metadata = p.get_metadata().ok()?;
+                let browser = bridge_browser(&metadata)?;
+                let url = metadata.url().map(|s| s.to_string())?;
+                Some((browser, url))
+            })
+            .collect();
+        let candidates: HashMap<SmolStr, Vec<mpris::Player>> = if bridged_sources.is_empty() {
+            candidates
+        } else {
+            candidates
+                .into_iter()
+                // A post-merge candidate group holds players of a single kind
+                // (bridge groups are keyed per-tab and never URL-merged), so a
+                // group is dropped only when every player in it is a native
+                // browser bus already represented by a bridge player.
+                .filter(|(_, players)| {
+                    !players.iter().all(|p| {
+                        let canon = canonical_player_bus_name(p.bus_name());
+                        let native_url = p
+                            .get_metadata()
+                            .ok()
+                            .and_then(|m| m.url().map(|s| s.to_string()));
+                        should_suppress_native(&canon, native_url.as_deref(), &bridged_sources)
+                    })
+                })
+                .collect()
+        };
+
+        // Phase 1.6: presence-key migration. When URL-merge changes the
+        // post-merge norm_id of an existing logical player (e.g. plasma
+        // begins or ceases to expose a tab the native bus also reports),
+        // re-key the existing Presence so its Discord IPC client, listener
+        // thread, and cached playback state survive instead of being torn
+        // down and reconstructed.
+        {
+            let existing: HashMap<SmolStr, SmolStr> = self
+                .media_players
+                .iter()
+                .map(|(k, p)| (k.clone(), p.player_id().player_bus_name.clone()))
+                .collect();
+
+            let buckets: Vec<BucketSummary> = candidates
+                .iter()
+                .map(|(norm_id, players)| {
+                    let ids: Vec<PlayerIdentifier> =
+                        players.iter().map(PlayerIdentifier::from).collect();
+                    let mut bus_names: Vec<SmolStr> =
+                        ids.iter().map(|id| id.player_bus_name.clone()).collect();
+                    bus_names.sort_unstable();
+                    let winner_idx = select_richest_player(players, None);
+                    BucketSummary {
+                        norm_id: norm_id.clone(),
+                        bus_names,
+                        winner_bus: ids[winner_idx].player_bus_name.clone(),
+                    }
+                })
+                .collect();
+
+            let (migrations, drops) = compute_presence_migrations(&existing, &buckets);
+
+            for d in drops {
+                if let Some(mut p) = self.media_players.remove(&d.key) {
+                    warn!(
+                        "Dropping duplicate presence '{}' (superseded by '{}')",
+                        d.key, d.superseded_by
+                    );
+                    if let Err(e) = p.destroy_discord_client() {
+                        warn!("Failed to destroy Discord client for {}: {}", d.key, e);
+                    }
+                    p.stop_listener();
+                }
+                self.dedup_selection.remove(&d.key);
+            }
+
+            for m in migrations {
+                if let Some(presence) = self.media_players.remove(&m.from_key) {
+                    debug!(
+                        "Migrating presence '{}' -> '{}' (URL-merge bucket rename)",
+                        m.from_key, m.to_key
+                    );
+                    self.media_players.insert(m.to_key.clone(), presence);
+                }
+                if let Some(sel) = self.dedup_selection.remove(&m.from_key) {
+                    self.dedup_selection.insert(m.to_key, sel);
+                }
+            }
         }
 
         // Phase 2: for each identity group select one winner and update/create
@@ -218,14 +353,21 @@ impl Mprisence {
         for (norm_id, mut group) in candidates {
             current_norm_ids.insert(norm_id.clone());
 
-            let ids: Vec<PlayerIdentifier> = group.iter().map(PlayerIdentifier::from).collect();
-
             let current_bus = self
                 .media_players
                 .get(&norm_id)
                 .map(|presence| presence.player_id().player_bus_name.clone());
 
-            let winner_idx = select_winner_idx(&ids, current_bus.as_deref());
+            let ids: Vec<PlayerIdentifier> = group.iter().map(PlayerIdentifier::from).collect();
+
+            // A group has >1 player only when several native bus names expose
+            // the same player (e.g. mpd + playerctld, or plasma + native
+            // browser). Bridge groups are always single-element.
+            let winner_idx = if group.len() > 1 {
+                select_richest_player(&group, current_bus.as_deref())
+            } else {
+                select_winner_idx(&ids, current_bus.as_deref())
+            };
 
             if ids.len() > 1 {
                 duplicate_norm_ids.insert(norm_id.clone());
@@ -320,8 +462,18 @@ impl Mprisence {
                 let pid = presence.player_id();
                 (pid.identity.clone(), pid.player_bus_name.clone())
             };
-            let player_config = self.config.get_player_config(&identity, &player_bus_name);
             let allowed = self.config.is_player_allowed(&identity, &player_bus_name);
+            // Use URL-aware config to respect web_player overrides (e.g. SoundCloud
+            // un-ignoring a browser that is ignored by default).
+            // Also try title-suffix inference for players without xesam:url.
+            let url = presence.current_url();
+            let title = presence.current_title();
+            let (player_config, _suffix) = self.config.get_player_config_with_title_fallback(
+                &identity,
+                &player_bus_name,
+                url.as_deref(),
+                title.as_deref(),
+            );
             let keep = current_norm_ids.contains(norm_id) && !player_config.ignore && allowed;
             if !keep {
                 let reason = if !current_norm_ids.contains(norm_id) {
@@ -352,7 +504,10 @@ impl Mprisence {
     pub async fn run(&mut self) -> Result<(), MprisenceError> {
         info!("Starting mprisence service");
         if self.config.event_driven() {
-            info!("Run mode: event-driven (D-Bus signal monitoring)");
+            info!(
+                "Run mode: event-driven (D-Bus signal monitoring, fallback poll={}ms)",
+                self.config.fallback_poll_interval()
+            );
             self.run_event_driven().await
         } else {
             info!("Run mode: polling (interval={}ms)", self.config.interval());
@@ -415,12 +570,13 @@ impl Mprisence {
         fn drain_latest_track_change(
             mut evt: PlayerEvent,
             rx: &mut tokio::sync::mpsc::Receiver<PlayerEvent>,
-        ) -> PlayerEvent {
+        ) -> (PlayerEvent, Vec<PlayerEvent>) {
+            let mut deferred = Vec::new();
             if !matches!(
                 evt.kind,
                 PlayerEventKind::Mpris(MprisEvent::TrackChanged(_))
             ) {
-                return evt;
+                return (evt, deferred);
             }
             while let Ok(newer) = rx.try_recv() {
                 if newer.norm_id == evt.norm_id
@@ -435,25 +591,27 @@ impl Mprisence {
                     );
                     evt = newer;
                 } else {
-                    // Non-TrackChanged or different player: can't put back, but these are
-                    // stale action events (play/pause during a skip flurry) — safe to drop.
+                    // Preserve non-TrackChanged events (notably TrackMetadataChanged,
+                    // which can carry the corrected art URL a few seconds after a
+                    // browser track switch) and other players' events.
                     trace!(
-                        "drain: dropping stale {:?} for {} during skip drain",
+                        "drain: deferring {:?} for {} during skip drain",
                         newer.kind,
                         newer.norm_id
                     );
+                    deferred.push(newer);
                 }
             }
-            evt
+            (evt, deferred)
         }
         let (event_tx, mut event_rx) = mpsc::channel::<PlayerEvent>(64);
 
-        let mut discovery_interval =
-            tokio::time::interval(Duration::from_millis(self.config.discovery_interval()));
+        let mut fallback_poll_interval =
+            tokio::time::interval(Duration::from_millis(self.config.fallback_poll_interval()));
         let mut cache_cleanup_interval = tokio::time::interval(Duration::from_secs(6 * 60 * 60));
 
         // Prime once so listeners attach to whatever is already running.
-        debug!("discovery tick (event-driven, initial)");
+        debug!("fallback poll (initial)");
         if let Err(e) = self.update().await {
             error!("Initial discovery failed: {}", e);
         }
@@ -465,11 +623,23 @@ impl Mprisence {
                     // For TrackChanged events, drain any newer ones for the same player
                     // that already queued while we were processing the previous event.
                     // This prevents Discord from cycling through every skipped track.
-                    let evt = drain_latest_track_change(evt, &mut event_rx);
+                    let (evt, deferred) = drain_latest_track_change(evt, &mut event_rx);
                     self.handle_player_event(evt, &event_tx).await;
+                    for deferred_evt in deferred {
+                        self.handle_player_event(deferred_evt, &event_tx).await;
+                    }
+                    // Don't reset the fallback poll timer here — doing so starves
+                    // the discovery poll when events arrive faster than the poll
+                    // interval (e.g. every 1s from YT/SC). Without a self-healing
+                    // poll, players whose listeners die (PlayerShutDown from bridge
+                    // pruning stale sources) are never re-discovered and disappear
+                    // from Discord until a service restart.
+                    // The fallback poll fires every fallback_poll_interval ms
+                    // regardless of event flow — this is intentional.
+                    // fallback_poll_interval.reset();
                 },
-                _ = discovery_interval.tick() => {
-                    debug!("discovery tick (event-driven)");
+                _ = fallback_poll_interval.tick() => {
+                    trace!("fallback poll tick");
                     if let Err(e) = self.update().await {
                         error!("Failed to refresh players: {}", e);
                     }
@@ -489,8 +659,8 @@ impl Mprisence {
                             if !self.config.event_driven() {
                                 warn!("event_driven flag flipped to false at runtime; restart mprisence to switch back to polling mode");
                             }
-                            discovery_interval = tokio::time::interval(
-                                Duration::from_millis(self.config.discovery_interval()),
+                            fallback_poll_interval = tokio::time::interval(
+                                Duration::from_millis(self.config.fallback_poll_interval()),
                             );
                             if let Err(e) = self.handle_config_change().await {
                                 error!("Failed to handle configuration change: {}", e);
@@ -547,11 +717,14 @@ impl Mprisence {
                     warn!("Failed to destroy Discord client for {}: {}", norm_id, e);
                 }
             }
-            // Trigger a fresh discovery so a replacement (e.g. restarted player on a new
-            // unique_name) gets picked up quickly without waiting for the next tick.
-            if let Err(e) = self.update().await {
-                error!("Post-removal rediscovery failed: {}", e);
-            }
+            // Do NOT trigger immediate rediscovery here. The D-Bus name may
+            // linger briefly after the player signals shutdown, causing a
+            // spurious re-detection that opens a new Discord IPC connection.
+            // That second connection interferes with Discord's activity cleanup
+            // from the first connection, leaving a stale rich presence.
+            // Instead, let the normal fallback_poll_interval tick (default 5s)
+            // handle re-detection — by then the name will be fully gone, or
+            // if the player genuinely restarted it will be picked up cleanly.
             self.ensure_listeners(tx);
         }
     }

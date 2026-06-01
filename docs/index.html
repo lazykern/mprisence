@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — mprisence Bridge Extension</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 720px; margin: 0 auto; padding: 2rem 1.5rem; line-height: 1.7; color: #222; }
+    h1 { border-bottom: 2px solid #eee; padding-bottom: .5rem; }
+    h2 { margin-top: 2rem; }
+    code { background: #f5f5f5; padding: .15rem .4rem; border-radius: 3px; font-size: .9em; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid #ddd; padding: .5rem .75rem; text-align: left; }
+    th { background: #f8f8f8; }
+    a { color: #0366d6; }
+    .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #eee; font-size: .85em; color: #666; }
+  </style>
+</head>
+<body>
+<h1>Privacy Policy — mprisence Bridge Extension</h1>
+<p><strong>Last updated:</strong> 2026-06-01</p>
+
+<h2>Overview</h2>
+<p>mprisence Bridge is a browser extension that reads media playback metadata from
+supported websites (YouTube Music, YouTube, SoundCloud, Bandcamp, Tidal, Apple Music)
+and forwards it via native messaging to a local binary (<code>mprisence-web-bridge</code>)
+running on your computer.</p>
+<p>The extension does <strong>not</strong> communicate with Discord, the internet, or any remote
+server on its own. Its sole purpose is feeding web media data into the local MPRIS
+desktop standard so media keys and desktop integrations can work.</p>
+
+<h2>What data is accessed</h2>
+<p>When you play media on a supported website, the Extension reads the following from the page DOM:</p>
+<table>
+  <tr><th>Data</th><th>Purpose</th></tr>
+  <tr><td>Website URL</td><td>Identify the media source</td></tr>
+  <tr><td>Media metadata (title, artist, album)</td><td>Provide track info to MPRIS</td></tr>
+  <tr><td>Playback state (playing/paused, position, duration)</td><td>Provide playback status to MPRIS</td></tr>
+  <tr><td>Album art URL</td><td>Pass to MPRIS so desktop clients can display cover art</td></tr>
+</table>
+
+<h2>How data is used</h2>
+<p>All data is sent via <strong>native messaging</strong> to the <code>mprisence-web-bridge</code> binary
+on your machine. That binary publishes MPRIS players on D-Bus so desktop applications
+(media keys, Discord via mprisence daemon, etc.) can see your web media.</p>
+<pre> ┌─────────────────────────────────────────────┐
+ │  Browser Extension                          │
+ │  (reads DOM, sends JSON via native msg)     │
+ └──────────┬──────────────────────────────────┘
+            │  stdin/stdout (local)
+            ▼
+ ┌──────────────────────┐        ┌──────────────────────────┐
+ │ mprisence-web-bridge │───────▶│  D-Bus MPRIS             │
+ │ (local binary)       │pub.    │  org.mpris.MediaPlayer2. │
+ │                      │MPRIS   │  mprisence_web.*         │
+ └──────────────────────┘        └──────────────────────────┘
+                                         │
+                                         ▼
+                               Desktop integrations
+                               (media keys, mprisence daemon,
+                                Discord RP, etc.)
+</pre>
+<p>The extension itself transmits nothing to the network. All communication stays on your machine.</p>
+
+<h3>Example — actual JSON message the extension sends</h3>
+<p>When you play music on YouTube Music, the extension sends a message like this to the bridge binary:</p>
+<pre>{
+  "type": "update",
+  "source_id": "firefox:tab:42:0",
+  "url": "https://music.youtube.com/watch?v=ABC123",
+  "origin": "https://music.youtube.com",
+  "site": "youtube_music",
+  "playback": {
+    "status": "playing",
+    "position_ms": 45000,
+    "duration_ms": 240000
+  },
+  "metadata": {
+    "title": "Song Title",
+    "artist": ["Artist Name"],
+    "album": "Album Name",
+    "album_artist": ["Artist Name"],
+    "art_url": "https://i.ytimg.com/vi/ABC123/hqdefault.jpg"
+  },
+  "capabilities": {
+    "play_pause": true,
+    "next": true,
+    "previous": true,
+    "seek": true,
+    "set_position": true
+  }
+}</pre>
+<p>This is the <strong>only</strong> data the extension ever transmits. No cookies, no history, no personal identifiers beyond a random tab ID.</p>
+
+<h2>What data is NOT accessed</h2>
+<ul>
+  <li>No personal information (name, email, address, etc.)</li>
+  <li>No authentication credentials or cookies</li>
+  <li>No browsing history beyond the supported media websites</li>
+  <li>No keystrokes, form data, or page content</li>
+  <li>No telemetry, analytics, or usage statistics</li>
+</ul>
+
+<h2>Data storage</h2>
+<p>Data is processed in real-time and is not persistently stored by the Extension
+or the native messaging host.</p>
+
+<h2>Data sharing</h2>
+<ul>
+  <li><strong>No third-party sharing.</strong> The extension sends data only to a local binary on your computer.</li>
+  <li><strong>No data selling.</strong> Your data is never sold, rented, or traded.</li>
+  <li><strong>No advertising.</strong> Your data is never used for advertising or marketing purposes.</li>
+</ul>
+
+<h2>Security</h2>
+<ul>
+  <li>Communication between the Extension and the native messaging host uses the browser's built-in <strong>native messaging</strong> protocol, restricted to the registered extension ID.</li>
+  <li>No data is transmitted over the network by the extension.</li>
+</ul>
+
+<h2>Third-party services</h2>
+<p>The Extension reads data from the DOM of supported websites (as listed in the manifest).
+It does not communicate with any third-party API or server.</p>
+<p>Downstream tools (e.g., the mprisence daemon, Discord) are separate software and
+subject to their own privacy policies.</p>
+
+<h2>Changes to this policy</h2>
+<p>If this privacy policy changes, the "Last updated" date will be updated. Material
+changes will be communicated via the extension's update notes.</p>
+
+<h2>Contact</h2>
+<p>For questions about this privacy policy or the Extension's data practices,
+open an issue at:
+<a href="https://github.com/lazykern/mprisence/issues">https://github.com/lazykern/mprisence/issues</a></p>
+
+<div class="footer">
+  <p><a href="https://github.com/lazykern/mprisence/blob/main/PRIVACY.md">View raw markdown</a></p>
+</div>
+</body>
+</html>

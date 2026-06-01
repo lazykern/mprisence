@@ -1,14 +1,127 @@
 # Changelog
 
+## [1.7.0-beta.2] - 2026-05-23 (pre-release)
+
+This is a pre-release. Not published to crates.io.
+Install from the attached assets, or build from source:
+
+```sh
+cargo install --git https://github.com/lazykern/mprisence --tag v1.7.0-beta.2
+```
+
+Or clone and build manually:
+
+```sh
+git clone https://github.com/lazykern/mprisence.git
+cd mprisence
+git checkout v1.7.0-beta.2
+cargo build --release  # binary at target/release/mprisence
+```
+
+### Added
+
+- **Apple Music provider**: listen to Apple Music in browser and get Discord presence with album art
+- **Bandcamp provider**: track detection for Bandcamp album/artist pages and inline player
+- **Tidal provider**: Tidal web player integration
+- **Config wizard**: interactive CLI setup (`mprisence config wizard`)
+- **Website overrides**: rich icon + app ID per website (YTM, Apple Music, SoundCloud, etc.) without browser MPRIS needing to be active
+- **Cover art improvements**: InnerTube API for square cover art thumbnails, bar-free YTM thumbnails, anti-flapping logic for art_url
+- **Extension fingerprint**: stable source ID per extension instance so bridge can track tabs across reloads
+
+### Changed
+
+- Default config removes Spotify web (disabled by default to reduce noise)
+
+### Fixed
+
+- YTM art_url flapping between square and maxres thumbnails — now stable
+- YTM position > duration bug: clamp position to duration in bridge
+- Bridge D-Bus run task abort on player remove
+- YouTube cover art 404s handled gracefully
+- Extension background runtime error on tab-close cleanup
+- Bridge player staying in Discord after tab close (stale-connection guard)
+- URL flapping between canonical and playlist-param URLs
+- Bridge D-Bus name collision when tab IDs start with digit
+- Discovery: exclude bridge players from URL merge, keep native browser tabs unbridge
+
+## [1.7.0-beta.1] - 2026-05-20 (pre-release)
+
+This is a pre-release. Not published to crates.io.
+Install from the attached assets, or build from source:
+
+```sh
+cargo install --git https://github.com/lazykern/mprisence --tag v1.7.0-beta.1
+```
+
+Or clone and build manually:
+
+```sh
+git clone https://github.com/lazykern/mprisence.git
+cd mprisence
+git checkout v1.7.0-beta.1
+cargo build --release  # binary at target/release/mprisence
+```
+
+### Changed
+
+- **Breaking:** replace per-browser `[player.*]` configs with per-website `[website.*]`
+  overrides for web-based players. Browsers default to ignored; websites must be
+  explicitly enabled.
+- Rename `discovery_interval` to `fallback_poll_interval`. Old key still accepted.
+  Default changed from 5s to 30s.
+- Default `player.default.ignore` to `true` for fresh configs. Existing configs
+  unchanged. Only explicitly configured players and websites generate Discord
+  presence — unknown players default to hidden, unknown web URLs are auto-ignored.
+  Adding a `[player.*]` or `[website.*]` entry implicitly opts it in; set
+  `ignore = true` on any entry to keep it hidden despite being configured.
+  Previously unknown players showed the generic "mprisence" presence; they are
+  now fully hidden.
+- Two-phase presence updates: push track metadata to Discord immediately (without
+  cover art), then update again once cover art is uploaded. The initial push
+  makes the presence appear faster; the second pass adds the cover image.
+- Resize cover art before upload to reduce bandwidth.
+
+### Added
+
+- Cancel stale provider jobs (MusicBrainz searches, cover-art archive fetches,
+  Catbox/ImgBB uploads) on track change via CancellationToken propagation.
+  Previously provider jobs kept running until completion, wasting bandwidth and
+  API quota, even though results were discarded by the generation gate.
+
+- Add `[website.*]` config section with 14 bundled entries: YouTube Music, SoundCloud,
+  Qobuz, Apple Music, Bandcamp, Tidal, Amazon Music, Deezer, Pocket Casts, Yandex
+  Music, Podurama, YouTube, Apple Podcasts, Spotify Web.
+  > **Note:** Amazon Music, Apple Podcasts, Deezer, Pocket Casts, Podurama, Qobuz,
+  > SoundCloud, Spotify Web, and Yandex Music are **untested** — bundled app IDs and
+  > icons are best-guess. Testing and feedback appreciated.
+  > **Note (Bandcamp):** Matches the website override, but browsers expose only the
+  > page title as `xesam:title` with no artist or real album metadata — Discord
+  > presence shows page title instead of track/album info. MPRIS metadata from
+  > browsers is limited; mprisence cannot recover the real track data.
+  > **Tested on:** Arch Linux (KDE Plasma).
+- Infer website from title suffix when `xesam:url` is absent (e.g. `"… | YouTube Music"`).
+- Add `name` field to player and website configs for CLI display.
+- Surface URL and website match in `mprisence list` detailed view.
+
+### Fixed
+
+- Merge duplicate browser players by URL origin.
+- Select richest player first with current D-Bus bus as tiebreaker.
+- Filter empty artist and album-artist strings from metadata.
+- Skip MusicBrainz lookup when artist metadata is empty.
+- Reject non-URL responses from catbox/litterbox uploads.
+
+[1.7.0-beta.2]: https://github.com/lazykern/mprisence/releases/tag/v1.7.0-beta.2
+[1.7.0-beta.1]: https://github.com/lazykern/mprisence/releases/tag/v1.7.0-beta.1
+
 ## [1.6.0](https://github.com/lazykern/mprisence/compare/v1.5.2...v1.6.0)
 
 * Player
   * Replace polling with D-Bus event monitoring
-  * Debounce rapid track skips to avoid stale Discord updates
+* Config
+  * Add `event_driven` (default: `true`; set `false` to use polling)
   * Remove deprecated `clear_on_pause`
-* Cover Art
-  * Prefer catbox litter URLs by default
-  * Prevent stale cover updates
+  * Default cover providers now prefer Catbox with Litterbox
 * Rich Presence
   * Fall back from `name` to `state` for the bundled app ID
 

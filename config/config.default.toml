@@ -1,6 +1,6 @@
 interval = 2000
 event_driven = true
-discovery_interval = 5000
+fallback_poll_interval = 5000
 allowed_players = []
 
 [template]
@@ -36,8 +36,9 @@ litter_hours = 24
 
 [player]
 # Priority: user entries override bundled ones. Fields left unset in a higher-priority entry fall back to lower matches, then [player.default], then built-in defaults. If identity and bus-name differ, an exact user bus-name entry wins.
+# [player.default].ignore_unmatched controls unknown players. Matched [player.*] entries start enabled unless some matched layer sets ignore = true.
 # Bundled app ID would show "mprisence", so "name" maps to "state".
-default = { ignore = false, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false, status_display_type = "name" }
+default = { ignore_unmatched = true, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false, status_display_type = "name" }
 
 [player.audacious]
 ignore = false
@@ -208,25 +209,131 @@ app_id = "1125082278339559505"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/768px-Youtube_Music_icon.svg.png"
 allow_streaming = true
 
-[player.microsoft_edge]
-ignore = true
-allow_streaming = true
+# Browsers are intentionally omitted: any http/https `xesam:url` without a
+# matching `[web_player.*]` entry is auto-ignored (see `apply_website_overrides`).
+# Unknown browsers (Zen, Vivaldi, LibreWolf, etc.) work without per-app config.
 
-[player.chrome]
-ignore = true
-allow_streaming = true
+# ------------------------------------------------------------------
+# Web Player overrides — applied when xesam:url host matches the pattern.
+# Patterns use the same syntax as [player.*] keys:
+#   bare = exact host match (or substring fallback against the host)
+#   `*`/`?` wildcards, `re:`/`/.../` for regex
+# Match runs against the URL host (e.g. `music.youtube.com`).
+# When matched, the web_player entry is the *authoritative* config for the
+# player — it fully replaces the browser's [player.*] config (ignore,
+# allow_streaming, app_id, icon, name, activity type). The browser does
+# not need to be enabled or unhidden separately. User entries are merged
+# per-key with bundled entries (user fields win, unset fields fall back
+# to bundled — including match patterns) so flipping `ignore` on a
+# bundled site only takes one TOML line in the user config.
+# ------------------------------------------------------------------
 
-[player.mozilla_firefox]
-ignore = true
-allow_streaming = true
+[web_player.default]
 
-[player.firefox]
+[web_player.youtube_music]
+match_pattern = "music.youtube.com"
+name = "YouTube Music"
+title_suffix = " | YouTube Music"
+app_id = "1125082278339559505" # shared with [player."*youtube_music*"]
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/youtube-music.png"
+allow_streaming = true
+ignore = false
+
+[web_player.soundcloud]
+match_patterns = ["soundcloud.com", "snd.sc"]
+name = "SoundCloud"
+app_id = "1505610509406437446"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/soundcloud.png"
+allow_streaming = true
+ignore = false
+
+[web_player.qobuz]
+match_patterns = ["qobuz.com", "play.qobuz.com", "open.qobuz.com"]
+name = "Qobuz"
+app_id = "1247655024637513778"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/qobuz.png"
+allow_streaming = true
+ignore = false
+
+[web_player.apple_music]
+match_pattern = "music.apple.com"
+name = "Apple Music"
+app_id = "1505611096273457192"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/apple-music.png"
+allow_streaming = true
+ignore = false
+
+[web_player.bandcamp]
+match_pattern = "bandcamp.com"
+name = "Bandcamp"
+app_id = "1505611276917669908"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/bandcamp.png"
+allow_streaming = true
+ignore = false
+
+[web_player.tidal]
+match_patterns = ["tidal.com", "listen.tidal.com", "listen.stage.tidal.com"]
+name = "Tidal"
+app_id = "1505610940488486912"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/tidal.png"
+allow_streaming = true
+ignore = false
+
+[web_player.amazon_music]
+match_patterns = [
+  "music.amazon.ae",
+  "music.amazon.ca",
+  "music.amazon.cn",
+  "music.amazon.co.jp",
+  "music.amazon.co.uk",
+  "music.amazon.co.za",
+  "music.amazon.com",
+  "music.amazon.com.au",
+  "music.amazon.com.be",
+  "music.amazon.com.br",
+  "music.amazon.com.mx",
+  "music.amazon.com.tr",
+  "music.amazon.de",
+  "music.amazon.eg",
+  "music.amazon.es",
+  "music.amazon.fr",
+  "music.amazon.ie",
+  "music.amazon.in",
+  "music.amazon.it",
+  "music.amazon.nl",
+  "music.amazon.pl",
+  "music.amazon.sa",
+  "music.amazon.se",
+  "music.amazon.sg",
+]
+name = "Amazon Music"
+app_id = "1247654006587789363"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/amazon-music.png"
+allow_streaming = true
+ignore = false
+
+[web_player.deezer]
+match_pattern = "deezer.com"
+name = "Deezer"
+app_id = "1247654082215284847"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/deezer.png"
+allow_streaming = true
+ignore = false
+
+[web_player.yandex_music]
+match_patterns = ["music.yandex.com", "music.yandex.ru"]
+name = "Yandex Music"
+app_id = "1295649755535511592"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/yandex-music.png"
+allow_streaming = true
+ignore = false
+
+[web_player.youtube]
+match_patterns = ["youtube.com", "youtu.be"]
+name = "YouTube"
+title_suffix = " - YouTube"
+app_id = "1301894190904639559"
+icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/youtube.png"
+allow_streaming = true
 ignore = true
 
-[player.mozilla_zen]
-ignore = true
-allow_streaming = true
-
-[player.brave]
-ignore = true
-allow_streaming = true

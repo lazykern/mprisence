@@ -3,7 +3,8 @@ use reqwest::StatusCode;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tokio::task::{spawn_blocking, JoinError};
+use tokio::task::spawn_blocking;
+use tokio_util::sync::CancellationToken;
 use url::{Host, Url};
 
 use crate::config;
@@ -175,6 +176,13 @@ impl CoverManager {
         None
     }
 
+    /// Public wrapper: checks if a URL can be used directly as cover art
+    /// in Discord's Rich Presence without needing upload to ImgBB/Catbox.
+    /// Bridge-provided URLs (YouTube CDN, SoundCloud CDN) typically pass.
+    pub fn is_direct_url_allowed(url_str: &str) -> bool {
+        Self::direct_url_policy(url_str).allow_direct
+    }
+
     fn direct_url_policy(url_str: &str) -> DirectUrlPolicy {
         let parsed = match Url::parse(url_str) {
             Ok(url) => url,
@@ -206,53 +214,108 @@ impl CoverManager {
         DirectUrlPolicy::allow()
     }
 
+    /// Synchronous, in-process cache-only lookup. No HTTP, no validation.
+    /// Used by the presence fast path so Discord receives a track update
+    /// without waiting for slow providers when a usable cached URL exists.
+    /// Returns `None` on miss, deserialize error, or expired entry — the
+    /// async `get_cover_art` path will revalidate / re-fetch as needed.
+    /// Pass `read_cache: false` to skip lookup.
+    pub fn try_cached_cover_art(
+        &self,
+        metadata_source: &MetadataSource,
+        read_cache: bool,
+    ) -> Option<String> {
+        if !read_cache {
+            trace!("Skipping cached cover art lookup (read_cache=false)");
+            return None;
+        }
+
+        let cache_key = metadata_source.cache_key();
+        let entry = self.cache.get_by_key(cache_key).ok().flatten()?;
+
+        // Reject pathological cache entries (e.g. provider stored an HTML
+        // error page as the URL before validation was added). Stale-by-URL
+        // entries get purged by the async path on its next pass.
+        if entry.url.len() > 512
+            || !(entry.url.starts_with("https://") || entry.url.starts_with("http://"))
+        {
+            warn!(
+                "Discarding cached cover art entry with malformed URL (provider: {}, len: {})",
+                entry.provider,
+                entry.url.len()
+            );
+            return None;
+        }
+
+        if entry.provider.eq_ignore_ascii_case("direct") {
+            let policy = Self::direct_url_policy(&entry.url);
+            if !policy.allow_direct {
+                return None;
+            }
+        }
+
+        Some(entry.url)
+    }
+
     pub async fn get_cover_art(
         &self,
         source: Option<ArtSource>,
         metadata_source: &MetadataSource,
+        read_cache: bool,
+        cancel: &CancellationToken,
     ) -> Result<Option<String>, CoverArtError> {
-        let cache_key = CoverCache::generate_key(metadata_source);
+        if cancel.is_cancelled() {
+            debug!("Cover art fetch cancelled before start");
+            return Ok(None);
+        }
+        let cache_key = metadata_source.cache_key();
         let recovered_cache_bytes: Option<Vec<u8>>;
 
         // 1. Check Cache
-        if let Some(mut entry) = self.cache_get_entry(&cache_key).await? {
-            let url = entry.url.clone();
-            let mut drop_reason: Option<&'static str> = None;
+        if read_cache {
+            if let Some(mut entry) = self.cache_get_entry(cache_key).await? {
+                let url = entry.url.clone();
+                let mut drop_reason: Option<&'static str> = None;
 
-            if entry.provider.eq_ignore_ascii_case("direct") {
-                let policy = Self::direct_url_policy(&url);
-                if !policy.allow_direct {
-                    drop_reason = Some(policy.reason);
+                if entry.provider.eq_ignore_ascii_case("direct") {
+                    let policy = Self::direct_url_policy(&url);
+                    if !policy.allow_direct {
+                        drop_reason = Some(policy.reason);
+                    }
                 }
-            }
 
-            let needs_validation = entry
-                .last_validated
-                .elapsed()
-                .map(|elapsed| elapsed >= CACHE_VALIDATION_INTERVAL)
-                .unwrap_or(true);
+                let needs_validation = entry
+                    .last_validated
+                    .elapsed()
+                    .map(|elapsed| elapsed >= CACHE_VALIDATION_INTERVAL)
+                    .unwrap_or(true);
 
-            if drop_reason.is_none() && (!needs_validation || Self::validate_cover_url(&url).await)
-            {
-                if needs_validation {
-                    entry.last_validated = SystemTime::now();
-                    self.cache_update_entry(&cache_key, &entry).await?;
+                if drop_reason.is_none()
+                    && (!needs_validation || Self::validate_cover_url(&url).await)
+                {
+                    if needs_validation {
+                        entry.last_validated = SystemTime::now();
+                        self.cache_update_entry(&cache_key, &entry).await?;
+                    }
+                    debug!(
+                        "Serving cached cover art (provider: {}, validated: {})",
+                        entry.provider, !needs_validation
+                    );
+                    return Ok(Some(url));
                 }
-                debug!(
-                    "Serving cached cover art (provider: {}, validated: {})",
-                    entry.provider, !needs_validation
+
+                let reason = drop_reason.unwrap_or("validation_failed");
+                warn!(
+                    "Cached cover art URL {} is no longer eligible (provider: {}, reason: {}); removing entry",
+                    url, entry.provider, reason
                 );
-                return Ok(Some(url));
+                recovered_cache_bytes = self.cache_load_bytes(entry).await?;
+                self.cache_remove_entry(&cache_key).await?;
+            } else {
+                recovered_cache_bytes = None;
             }
-
-            let reason = drop_reason.unwrap_or("validation_failed");
-            warn!(
-                "Cached cover art URL {} is no longer eligible (provider: {}, reason: {}); removing entry",
-                url, entry.provider, reason
-            );
-            recovered_cache_bytes = self.cache_load_bytes(entry).await?;
-            self.cache_remove_entry(&cache_key).await?;
         } else {
+            trace!("Skipping cover cache lookup (read_cache=false)");
             recovered_cache_bytes = None;
         }
         trace!("No valid cache entry found.");
@@ -279,6 +342,10 @@ impl CoverManager {
                     policy.reason, url
                 );
                 // Try to fetch bytes so providers can upload
+                if cancel.is_cancelled() {
+                    debug!("Cover art fetch cancelled before URL download");
+                    return Ok(None);
+                }
                 let client = create_shared_client();
                 match client.get(url).send().await {
                     Ok(resp) if resp.status().is_success() => match resp.bytes().await {
@@ -344,147 +411,85 @@ impl CoverManager {
                 let local_art = local_art_result?;
 
                 if let Some(art_source) = local_art {
-                    // Process the found local cover art through providers
-                    for provider in &self.providers {
-                        if provider.supports_source_type(&art_source) {
-                            debug!("Processing local cover art with {}", provider.name());
-                            match provider.process(art_source.clone(), metadata_source).await {
-                                Ok(Some(result)) => {
-                                    let CoverResult {
-                                        url,
-                                        provider: provider_name,
-                                        expiration,
-                                    } = result;
-                                    if !Self::validate_cover_url(&url).await {
-                                        warn!(
-                                            "Provider {} returned invalid cover art URL, skipping",
-                                            provider_name
-                                        );
-                                        continue;
-                                    }
-                                    info!(
-                                        "Successfully processed local cover art with {}",
-                                        provider_name
-                                    );
-                                    let cache_payload =
-                                        Self::prepare_cache_payload(&art_source, &url).await?;
-                                    self.cache_store_entry(
-                                        &cache_key,
-                                        &provider_name,
-                                        &url,
-                                        expiration,
-                                        cache_payload,
-                                    )
-                                    .await?;
-                                    return Ok(Some(url));
-                                }
-                                Ok(None) => debug!(
-                                    "Provider {} could not process local cover art",
-                                    provider.name()
-                                ),
-                                Err(e) => warn!(
-                                    "Provider {} failed to process local cover art: {}",
-                                    provider.name(),
-                                    e
-                                ),
-                            }
-                        }
+                    if let Some(url) = self
+                        .try_providers(Some(&art_source), metadata_source, &cache_key, cancel)
+                        .await?
+                    {
+                        return Ok(Some(url));
                     }
                 }
             }
         }
 
-        // 4. Try configured providers with the prepared source
-        if let Some(source_for_providers) = source_for_providers {
-            for provider in &self.providers {
-                if !provider.supports_source_type(&source_for_providers) {
-                    trace!("Provider {} does not support source type", provider.name());
-                    continue;
-                }
+        // 4. Try configured providers with the prepared source (or metadata-only)
+        self.try_providers(
+            source_for_providers.as_ref(),
+            metadata_source,
+            &cache_key,
+            cancel,
+        )
+        .await
+    }
 
-                debug!("Attempting cover art retrieval with {}", provider.name());
-                match provider
-                    .process(source_for_providers.clone(), metadata_source)
-                    .await
-                {
-                    Ok(Some(result)) => {
-                        let CoverResult {
-                            url,
-                            provider: provider_name,
-                            expiration,
-                        } = result;
-                        if !Self::validate_cover_url(&url).await {
-                            warn!(
-                                "Provider {} returned invalid cover art URL, skipping",
-                                provider_name
-                            );
-                            continue;
-                        }
-                        info!("Successfully retrieved cover art from {}", provider_name);
-                        let cache_payload =
-                            Self::prepare_cache_payload(&source_for_providers, &url).await?;
-                        self.cache_store_entry(
-                            &cache_key,
-                            &provider_name,
-                            &url,
-                            expiration,
-                            cache_payload,
-                        )
-                        .await?;
-                        return Ok(Some(url));
-                    }
-                    Ok(None) => debug!("Provider {} found no cover art", provider.name()),
-                    Err(e) => warn!("Provider {} failed: {}", provider.name(), e),
-                }
-            }
-        } else {
-            let metadata_only_source = ArtSource::Url(String::new());
-            for provider in &self.providers {
-                if !provider.supports_metadata_only() {
-                    trace!(
-                        "Provider {} does not support metadata-only lookup",
-                        provider.name()
-                    );
-                    continue;
-                }
+    async fn try_providers(
+        &self,
+        source: Option<&ArtSource>,
+        metadata_source: &MetadataSource,
+        cache_key: &str,
+        cancel: &CancellationToken,
+    ) -> Result<Option<String>, CoverArtError> {
+        let dummy = ArtSource::Url(String::new());
+        let process_source = source.unwrap_or(&dummy);
 
-                debug!(
-                    "Attempting cover art retrieval with {} using metadata only",
+        for provider in &self.providers {
+            let supported = match source {
+                Some(s) => provider.supports_source_type(s),
+                None => provider.supports_metadata_only(),
+            };
+            if !supported {
+                trace!(
+                    "Provider {} does not support this source type",
                     provider.name()
                 );
-                match provider
-                    .process(metadata_only_source.clone(), metadata_source)
-                    .await
-                {
-                    Ok(Some(result)) => {
-                        let CoverResult {
-                            url,
-                            provider: provider_name,
-                            expiration,
-                        } = result;
-                        if !Self::validate_cover_url(&url).await {
-                            warn!(
-                                "Provider {} returned invalid cover art URL, skipping",
-                                provider_name
-                            );
-                            continue;
-                        }
-                        info!("Successfully retrieved cover art from {}", provider_name);
-                        let cache_payload =
-                            Self::prepare_cache_payload(&ArtSource::Url(url.clone()), &url).await?;
-                        self.cache_store_entry(
-                            &cache_key,
-                            &provider_name,
-                            &url,
-                            expiration,
-                            cache_payload,
-                        )
-                        .await?;
-                        return Ok(Some(url));
+                continue;
+            }
+
+            debug!("Attempting cover art retrieval with {}", provider.name());
+            match provider
+                .process(process_source.clone(), metadata_source, cancel)
+                .await
+            {
+                Ok(Some(result)) => {
+                    let CoverResult {
+                        url,
+                        provider: provider_name,
+                        expiration,
+                    } = result;
+                    if !Self::validate_cover_url(&url).await {
+                        warn!(
+                            "Provider {} returned invalid cover art URL, skipping",
+                            provider_name
+                        );
+                        continue;
                     }
-                    Ok(None) => debug!("Provider {} found no cover art", provider.name()),
-                    Err(e) => warn!("Provider {} failed: {}", provider.name(), e),
+                    info!("Successfully retrieved cover art from {}", provider_name);
+                    let cache_payload = if let Some(src) = source {
+                        Self::prepare_cache_payload(src, &url).await?
+                    } else {
+                        Self::prepare_cache_payload(&ArtSource::Url(url.clone()), &url).await?
+                    };
+                    self.cache_store_entry(
+                        &cache_key,
+                        &provider_name,
+                        &url,
+                        expiration,
+                        cache_payload,
+                    )
+                    .await?;
+                    return Ok(Some(url));
                 }
+                Ok(None) => debug!("Provider {} found no cover art", provider.name()),
+                Err(e) => warn!("Provider {} failed: {}", provider.name(), e),
             }
         }
 
@@ -543,23 +548,29 @@ impl CoverManager {
         }
     }
 
+    async fn run_blocking<F, T>(&self, context: &'static str, f: F) -> Result<T, CoverArtError>
+    where
+        F: FnOnce() -> Result<T, CoverArtError> + Send + 'static,
+        T: Send + 'static,
+    {
+        spawn_blocking(f)
+            .await
+            .map_err(|e| CoverArtError::other(format!("Cache {context} task failed: {e}")))?
+    }
+
     async fn cache_get_entry(&self, key: &str) -> Result<Option<CacheEntry>, CoverArtError> {
         let cache = self.cache.clone();
         let key = key.to_string();
-        let result = spawn_blocking(move || cache.get_by_key(&key))
+        self.run_blocking("lookup", move || cache.get_by_key(&key))
             .await
-            .map_err(|e| Self::cache_task_error("lookup", e))?;
-        result
     }
 
     async fn cache_update_entry(&self, key: &str, entry: &CacheEntry) -> Result<(), CoverArtError> {
         let cache = self.cache.clone();
         let key = key.to_string();
-        let entry_clone = entry.clone();
-        let result = spawn_blocking(move || cache.update_entry_with_key(&key, &entry_clone))
+        let entry = entry.clone();
+        self.run_blocking("update", move || cache.update_entry_with_key(&key, &entry))
             .await
-            .map_err(|e| Self::cache_task_error("update", e))?;
-        result
     }
 
     async fn cache_store_entry(
@@ -571,37 +582,24 @@ impl CoverManager {
         cached_bytes: Option<Vec<u8>>,
     ) -> Result<(), CoverArtError> {
         let cache = self.cache.clone();
-        let key = key.to_string();
-        let provider = provider.to_string();
-        let url = url.to_string();
-        let result = spawn_blocking(move || {
-            let bytes = cached_bytes.as_deref();
-            cache.store_with_key(&key, &provider, &url, expiration, bytes)
+        let (key, provider, url) = (key.to_string(), provider.to_string(), url.to_string());
+        self.run_blocking("store", move || {
+            cache.store_with_key(&key, &provider, &url, expiration, cached_bytes.as_deref())
         })
         .await
-        .map_err(|e| Self::cache_task_error("store", e))?;
-        result
     }
 
     async fn cache_remove_entry(&self, key: &str) -> Result<(), CoverArtError> {
         let cache = self.cache.clone();
         let key = key.to_string();
-        let result = spawn_blocking(move || cache.remove_by_key(&key))
+        self.run_blocking("remove", move || cache.remove_by_key(&key))
             .await
-            .map_err(|e| Self::cache_task_error("remove", e))?;
-        result
     }
 
     async fn cache_load_bytes(&self, entry: CacheEntry) -> Result<Option<Vec<u8>>, CoverArtError> {
         let cache = self.cache.clone();
-        let result = spawn_blocking(move || cache.load_bytes(&entry))
+        self.run_blocking("load-bytes", move || cache.load_bytes(&entry))
             .await
-            .map_err(|e| Self::cache_task_error("load-bytes", e))?;
-        result
-    }
-
-    fn cache_task_error(context: &str, err: JoinError) -> CoverArtError {
-        CoverArtError::other(format!("Cache {context} task failed: {err}"))
     }
 
     async fn prepare_cache_payload(

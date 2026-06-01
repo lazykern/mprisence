@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "mprisence bridge",
+  "version": "0.1.0",
+  "description": "Sends browser media metadata to the mprisence native bridge",
+  "icons": {
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA35g/QzjtKAumBQVPcHp2vw9FGiaBl4tDJb9fTO+pWx4zqKTnj/aIhf9Bqdw9QSXUM4EBTB+zdJHPOdnEUkf+fEpTTinuJ8sGKIozn5GaxkF0HczALU891WtqEBQGKoVodP+EObve/mXjojCIcCo0fGTIMlihI1xn+0q0l0oKWeNUhLH/ZNcXeAC1rb8hM/YoQKoY/+p53jo50XKWnLKrpM8fp7FSVoAYJgR6VpNIrfQnRdjATPCDOxe+U09fVipF4u3p2V3+Q4dNci8UvsL2BaTasMnC/EcfkDXTMvaMx/HOvDspVAIOhJOlvcEP6uaPXuetA8ztQgTefIdxa2E9aQIDAQAB",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "page-world.js"
+      ],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    }
+  ],
+  "permissions": [
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "*://music.youtube.com/*",
+    "*://www.youtube.com/*",
+    "*://open.spotify.com/*",
+    "*://soundcloud.com/*",
+    "*://bandcamp.com/*",
+    "*://tidal.com/*",
+    "*://music.apple.com/*"
+  ],
+  "minimum_chrome_version": "111"
+}

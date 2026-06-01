@@ -13,7 +13,12 @@ flamegraph*
 *.pkg.tar.zst
 *.tar.gz
 
-AGENTS.md
+/extension/chrome-key.pem
+/extension/dist/*.zip
+/release-artifacts/
+
+/extension/node_modules/
 
 # Benchmark raw run data (keep only bench/RESULTS.md)
 /bench/*/
+.playwright-cli/

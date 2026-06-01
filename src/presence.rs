@@ -1,10 +1,8 @@
 use std::{
-    path::PathBuf,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
-    thread::JoinHandle,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -18,10 +16,7 @@ use mpris::{Event as MprisEvent, Metadata as MprisMetadata, PlaybackStatus, Play
 use parking_lot::Mutex;
 use smol_str::SmolStr;
 use tokio::sync::{mpsc, Notify};
-use url::Url;
-
-use lofty::file::AudioFile as _;
-use lofty::prelude::TaggedFileExt as _;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     config::{
@@ -33,51 +28,41 @@ use crate::{
     },
     cover::CoverManager,
     error::DiscordError,
-    metadata,
+    metadata::{self, MediaMetadata},
     player::{
         canonical_player_bus_name, cmus,
         events::{self, EventOutcome, PlayerEvent, PlayerEventKind},
-        PlaybackState, PlayerIdentifier,
+        health, PlaybackState, PlayerIdentifier,
     },
-    template::TemplateManager,
+    template::{ActivityTexts, TemplateManager},
     utils,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct TrackFingerprint {
-    track_id: Option<String>,
-    url: Option<String>,
-    title: Option<String>,
-    artists: Vec<String>,
-    length: Option<Duration>,
+use health::TrackFingerprint;
+
+/// Bundled inputs to `Presence::build_and_push_activity`. Borrows everywhere
+/// except the small `Copy` enums to avoid clones on the hot path.
+struct ActivityFraming<'a> {
+    texts: &'a crate::template::ActivityTexts,
+    /// `(start_s, Option<end_s>)`; absent when no timestamp should be sent.
+    timing: Option<(u64, Option<u64>)>,
+    cover_art_url: Option<&'a str>,
+    player_config: &'a PlayerConfig,
+    activity_type: ActivityType,
+    status_display_type: StatusDisplayType,
 }
 
-impl TrackFingerprint {
-    fn from_mpris(metadata: &MprisMetadata) -> Self {
-        Self {
-            track_id: metadata.track_id().map(|id| id.to_string()),
-            url: metadata.url().map(|url| url.to_string()),
-            title: metadata.title().map(|title| title.to_string()),
-            artists: metadata
-                .artists()
-                .map(|artists| artists.iter().map(|artist| artist.to_string()).collect())
-                .unwrap_or_default(),
-            length: metadata.length(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct UpdateSnapshot {
     playback_status: PlaybackStatus,
-    track: TrackFingerprint,
+    track: health::TrackFingerprint,
 }
 
 impl UpdateSnapshot {
     fn from_mpris(playback_status: PlaybackStatus, metadata: &MprisMetadata) -> Self {
         Self {
             playback_status,
-            track: TrackFingerprint::from_mpris(metadata),
+            track: health::TrackFingerprint::from_mpris(metadata),
         }
     }
 }
@@ -92,25 +77,55 @@ fn resolve_status_display_type(player_config: &PlayerConfig) -> StatusDisplayTyp
     }
 }
 
-fn summarize_log_value(key: &str, value: &dyn std::fmt::Debug) -> String {
-    const MAX_LOG_VALUE_CHARS: usize = 240;
-
+fn summarize_log_value_with_limit(
+    key: &str,
+    value: &dyn std::fmt::Debug,
+    max_chars: usize,
+) -> String {
     let rendered = format!("{:?}", value);
+    let rendered_len = rendered.chars().count();
     let looks_like_embedded_art = key.eq_ignore_ascii_case("mpris:artUrl")
-        && (rendered.starts_with("\"data:")
-            || rendered.contains(";base64,")
-            || rendered.len() > MAX_LOG_VALUE_CHARS);
+        && (rendered.contains("data:") || rendered.contains(";base64,"));
 
-    if looks_like_embedded_art || rendered.len() > MAX_LOG_VALUE_CHARS {
-        let truncated: String = rendered.chars().take(MAX_LOG_VALUE_CHARS).collect();
-        format!(
-            "{}… [truncated, {} chars total]",
-            truncated,
-            rendered.chars().count()
-        )
+    if looks_like_embedded_art || rendered_len > max_chars {
+        let truncated: String = rendered.chars().take(max_chars).collect();
+        let reason = if looks_like_embedded_art {
+            "embedded art"
+        } else {
+            "truncated"
+        };
+        format!("{}… [{}; {} chars total]", truncated, reason, rendered_len)
     } else {
         rendered
     }
+}
+
+fn summarize_log_value(key: &str, value: &dyn std::fmt::Debug) -> String {
+    summarize_log_value_with_limit(key, value, 240)
+}
+
+fn summarize_metadata_for_log(metadata: &MprisMetadata) -> String {
+    const MAX_ENTRIES: usize = 24;
+    const MAX_VALUE_CHARS: usize = 96;
+
+    let total = metadata.iter().count();
+    let mut entries = metadata
+        .iter()
+        .take(MAX_ENTRIES)
+        .map(|(key, value)| {
+            format!(
+                "{}={}",
+                key,
+                summarize_log_value_with_limit(key, value, MAX_VALUE_CHARS)
+            )
+        })
+        .collect::<Vec<_>>();
+
+    if total > MAX_ENTRIES {
+        entries.push(format!("… {} more", total - MAX_ENTRIES));
+    }
+
+    format!("Metadata({} entries) {{{}}}", total, entries.join(", "))
 }
 
 pub struct Presence {
@@ -121,25 +136,70 @@ pub struct Presence {
     template_manager: Arc<TemplateManager>,
     cover_manager: Arc<CoverManager>,
     last_player_state: Option<PlaybackState>,
-    last_cmus_track_id: Mutex<Option<Box<str>>>,
-    last_cmus_path: Mutex<Option<PathBuf>>,
-    cmus_error_logged: AtomicBool,
+    cmus: cmus::CmusState,
     discord_client: Option<Arc<Mutex<DiscordIpcClient>>>,
+    /// The Discord application id the current `discord_client` was opened with.
+    /// Each cycle re-resolves the effective app id (player + web_player overlay).
+    /// A mismatch triggers IPC client recycling so the new app's icon/name
+    /// takes effect.
+    last_effective_app_id: Mutex<Option<String>>,
     needs_initial_connection: AtomicBool,
     needs_reconnection: AtomicBool,
     error_logged: AtomicBool,
     last_reconnect_attempt: Mutex<Instant>,
-    /// Monotonically increasing counter, incremented on every TrackChanged event.
-    /// update_activity checks this before and after the cover art fetch so that
-    /// rapid track skips don't push stale cover art for superseded tracks.
+    /// Monotonically increasing counter, incremented on every TrackChanged event
+    /// (event-driven mode) AND on every polling-mode track change detected inside
+    /// `update_activity`. Background cover-art tasks capture this value at spawn
+    /// time and abort if it has changed when their fetch completes — that's what
+    /// prevents a slow cover from overwriting a newer track's activity.
     update_generation: Arc<AtomicU64>,
     update_notify: Arc<Notify>,
+    /// Unified staleness state machine. Replaces the 6 scattered fields that
+    /// previously tracked stale YouTube art, stalled position, startup confirmation, etc.
+    health: parking_lot::Mutex<health::PlayerHealth>,
+    /// Tracks which generation's background cover-fetch is in flight.
+    /// 0 = no fetch in flight, non-zero = generation number of the in-flight fetch.
+    /// Shared via Arc so background tasks can atomically reset it on completion.
+    /// Used to allow newer tracks to preempt older in-flight cover fetches.
+    cover_fetch_generation: Arc<AtomicU64>,
+    /// Last cover URL successfully resolved for the current update generation.
+    /// Used so later same-track activity refreshes don't clear artwork.
+    last_resolved_cover_art: Arc<Mutex<Option<(u64, String)>>>,
+    /// Track identifier of the last pushed track (used in polling mode to detect
+    /// track changes and bump `update_generation`).
+    last_pushed_track_id: Mutex<Option<String>>,
+    /// URL of the last pushed track. Used alongside `last_pushed_track_id` to
+    /// detect track changes (plasma-browser-integration reuses the same track_id).
+    last_pushed_track_url: Mutex<Option<String>>,
+    /// Art URL of the last pushed track. Used alongside track_id and url to
+    /// detect track changes when plasma-browser-integration updates artUrl
+    /// a few seconds after the track metadata rolls over.
+    last_pushed_art_url: Mutex<Option<String>>,
+    /// Snapshot of the last rendered activity (playback_status + fingerprint).
+    /// Used to skip template rendering when nothing changed between events
+    /// (e.g. periodic Playing events on the same track).
+    last_rendered_snapshot: Option<UpdateSnapshot>,
+    /// Volume at the time of the last template render. Stored separately
+    /// because UpdateSnapshot doesn't include volume.
+    last_rendered_volume: Option<f64>,
+    /// Cached activity texts from the last template render. Reused when
+    /// `last_rendered_snapshot` matches the current state.
+    last_activity_texts: Option<crate::template::ActivityTexts>,
+    /// Tracks whether a Discord activity (push) is currently displayed.
+    /// Set `true` after a successful push, `false` after a clear.
+    /// Prevents redundant Clear→Clear log spam from duplicate players.
+    discord_activity_is_set: Arc<AtomicBool>,
+    /// False until the first Discord push completes. When false, the health
+    /// tracker is bypassed so initial discovery always pushes at least once.
+    /// Prevents `track_ended` from swallowing a freshly-discovered player.
+    first_update_done: AtomicBool,
     config: Arc<ConfigManager>,
+    /// Cancellation token for background cover-art tasks. Cancelled on every
+    /// track change so in-flight provider jobs (MusicBrainz, uploads) can abort
+    /// early instead of wasting bandwidth and API quota.
+    cover_cancel_token: Arc<parking_lot::Mutex<CancellationToken>>,
     /// Cancellation flag for the per-player event listener thread (event-driven mode only).
     listener_cancel: Option<Arc<AtomicBool>>,
-    /// Handle to the listener thread; kept so future code can join, but currently detached on drop.
-    #[allow(dead_code)]
-    listener_handle: Option<JoinHandle<()>>,
     /// The MPRIS bus name the active listener is bound to (used to detect winner-bus handoff).
     listener_bus: Option<SmolStr>,
 }
@@ -157,27 +217,62 @@ impl Presence {
         trace!("Using Discord application ID: {}", player_config.app_id);
         trace!("Player configuration: {:#?}", player_config);
         let player_id = PlayerIdentifier::from(&player);
+        let is_browser = Self::is_browser_source(player.bus_name(), player.identity());
+        let health = if is_browser {
+            parking_lot::Mutex::new(health::PlayerHealth::confirming(0))
+        } else {
+            parking_lot::Mutex::new(health::PlayerHealth::healthy(0))
+        };
         Self {
             player,
             player_id,
             template_manager,
             cover_manager,
             last_player_state: None,
-            last_cmus_track_id: Mutex::new(None),
-            last_cmus_path: Mutex::new(None),
-            cmus_error_logged: AtomicBool::new(false),
+            cmus: cmus::CmusState::new(),
             discord_client: None,
+            last_effective_app_id: Mutex::new(None),
             needs_initial_connection: AtomicBool::new(true),
             needs_reconnection: AtomicBool::new(false),
             error_logged: AtomicBool::new(false),
             last_reconnect_attempt: Mutex::new(Instant::now()),
             update_generation: Arc::new(AtomicU64::new(0)),
             update_notify: Arc::new(Notify::new()),
+            health,
+            cover_fetch_generation: Arc::new(AtomicU64::new(0)),
+            last_resolved_cover_art: Arc::new(Mutex::new(None)),
+            last_pushed_track_id: parking_lot::Mutex::new(None),
+            last_pushed_track_url: parking_lot::Mutex::new(None),
+            last_pushed_art_url: parking_lot::Mutex::new(None),
+            last_rendered_snapshot: None,
+            last_rendered_volume: None,
+            last_activity_texts: None,
+            discord_activity_is_set: Arc::new(AtomicBool::new(false)),
+            first_update_done: AtomicBool::new(false),
             config,
+            cover_cancel_token: Arc::new(parking_lot::Mutex::new(CancellationToken::new())),
             listener_cancel: None,
-            listener_handle: None,
             listener_bus: None,
         }
+    }
+
+    /// Determine if this player is a browser-based source (e.g. Plasma Browser
+    /// Integration, Firefox, Chromium). Browser sources get tighter stall
+    /// thresholds and a confirming state that blocks the first push until
+    /// position moves.
+    fn is_browser_source(bus_name: &str, identity: &str) -> bool {
+        let bus = bus_name.to_ascii_lowercase();
+        let identity = identity.to_ascii_lowercase();
+
+        bus.contains("plasma-browser-integration")
+            || bus.contains("firefox")
+            || bus.contains("chromium")
+            || bus.contains("chrome")
+            || identity == "firefox"
+            || identity == "chromium"
+            || identity == "chrome"
+            || identity == "brave"
+            || identity == "vivaldi"
     }
 
     /// Returns the identifier of the currently tracked player connection.
@@ -185,16 +280,46 @@ impl Presence {
         &self.player_id
     }
 
+    /// Returns the current track's URL (xesam:url) if available.
+    pub fn current_url(&self) -> Option<String> {
+        self.player
+            .get_metadata()
+            .ok()
+            .and_then(|m| m.url().map(|s| s.to_string()))
+    }
+
+    pub fn current_title(&self) -> Option<String> {
+        self.player
+            .get_metadata()
+            .ok()
+            .and_then(|m| m.title().map(|s| s.to_string()))
+    }
+
     pub fn initialize_discord_client(&mut self) -> Result<(), DiscordError> {
-        if self.discord_client.is_none() {
-            let player_config = self.config.get_player_config(
-                self.player.identity(),
-                &canonical_player_bus_name(self.player.bus_name()),
-            );
-            let client = DiscordIpcClient::new(&player_config.app_id);
-            self.discord_client = Some(Arc::new(Mutex::new(client)));
-            self.needs_initial_connection.store(true, Ordering::Relaxed);
+        if self.discord_client.is_some() {
+            return Ok(());
         }
+        // Resolve the app id with URL/title context so a tab covered by a
+        // `[web_player.*]` override opens its IPC connection with the correct
+        // app id directly. Without this, the URL-aware resolution later in
+        // `update_activity` would tear the just-opened connection down and
+        // reopen it, racing the first `set_activity` write.
+        let url = self.current_url();
+        let title = self.current_title();
+        let (player_config, _) = self.config.get_player_config_with_title_fallback(
+            self.player.identity(),
+            &canonical_player_bus_name(self.player.bus_name()),
+            url.as_deref(),
+            title.as_deref(),
+        );
+        self.initialize_discord_client_with_app_id(&player_config.app_id)
+    }
+
+    fn initialize_discord_client_with_app_id(&mut self, app_id: &str) -> Result<(), DiscordError> {
+        let client = DiscordIpcClient::new(app_id);
+        self.discord_client = Some(Arc::new(Mutex::new(client)));
+        self.needs_initial_connection.store(true, Ordering::Relaxed);
+        *self.last_effective_app_id.lock() = Some(app_id.to_string());
         Ok(())
     }
 
@@ -220,6 +345,7 @@ impl Presence {
             }
             trace!("Discord connection closed successfully");
             self.discord_client = None;
+            *self.last_effective_app_id.lock() = None;
         }
         Ok(())
     }
@@ -227,42 +353,45 @@ impl Presence {
     pub async fn update(&mut self, player: Player) -> Result<(), DiscordError> {
         trace!("Updating presence for player: {}", player.identity());
 
-        // Validate identity — only the identity must match; bus name and unique
-        // connection name are allowed to change (e.g. playerctld handoff, player
-        // restart, or deduplication winner switch).
-        if player.identity() != self.player.identity() {
-            error!(
-                "Player identity mismatch. Expected: {}, got: {}",
-                self.player.identity(),
-                player.identity()
-            );
-            return Err(DiscordError::InvalidPlayer(format!(
-                "Expected {}, got {}",
-                self.player.identity(),
-                player.identity()
-            )));
-        }
-
-        // If the bus name or unique D-Bus connection changed, update the stored
-        // reference and reset playback state so the next cycle does a full update.
-        if player.bus_name() != self.player.bus_name()
+        // The caller (main.rs discovery loop) keys presences by normalized
+        // identity (`norm_id`) and may also merge groups that share the same
+        // `xesam:url` (e.g. plasma-browser-integration "Zen Browser" and the
+        // native "Mozilla zen" endpoint exposing the same tab). After such a
+        // merge the winner passed in here can carry a different verbatim
+        // identity, bus name, or unique connection name than what we last
+        // stored. Treat any of those changes as a connection handoff: refresh
+        // our cached player reference and reset playback state so the next
+        // cycle pushes a full update with the new identity's app id.
+        if player.identity() != self.player.identity()
+            || player.bus_name() != self.player.bus_name()
             || player.unique_name() != self.player.unique_name()
         {
             let new_id = PlayerIdentifier::from(&player);
             debug!(
-                "Player '{}' connection changed: {}:{} -> {}:{}",
+                "Player connection changed: {} ({}:{}) -> {} ({}:{})",
                 self.player.identity(),
                 self.player_id.player_bus_name,
                 self.player_id.unique_name,
+                player.identity(),
                 new_id.player_bus_name,
                 new_id.unique_name,
             );
             self.player_id = new_id;
             self.player = player;
             self.last_player_state = None;
-            *self.last_cmus_track_id.lock() = None;
-            *self.last_cmus_path.lock() = None;
-            self.cmus_error_logged.store(false, Ordering::Relaxed);
+            self.cmus.reset();
+            *self.last_pushed_track_id.lock() = None;
+            *self.last_pushed_track_url.lock() = None;
+            *self.last_pushed_art_url.lock() = None;
+            *self.last_resolved_cover_art.lock() = None;
+            // Reset health on connection handoff (new underlying player).
+            let is_browser =
+                Self::is_browser_source(self.player.bus_name(), self.player.identity());
+            *self.health.lock() = if is_browser {
+                health::PlayerHealth::confirming(self.update_generation.load(Ordering::Relaxed))
+            } else {
+                health::PlayerHealth::healthy(self.update_generation.load(Ordering::Relaxed))
+            };
             // Skip Discord update this cycle; full update happens next poll.
             return Ok(());
         }
@@ -273,43 +402,135 @@ impl Presence {
 
         self.ensure_connection()?;
 
-        let start_time = Instant::now();
-        let new_state = PlaybackState::from(&player);
-        let dbus_delay = start_time.elapsed();
-        trace!("D-Bus interaction took: {:?}", dbus_delay);
+        // Stale-connection guard: bridge players get their MPRIS object
+        // recreated when the bridge prunes/re-creates sources. The stored
+        // `self.player` D-Bus connection can return stale status (Paused)
+        // even when the player is actually Playing. Verify by creating a
+        // fresh player object when status is unexpectedly non-Playing.
+        let raw_status = self.player.get_playback_status().map_err(|err| {
+            error!("Failed to get playback status: {}", err);
+            DiscordError::ActivityError(format!("Failed to get playback status: {}", err))
+        })?;
+        let playback_status = if raw_status == PlaybackStatus::Playing {
+            PlaybackStatus::Playing
+        } else {
+            // Re-check with a fresh connection to rule out stale state.
+            recheck_playback_status(&self.player.bus_name())
+                .await
+                .unwrap_or(raw_status)
+        };
+        let metadata = match self.player.get_metadata() {
+            Ok(m) => m,
+            Err(e) => {
+                warn!("Failed to get metadata for player: {}", e);
+                return Ok(());
+            }
+        };
+        let track = health::TrackFingerprint::from_mpris(&metadata);
+        trace!(
+            "Raw MPRIS metadata: {}",
+            summarize_metadata_for_log(&metadata)
+        );
+        let position = self.player.get_position().unwrap_or_default();
+        let now = Instant::now();
+        let generation = self.update_generation.load(Ordering::Relaxed);
+        let is_browser = Self::is_browser_source(self.player.bus_name(), self.player.identity());
 
-        let should_update = self
+        let input = health::HealthCheckInput {
+            playback_status,
+            position,
+            track: &track,
+            track_length: track.length,
+            is_browser_source: is_browser,
+            generation,
+            now,
+            last_event: now, // latest event is right now
+        };
+
+        // --- Early-exit: skip Discord pushes if nothing changed since last
+        //     tick, but still let health observe normal position progress so
+        //     browser sources don't look "silent" after long playback.
+        let start_time = Instant::now();
+        let new_state = PlaybackState::from_with_status(&self.player, playback_status, &metadata);
+        let dbus_delay = start_time.elapsed();
+        let effective_interval = if self.config.event_driven() {
+            self.config.fallback_poll_interval()
+        } else {
+            self.config.interval()
+        };
+        let significant_change = self
             .last_player_state
             .as_ref()
             .map(|previous_state| {
                 new_state.has_significant_changes(previous_state)
                     || new_state.has_position_jump(
                         previous_state,
-                        Duration::from_millis(self.config.interval()),
+                        Duration::from_millis(effective_interval),
                         dbus_delay,
                     )
             })
             .unwrap_or(true);
 
-        if !should_update {
-            trace!("Skipping update - no significant changes detected");
+        if !significant_change {
+            trace!("Skipping Discord push - no significant changes detected");
+            self.health.lock().observe_progress(&input);
             self.last_player_state = Some(new_state);
             return Ok(());
         }
 
-        trace!("Updating Discord presence");
-        self.last_player_state = Some(new_state);
-        self.update_activity(&player, None).await.map_err(|err| {
-            if matches!(err, DiscordError::ActivityError(_)) {
-                if !self.error_logged.load(Ordering::Relaxed) {
-                    warn!("Discord connection error, will attempt to reconnect next update");
-                    self.error_logged.store(true, Ordering::Relaxed);
-                }
-                self.last_player_state = None;
-                self.needs_reconnection.store(true, Ordering::Relaxed);
+        // Skip health check on the very first update (initial discovery): we
+        // must push at least once so Discord shows the player at all. The
+        // health tracker might fire `track_ended` immediately if the initial
+        // position happens to be near the end of a long track, causing the
+        // player to silently disappear from rich presence.
+        let outcome = if self.first_update_done.load(Ordering::Relaxed) {
+            let mut health = self.health.lock();
+            health.transition(&input)
+        } else {
+            self.first_update_done.store(true, Ordering::Relaxed);
+            health::TransitionOutcome::Push {
+                art_decision: health::ArtDecision::default(),
             }
-            err
-        })
+        };
+
+        match outcome {
+            health::TransitionOutcome::Push { art_decision } => {
+                self.last_player_state = Some(new_state);
+                let art_gen = Some(generation);
+                self.update_activity(art_gen, art_decision, Some(playback_status)).await.map_err(|err| {
+                    if matches!(err, DiscordError::ActivityError(_)) {
+                        if !self.error_logged.load(Ordering::Relaxed) {
+                            warn!("Discord connection error, will attempt to reconnect next update");
+                            self.error_logged.store(true, Ordering::Relaxed);
+                        }
+                        self.last_player_state = None;
+                        self.needs_reconnection.store(true, Ordering::Relaxed);
+                    }
+                    err
+                })?;
+                // Update previous URL/art_url reference for next tick's track-change check.
+                if let Some(ref url) = track.url {
+                    *self.last_pushed_track_url.lock() = Some(url.clone());
+                }
+                if let Some(ref art_url) = track.art_url {
+                    *self.last_pushed_art_url.lock() = Some(art_url.clone());
+                }
+            }
+            health::TransitionOutcome::Clear => {
+                self.clear_discord_activity_with_reason(&format!(
+                    "Clearing Discord activity - player {} is stalled/stopped/paused",
+                    self.player.identity()
+                ))?;
+                // Preserve the latest snapshot so paused/stopped polling does
+                // not keep looking like a fresh significant change every tick.
+                self.last_player_state = Some(new_state);
+            }
+            health::TransitionOutcome::Noop => {
+                trace!("Noop from health state machine, skipping");
+            }
+        }
+
+        Ok(())
     }
 
     /// Push current player state to Discord without consuming the player.
@@ -320,7 +541,11 @@ impl Presence {
             return Ok(());
         };
         self.ensure_connection()?;
-        self.update_activity(&self.player, None).await
+        // Seed `last_player_state` so the next polling tick's diff sees no change
+        // and skips re-pushing (and re-fetching cover art) for the same track.
+        self.last_player_state = Some(PlaybackState::from(&self.player));
+        self.update_activity(None, health::ArtDecision::default(), None)
+            .await
     }
 
     fn ensure_connection(&mut self) -> Result<(), DiscordError> {
@@ -373,16 +598,6 @@ impl Presence {
             self.last_player_state = None;
         }
         Ok(())
-    }
-
-    #[allow(dead_code)]
-    pub fn force_reconnect(&mut self) {
-        debug!(
-            "Forcing Discord reconnection for player: {}",
-            self.player.identity()
-        );
-        self.needs_reconnection.store(true, Ordering::Relaxed);
-        self.last_player_state = None;
     }
 
     fn determine_activity_type(
@@ -503,32 +718,18 @@ impl Presence {
         !self.update_snapshot_matches_current(player, snapshot, checkpoint)
     }
 
-    async fn update_activity(
-        &self,
-        player: &Player,
-        generation: Option<u64>,
-    ) -> Result<(), DiscordError> {
-        let Some(discord_client) = &self.discord_client else {
+    fn clear_discord_activity_with_reason(&self, reason: &str) -> Result<(), DiscordError> {
+        // Skip redundant clears — prevents log spam from duplicate MPRIS
+        // players (e.g. firefox + plasma-browser-integration) both emitting
+        // frozen-position events for the same stopped track.
+        if !self.discord_activity_is_set.load(Ordering::Relaxed) {
+            trace!("Skipping redundant clear: {}", reason);
             return Ok(());
-        };
-
-        let playback_status = player.get_playback_status().map_err(|err| {
-            error!("Failed to get playback status: {}", err);
-            DiscordError::ActivityError(format!("Failed to get playback status: {}", err))
-        })?;
-
-        if playback_status == PlaybackStatus::Stopped || playback_status == PlaybackStatus::Paused {
-            if !self.error_logged.load(Ordering::Relaxed) {
-                info!(
-                    "Clearing Discord activity - player {} is {}",
-                    player.identity(),
-                    if playback_status == PlaybackStatus::Stopped {
-                        "stopped"
-                    } else {
-                        "paused"
-                    }
-                );
-            }
+        }
+        if !self.error_logged.load(Ordering::Relaxed) {
+            info!("{}", reason);
+        }
+        if let Some(discord_client) = self.discord_client.clone() {
             discord_client.lock().clear_activity().map_err(|err| {
                 if !self.error_logged.load(Ordering::Relaxed) {
                     error!("Failed to clear Discord activity: {}", err);
@@ -536,75 +737,155 @@ impl Presence {
                 }
                 DiscordError::ActivityError(err.to_string())
             })?;
+            self.discord_activity_is_set.store(false, Ordering::Relaxed);
+        }
+        Ok(())
+    }
+
+    async fn update_activity(
+        &mut self,
+        mut generation: Option<u64>,
+        art_decision: health::ArtDecision,
+        playback_status: Option<PlaybackStatus>,
+    ) -> Result<(), DiscordError> {
+        if self.discord_client.is_none() {
+            return Ok(());
+        }
+
+        let playback_status = match playback_status {
+            Some(s) => s,
+            None => self.player.get_playback_status().map_err(|err| {
+                error!("Failed to get playback status: {}", err);
+                DiscordError::ActivityError(format!("Failed to get playback status: {}", err))
+            })?,
+        };
+
+        if playback_status == PlaybackStatus::Stopped || playback_status == PlaybackStatus::Paused {
+            self.clear_discord_activity_with_reason(&format!(
+                "Clearing Discord activity - player {} is {}",
+                self.player.identity(),
+                if playback_status == PlaybackStatus::Stopped {
+                    "stopped"
+                } else {
+                    "paused"
+                }
+            ))?;
             return Ok(());
         }
 
         trace!(
             "Building Discord activity for player: {}",
-            player.identity()
+            self.player.identity()
         );
-        let metadata = match player.get_metadata() {
+        let metadata = match self.player.get_metadata() {
             Ok(metadata) => metadata,
             Err(e) => {
                 warn!("Failed to get metadata for player: {}", e);
                 return Ok(());
             }
         };
-        let update_snapshot = UpdateSnapshot::from_mpris(playback_status.clone(), &metadata);
-        trace!("Metadata: {:?}", metadata);
+        let update_snapshot = UpdateSnapshot::from_mpris(playback_status, &metadata);
+        debug!(
+            "Raw MPRIS metadata from player: {}",
+            summarize_metadata_for_log(&metadata)
+        );
 
-        let player_bus_name = canonical_player_bus_name(player.bus_name());
-        let player_config = self
-            .config
-            .get_player_config(player.identity(), &player_bus_name);
-        let is_cmus = player_bus_name == "cmus" || player.identity().eq_ignore_ascii_case("cmus");
-        let cmus_override_url = if is_cmus {
-            let track_token = metadata
-                .track_id()
-                .map(|id| id.to_string())
-                .or_else(|| metadata.url().map(|url| url.to_string()))
-                .or_else(|| metadata.title().map(|title| title.to_string()));
-            let track_changed = {
-                let guard = self.last_cmus_track_id.lock();
-                track_token.as_deref() != guard.as_deref()
+        // Detect a track change relative to the last push and bump the
+        // generation counter so any in-flight cover-art task spawned for the
+        // previous track aborts before re-pushing its (now stale) result.
+        // Event-driven mode already bumps from the listener thread; this path
+        // makes the same guarantee hold in polling mode.
+        //
+        // Also compare art_url: plasma-browser-integration reuses the same
+        // track_id AND xesam:url across tracks, and updates artUrl to the
+        // correct file 2-5s after the other metadata fields. Bumping the
+        // generation on an art_url change both aborts the stale fetch that
+        // read the old file AND resets cover_fetch_generation so a correct
+        // task can spawn with the updated path.
+        let track_changed = {
+            let track_id = metadata.track_id().map(|id| id.to_string());
+            let track_url = metadata.url().map(|url| url.to_string());
+            let art_url = metadata.art_url();
+            let mut last_id = self.last_pushed_track_id.lock();
+            let mut last_url = self.last_pushed_track_url.lock();
+            let mut last_art = self.last_pushed_art_url.lock();
+
+            // Stable track_id: only detect change when BOTH are Some and differ.
+            // The bridge sometimes drops mpris:trackid on some update cycles;
+            // treating absent→present as a change would fire on every alternation.
+            let id_changed = match (last_id.as_deref(), track_id.as_deref()) {
+                (Some(last), Some(current)) => last != current,
+                _ => false,
             };
 
-            if track_changed {
-                *self.last_cmus_track_id.lock() = track_token.map(|token| token.into_boxed_str());
-                *self.last_cmus_path.lock() = None;
-                self.cmus_error_logged.store(false, Ordering::Relaxed);
-            }
+            let url_changed = match (last_url.as_deref(), track_url.as_deref()) {
+                (Some(last), Some(current)) => last != current,
+                (None, Some(_)) => true,  // first URL seen
+                (Some(_), None) => false, // URL disappeared — keep last
+                (None, None) => false,
+            };
 
-            if self.last_cmus_path.lock().is_none() {
-                match cmus::get_current_track_path().await {
-                    Ok(Some(path)) => {
-                        *self.last_cmus_path.lock() = Some(path);
-                    }
-                    Ok(None) => {}
-                    Err(err) => {
-                        if !self.cmus_error_logged.load(Ordering::Relaxed) {
-                            warn!("cmus-remote failed: {}", err);
-                            self.cmus_error_logged.store(true, Ordering::Relaxed);
-                        }
-                    }
+            // Art URL comparison: strip query params (YouTube cache-busting
+            // noise from sqp= and rs= parameters). The path alone identifies
+            // the actual image content.
+            let art_changed = match (last_art.as_deref(), art_url) {
+                (Some(last), Some(current)) => {
+                    utils::normalize_art_url(last) != utils::normalize_art_url(&current)
+                }
+                (None, Some(_)) => true,  // first art URL seen
+                (Some(_), None) => false, // art URL disappeared — keep last
+                (None, None) => false,
+            };
+
+            let changed = id_changed || url_changed || art_changed;
+            if changed {
+                debug!(
+                    "track change detected: id={} url={} art={} gen={}",
+                    id_changed,
+                    url_changed,
+                    art_changed,
+                    self.update_generation.load(Ordering::Relaxed),
+                );
+                // Only update stored values when meaningful.
+                // Prevents absent/present cycling from overwriting good state.
+                if let Some(ref id) = track_id {
+                    *last_id = Some(id.clone());
+                }
+                if let Some(ref url) = track_url {
+                    *last_url = Some(url.clone());
+                }
+                if let Some(ref art) = art_url {
+                    // Store normalized so next poll's comparison is stable.
+                    *last_art = Some(utils::normalize_art_url(art));
                 }
             }
-
-            let cmus_path = self.last_cmus_path.lock().clone();
-            if let Some(path) = cmus_path {
-                match Url::from_file_path(&path) {
-                    Ok(url) => Some(url.to_string()),
-                    Err(_) => {
-                        if !self.cmus_error_logged.load(Ordering::Relaxed) {
-                            warn!("cmus-remote returned non-file path: {:?}", path);
-                            self.cmus_error_logged.store(true, Ordering::Relaxed);
-                        }
-                        None
-                    }
-                }
-            } else {
-                None
+            changed
+        };
+        if track_changed {
+            let new_gen = self.update_generation.fetch_add(1, Ordering::Relaxed) + 1;
+            self.update_notify.notify_waiters();
+            // Allow the new track to spawn its own cover-art background task.
+            // Setting to 0 means "no fetch in flight" — a new track can always spawn.
+            self.cover_fetch_generation.store(0, Ordering::Release);
+            // Cancel any in-flight provider job (MusicBrainz, uploads) so
+            // bandwidth and API quota aren't wasted on a stale track.
+            {
+                let mut token = self.cover_cancel_token.lock();
+                token.cancel();
+                *token = CancellationToken::new();
             }
+            // Re-read the bumped generation so the stale checks below don't
+            // abort this very same push. Both the polling path (update()) and
+            // the event-driven path (handle_event) can experience this: the
+            // caller loaded the pre-bump generation, but we just bumped it.
+            generation = Some(new_gen);
+        }
+
+        let player_bus_name = canonical_player_bus_name(self.player.bus_name());
+        let is_cmus =
+            player_bus_name == "cmus" || self.player.identity().eq_ignore_ascii_case("cmus");
+        let cmus_override_url = if is_cmus {
+            self.cmus.resolve_url(&metadata).await
         } else {
             None
         };
@@ -613,12 +894,15 @@ impl Presence {
             Some(url) => {
                 metadata::MetadataSource::from_mpris_with_override(metadata.clone(), Some(url))
             }
-            None => metadata::MetadataSource::from_mpris(metadata.clone()),
+            None => metadata::MetadataSource::from_mpris_with_override(metadata.clone(), None),
         };
 
-        debug!("--- Raw Metadata Start ---");
+        debug!("--- Raw MPRIS Metadata Start ---");
         if let Some(mpris_meta) = metadata_source.mpris_metadata() {
-            debug!("MPRIS Metadata Map:");
+            debug!(
+                "MPRIS Metadata Map ({} entries):",
+                mpris_meta.iter().count()
+            );
             for (key, value) in mpris_meta.iter() {
                 debug!(
                     "  MPRIS Key: '{}', Value: {}",
@@ -629,31 +913,100 @@ impl Presence {
         } else {
             debug!("No MPRIS Metadata available in source.");
         }
-        if let Some(lofty_tag) = metadata_source.lofty_tag() {
-            debug!("Lofty Primary Tag ({:?}):", lofty_tag.file_type());
-            if let Some(tag) = lofty_tag.primary_tag() {
-                for item in tag.items() {
-                    debug!("  Lofty Key: {:?}, Value: {:?}", item.key(), item.value());
-                }
-            } else {
-                debug!("  No primary tag found by Lofty.");
-            }
-            debug!("Lofty Properties: {:?}", lofty_tag.properties());
-        } else {
-            debug!(
-                "No Lofty TaggedFile available in source (likely not a local file or read failed)."
-            );
-        }
-        debug!("--- Raw Metadata End ---");
+        debug!("--- Raw MPRIS Metadata End ---");
 
-        let media_metadata = metadata_source.to_media_metadata();
+        // --- Snapshot check: skip template rendering if nothing relevant changed ---
+        // The snapshot captures playback_status + TrackFingerprint.  Volume is
+        // checked separately because it's part of the template context but not
+        // included in UpdateSnapshot.  Position-only updates don't affect templates.
+        let volume = self.player.get_volume().ok();
+
+        let mut media_metadata = metadata_source.to_media_metadata();
         let track_url: Option<String> = metadata_source.url();
         let track_url_ref = track_url.as_deref();
+
+        let (player_config, title_suffix) = self.config.get_player_config_with_title_fallback(
+            self.player.identity(),
+            &player_bus_name,
+            track_url_ref,
+            media_metadata.title.as_deref(),
+        );
+
+        // Strip the matched title suffix (e.g. " | YouTube Music") from the
+        // displayed title so Discord shows only the track name.
+        if let Some(ref suffix) = title_suffix {
+            if let Some(ref mut title) = media_metadata.title {
+                if let Some(stripped) = title.strip_suffix(suffix.as_str()) {
+                    *title = stripped.trim_end().to_string();
+                }
+            }
+        }
+
+        let snapshot_matches = self
+            .last_rendered_snapshot
+            .as_ref()
+            .is_some_and(|cached| *cached == update_snapshot);
+
+        debug!("Resolved MediaMetadata: {:?}", media_metadata);
+
+        let activity_texts = if snapshot_matches && volume == self.last_rendered_volume {
+            // Fast path: nothing that affects template output has changed.
+            // Reuse the previously rendered texts — saves 4 Handlebars renders.
+            if let Some(ref cached) = self.last_activity_texts {
+                trace!(
+                    "Skipping template rendering — snapshot and volume unchanged for {}",
+                    self.player.identity()
+                );
+                cached.clone()
+            } else {
+                // Cache was populated by a previous push for this snapshot/volume
+                // (first tick on this track). Fall through to render below.
+                self.render_and_cache_texts(
+                    playback_status,
+                    &media_metadata,
+                    &player_config,
+                    &update_snapshot,
+                    volume,
+                )?
+            }
+        } else {
+            self.render_and_cache_texts(
+                playback_status,
+                &media_metadata,
+                &player_config,
+                &update_snapshot,
+                volume,
+            )?
+        };
+
+        trace!("Template rendering complete, proceeding to activity push");
+
+        // Reconcile the Discord IPC client when the resolved app id changes
+        // (e.g. the active [web_player.*] overlay matched a different service).
+        let new_app_id = player_config.app_id.clone();
+        let needs_app_swap = {
+            let last = self.last_effective_app_id.lock();
+            last.as_deref() != Some(new_app_id.as_str())
+        };
+        if needs_app_swap {
+            debug!(
+                "Effective Discord app id changed to {} (recycling IPC client)",
+                new_app_id
+            );
+            self.destroy_discord_client()?;
+            self.initialize_discord_client_with_app_id(&new_app_id)?;
+            self.ensure_connection()?;
+        }
+
+        let Some(discord_client) = self.discord_client.clone() else {
+            trace!("No Discord client available, skipping activity push");
+            return Ok(());
+        };
 
         if !player_config.allow_streaming && track_url_ref.is_some_and(utils::is_streaming_url) {
             info!(
                 "Skipping Discord activity - streaming source blocked for player {}",
-                player.identity()
+                self.player.identity()
             );
             discord_client.lock().clear_activity().map_err(|err| {
                 if !self.error_logged.load(Ordering::Relaxed) {
@@ -671,7 +1024,7 @@ impl Presence {
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards");
 
-            let position = player.get_position().unwrap_or_default();
+            let position = self.player.get_position().unwrap_or_default();
             trace!("Player position: {:?}", position);
             let start_dur = now.checked_sub(position).unwrap_or_default();
             trace!("Start duration: {:?}", start_dur);
@@ -695,62 +1048,10 @@ impl Presence {
             (None, None)
         };
 
-        let activity_texts = self
-            .template_manager
-            .render_activity_texts(player, media_metadata)?;
-
-        // Checkpoint 1: abort before the expensive cover art HTTP fetch if a newer
-        // TrackChanged has already superseded this update.
+        // Checkpoint 1: abort before any cover lookup if a newer TrackChanged
+        // has already superseded this update.
         if !self.generation_matches(generation) {
-            trace!("before cover fetch: generation mismatch; discarding stale update");
-            return Ok(());
-        }
-
-        let cover_art_result = if let Some(gen) = generation {
-            tokio::select! {
-                result = self.cover_manager.get_cover_art(metadata_source.art_source(), &metadata_source) => result,
-                _ = self.update_notify.notified() => {
-                    if self.update_generation.load(Ordering::Relaxed) != gen {
-                        trace!("cover fetch cancelled: newer track arrived while provider was working");
-                        return Ok(());
-                    }
-                    self.cover_manager
-                        .get_cover_art(metadata_source.art_source(), &metadata_source)
-                        .await
-                }
-            }
-        } else {
-            self.cover_manager
-                .get_cover_art(metadata_source.art_source(), &metadata_source)
-                .await
-        };
-
-        let cover_art_url = match cover_art_result {
-            Ok(Some(url)) => {
-                debug!("Found cover art URL for Discord presence");
-                trace!("Cover art URL: {}", url);
-                Some(url)
-            }
-            Ok(None) => {
-                debug!("No cover art available for Discord presence");
-                None
-            }
-            Err(e) => {
-                warn!("Failed to retrieve cover art: {}", e);
-                trace!("Cover art must be accessible via HTTP/HTTPS for Discord");
-                None
-            }
-        };
-
-        // Checkpoint 2: discard result if the player changed while cover art was fetching.
-        // This protects polling and event-driven mode even while the event loop is blocked
-        // awaiting a slow cover provider: only the currently playing track may update Discord.
-        if self.should_discard_stale_update(
-            player,
-            generation,
-            &update_snapshot,
-            "after cover fetch",
-        ) {
+            trace!("before cover lookup: generation mismatch; discarding stale update");
             return Ok(());
         }
 
@@ -759,73 +1060,80 @@ impl Presence {
             &player_config,
             track_url_ref,
         );
+        let status_display_type = resolve_status_display_type(&player_config);
 
-        let mut activity = Activity::default()
-            .activity_type(activity_type.into())
-            .status_display_type(resolve_status_display_type(&player_config).into());
-
-        if !activity_texts.details.is_empty() {
-            trace!("Setting activity details: {}", activity_texts.details);
-            activity = activity.details(&activity_texts.details);
+        // Fast path: try a sync, in-process cache lookup so a cached cover
+        // attaches to the very first push. Cache miss → push immediately with
+        // the player icon, then fetch the real cover in the background.
+        let current_generation =
+            generation.unwrap_or_else(|| self.update_generation.load(Ordering::Relaxed));
+        let cached_cover = self
+            .cover_manager
+            .try_cached_cover_art(&metadata_source, art_decision.read_cache);
+        if let Some(cover_url) = cached_cover.as_deref() {
+            debug!("Serving cached cover art on fast path: {}", cover_url);
+            *self.last_resolved_cover_art.lock() =
+                Some((current_generation, cover_url.to_string()));
         }
 
-        if !activity_texts.state.is_empty() {
-            trace!("Setting activity state: {}", activity_texts.state);
-            activity = activity.state(&activity_texts.state);
-        }
-
-        if let Some(start) = start_s {
-            activity = activity.timestamps({
-                let ts = Timestamps::default().start(start as i64);
-                if let Some(end) = end_s {
-                    trace!("Setting activity timestamps: start={}, end={}", start, end);
-                    ts.end(end as i64)
-                } else {
-                    trace!("Setting activity timestamps: start={}", start);
-                    ts
-                }
-            });
-        }
-
-        let mut assets = Assets::default();
-
-        if let Some(img_url) = &cover_art_url {
-            trace!("Setting Discord large image asset (cover art): {}", img_url);
-            assets = assets.large_image(img_url);
-            if !activity_texts.large_text.is_empty() {
-                trace!("Setting Discord large text: {}", activity_texts.large_text);
-                assets = assets.large_text(&activity_texts.large_text);
-            }
-
-            if player_config.show_icon {
-                trace!(
-                    "Setting Discord small image asset (player icon): {}",
-                    player_config.icon
-                );
-                assets = assets.small_image(player_config.icon.as_str());
-                if !activity_texts.small_text.is_empty() {
-                    trace!("Setting Discord small text: {}", activity_texts.small_text);
-                    assets = assets.small_text(&activity_texts.small_text);
-                }
-            }
+        // Fast-path fallback: if not cached, check if mpris:artUrl is a
+        // public CDN URL (e.g. YouTube/SoundCloud) that Discord can use
+        // directly. Avoids the "no cover → background fetch → second push"
+        // delay for bridge-provided art URLs.
+        let direct_cover = if cached_cover.is_none() {
+            metadata_source
+                .mpris_metadata()
+                .and_then(|m| m.art_url())
+                .filter(|url| crate::cover::CoverManager::is_direct_url_allowed(url))
+                .or_else(|| None)
         } else {
-            trace!(
-                "No cover art found, using player icon as large image: {}",
-                player_config.icon
-            );
-            assets = assets.large_image(player_config.icon.as_str());
-            if !activity_texts.large_text.is_empty() {
-                trace!("Setting Discord large text: {}", activity_texts.large_text);
-                assets = assets.large_text(&activity_texts.large_text);
-            }
+            None
+        };
+        if let Some(ref cover_url) = direct_cover {
+            debug!("Serving direct cover art URL on fast path: {}", cover_url);
+            *self.last_resolved_cover_art.lock() =
+                Some((current_generation, cover_url.to_string()));
         }
 
-        activity = activity.assets(assets);
+        // Later same-generation activity refreshes must keep the cover that
+        // the background task already resolved. Otherwise a position/timestamp
+        // refresh pushes cover_art=None and clears Discord's artwork.
+        let remembered_cover = if cached_cover.is_none() {
+            self.last_resolved_cover_art.lock().as_ref().and_then(
+                |(cover_generation, cover_url)| {
+                    (*cover_generation == current_generation).then(|| cover_url.clone())
+                },
+            )
+        } else {
+            None
+        };
+        if let Some(cover_url) = remembered_cover.as_deref() {
+            debug!(
+                "Reusing remembered cover art for current generation {}: {}",
+                current_generation, cover_url
+            );
+        }
+        let cover_for_push = cached_cover
+            .as_deref()
+            .or(direct_cover.as_deref())
+            .or(remembered_cover.as_deref());
+        debug!(
+            "Artwork source for push: {}",
+            if cover_for_push.is_none() {
+                "none (placeholder)"
+            } else if cached_cover.is_some() {
+                "cached_cover"
+            } else if direct_cover.is_some() {
+                "direct_art_url"
+            } else {
+                "remembered_cover"
+            }
+        );
 
-        // Final checkpoint immediately before the Discord write, so a stale async
-        // cover-art result cannot overwrite a newer song/status.
+        // Final checkpoint right before the Discord write so a stale push
+        // cannot overwrite a newer song/status.
         if self.should_discard_stale_update(
-            player,
+            &self.player,
             generation,
             &update_snapshot,
             "before Discord update",
@@ -835,17 +1143,35 @@ impl Presence {
 
         if !self.error_logged.load(Ordering::Relaxed) {
             debug!("Updating Discord activity");
+            debug!(
+                "Activity payload: details={:?}, state={:?}, large_text={:?}, small_text={:?}, cover_art={:?}, activity_type={:?}",
+                activity_texts.details,
+                activity_texts.state,
+                activity_texts.large_text,
+                activity_texts.small_text,
+                cover_for_push,
+                activity_type,
+            );
         }
-        discord_client
-            .lock()
-            .set_activity(activity)
-            .map_err(|err| {
-                if !self.error_logged.load(Ordering::Relaxed) {
-                    error!("Failed to set Discord activity: {}", err);
-                    self.error_logged.store(true, Ordering::Relaxed);
-                }
-                DiscordError::ActivityError(err.to_string())
-            })?;
+        Self::build_and_push_activity(
+            &discord_client,
+            &ActivityFraming {
+                texts: &activity_texts,
+                timing: start_s.map(|s| (s, end_s)),
+                cover_art_url: cover_for_push,
+                player_config: &player_config,
+                activity_type,
+                status_display_type,
+            },
+        )
+        .map_err(|err| {
+            if !self.error_logged.load(Ordering::Relaxed) {
+                error!("Failed to set Discord activity: {}", err);
+                self.error_logged.store(true, Ordering::Relaxed);
+            }
+            err
+        })?;
+        self.discord_activity_is_set.store(true, Ordering::Relaxed);
         if !self.error_logged.load(Ordering::Relaxed) {
             info!(
                 "Updated Discord activity for {} - {} ({:?})",
@@ -856,6 +1182,241 @@ impl Presence {
         }
         self.error_logged.store(false, Ordering::Relaxed);
 
+        // Slow path: cache miss → background cover fetch + second push when ready.
+        // Guard: skip if a background task is already in flight for a newer or
+        // equal generation.  Uses generation-based gating so rapid track skips
+        // allow the newest track to preempt older in-flight fetches.
+        let spawn_gen = current_generation;
+        if cover_for_push.is_none() && {
+            let mut spawned = false;
+            let mut skip_reason: Option<(u64, u64)> = None;
+            loop {
+                let cur = self.cover_fetch_generation.load(Ordering::Acquire);
+                if cur != 0 && cur >= spawn_gen {
+                    // Already a fetch in flight for this or a newer generation.
+                    skip_reason = Some((cur, spawn_gen));
+                    break;
+                }
+                match self.cover_fetch_generation.compare_exchange_weak(
+                    cur,
+                    spawn_gen,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                ) {
+                    Ok(_) => {
+                        spawned = true;
+                        break;
+                    }
+                    Err(_) => continue, // CAS failed, retry
+                }
+            }
+            if let Some((in_flight, wanted)) = skip_reason {
+                debug!(
+                    "skipping background cover fetch: in_flight_gen={} >= spawn_gen={} for {}",
+                    in_flight,
+                    wanted,
+                    self.player.identity(),
+                );
+            }
+            spawned
+        } {
+            let cover_manager = Arc::clone(&self.cover_manager);
+            let discord_client_for_task = Arc::clone(&discord_client);
+            let update_generation = Arc::clone(&self.update_generation);
+            let cancel_token = {
+                let token = self.cover_cancel_token.lock();
+                token.clone()
+            };
+            let last_resolved_cover_art_for_task = Arc::clone(&self.last_resolved_cover_art);
+            let texts_for_task = activity_texts.clone();
+            let player_config_for_task = player_config.clone();
+            let identity_for_task = self.player.identity().to_string();
+            let metadata_source_for_task = metadata_source;
+            let art_source_options_for_task = art_decision.source_options;
+            let read_cache_for_task = art_decision.read_cache;
+            let cover_fetch_gen = Arc::clone(&self.cover_fetch_generation);
+            let discord_activity_is_set_for_task = Arc::clone(&self.discord_activity_is_set);
+            // Always use the freshly-loaded generation (post-bump) so this task
+            // self-cancels on any subsequent track change in either run mode.
+            let fetch_gen = spawn_gen;
+
+            tokio::spawn(async move {
+                // Ensure the in-flight flag is always reset when the task exits.
+                struct InFlightGuard {
+                    gen: Arc<AtomicU64>,
+                    expected: u64,
+                }
+                impl Drop for InFlightGuard {
+                    fn drop(&mut self) {
+                        self.gen
+                            .compare_exchange(self.expected, 0, Ordering::AcqRel, Ordering::Acquire)
+                            .ok();
+                        // If CAS fails, a newer generation is already in flight —
+                        // leave it alone.
+                    }
+                }
+                let _guard = InFlightGuard {
+                    gen: cover_fetch_gen,
+                    expected: fetch_gen,
+                };
+                let art_source =
+                    metadata_source_for_task.art_source_with_options(art_source_options_for_task);
+                let cover_art_result = tokio::select! {
+                    result = cover_manager.get_cover_art(
+                        art_source.clone(),
+                        &metadata_source_for_task,
+                        read_cache_for_task,
+                        &cancel_token,
+                    ) => result,
+                    _ = cancel_token.cancelled() => {
+                        trace!(
+                            "background cover fetch cancelled via token: newer track for {}",
+                            identity_for_task
+                        );
+                        return;
+                    }
+                };
+
+                let cover_url = match cover_art_result {
+                    Ok(Some(url)) => url,
+                    Ok(None) => {
+                        debug!(
+                            "Background cover fetch produced no art for {}",
+                            identity_for_task
+                        );
+                        return;
+                    }
+                    Err(err) => {
+                        warn!(
+                            "Background cover fetch failed for {}: {}",
+                            identity_for_task, err
+                        );
+                        return;
+                    }
+                };
+
+                if update_generation.load(Ordering::Relaxed) != spawn_gen {
+                    trace!(
+                        "background cover result discarded: newer track for {}",
+                        identity_for_task
+                    );
+                    return;
+                }
+
+                trace!("Found cover art URL for Discord presence: {}", cover_url);
+                debug!(
+                    "Artwork source for push: background_fetch generation={} url={}",
+                    spawn_gen, cover_url
+                );
+                *last_resolved_cover_art_for_task.lock() = Some((spawn_gen, cover_url.clone()));
+                if let Err(err) = Self::build_and_push_activity(
+                    &discord_client_for_task,
+                    &ActivityFraming {
+                        texts: &texts_for_task,
+                        timing: start_s.map(|s| (s, end_s)),
+                        cover_art_url: Some(cover_url.as_str()),
+                        player_config: &player_config_for_task,
+                        activity_type,
+                        status_display_type,
+                    },
+                ) {
+                    warn!(
+                        "Failed to push cover art update for {}: {}",
+                        identity_for_task, err
+                    );
+                } else {
+                    info!(
+                        "Updated Discord cover art for {} - {}",
+                        identity_for_task, texts_for_task.details
+                    );
+                    discord_activity_is_set_for_task.store(true, Ordering::Relaxed);
+                }
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Render templates and populate the snapshot/volume/texts cache.
+    /// Centralised so the fast-path fallthrough and full-path don't diverge.
+    fn render_and_cache_texts(
+        &mut self,
+        playback_status: PlaybackStatus,
+        metadata: &MediaMetadata,
+        player_config: &PlayerConfig,
+        snapshot: &UpdateSnapshot,
+        volume: Option<f64>,
+    ) -> Result<ActivityTexts, DiscordError> {
+        trace!(
+            "Rendering templates — snapshot or volume changed for {}",
+            self.player.identity()
+        );
+        let texts = self.template_manager.render_activity_texts(
+            &self.player,
+            playback_status,
+            metadata.clone(),
+            player_config.name.as_deref(),
+        )?;
+        self.last_rendered_snapshot = Some(snapshot.clone());
+        self.last_rendered_volume = volume;
+        self.last_activity_texts = Some(texts.clone());
+        Ok(texts)
+    }
+
+    /// Build a Discord `Activity` and push it. Callable from both the fast
+    /// path (event handler) and the slow path (background cover fetch task)
+    /// because it captures no `&self` state — all inputs are owned or
+    /// `Arc`-shared.
+    fn build_and_push_activity(
+        discord_client: &Arc<Mutex<DiscordIpcClient>>,
+        framing: &ActivityFraming<'_>,
+    ) -> Result<(), DiscordError> {
+        let mut activity = Activity::default()
+            .activity_type(framing.activity_type.into())
+            .status_display_type(framing.status_display_type.into());
+
+        if !framing.texts.details.is_empty() {
+            activity = activity.details(&framing.texts.details);
+        }
+        if !framing.texts.state.is_empty() {
+            activity = activity.state(&framing.texts.state);
+        }
+
+        if let Some((start, end)) = framing.timing {
+            activity = activity.timestamps({
+                let ts = Timestamps::default().start(start as i64);
+                if let Some(end) = end {
+                    ts.end(end as i64)
+                } else {
+                    ts
+                }
+            });
+        }
+
+        let mut assets = Assets::default();
+        if let Some(img_url) = framing.cover_art_url {
+            assets = assets.large_image(img_url);
+            if !framing.texts.large_text.is_empty() {
+                assets = assets.large_text(&framing.texts.large_text);
+            }
+            if framing.player_config.show_icon {
+                assets = assets.small_image(framing.player_config.icon.as_str());
+                if !framing.texts.small_text.is_empty() {
+                    assets = assets.small_text(&framing.texts.small_text);
+                }
+            }
+        } else {
+            assets = assets.large_image(framing.player_config.icon.as_str());
+            if !framing.texts.large_text.is_empty() {
+                assets = assets.large_text(&framing.texts.large_text);
+            }
+        }
+        activity = activity.assets(assets);
+
+        discord_client
+            .lock()
+            .set_activity(activity)
+            .map_err(|err| DiscordError::ActivityError(err.to_string()))?;
         Ok(())
     }
 
@@ -875,9 +1436,11 @@ impl Presence {
         trace!("Presence managers updated successfully");
 
         self.last_player_state = None;
-        *self.last_cmus_track_id.lock() = None;
-        *self.last_cmus_path.lock() = None;
-        self.cmus_error_logged.store(false, Ordering::Relaxed);
+        self.cmus.reset();
+        *self.last_pushed_track_id.lock() = None;
+        *self.last_pushed_track_url.lock() = None;
+        *self.last_pushed_art_url.lock() = None;
+        *self.last_resolved_cover_art.lock() = None;
     }
 
     /// Event-driven mode entry point. Returns `ShouldRemove` when the listener has terminated
@@ -908,10 +1471,14 @@ impl Presence {
             | PlayerEventKind::Mpris(MprisEvent::PlaybackRateChanged(_))
             | PlayerEventKind::Mpris(MprisEvent::TrackAdded(_))
             | PlayerEventKind::Mpris(MprisEvent::TrackRemoved(_))
-            | PlayerEventKind::Mpris(MprisEvent::TrackMetadataChanged { .. })
             | PlayerEventKind::Mpris(MprisEvent::TrackListReplaced) => {
                 trace!("ignoring event variant (no Discord-relevant change)");
                 return Ok(EventOutcome::Continue);
+            }
+            PlayerEventKind::Mpris(MprisEvent::TrackMetadataChanged { .. }) => {
+                // plasma-browser-integration can emit corrected mpris:artUrl
+                // after TrackChanged. Let update_activity re-run so it can
+                // bump generation on art changes and refresh Discord artwork.
             }
             PlayerEventKind::Mpris(MprisEvent::TrackChanged(_)) => {
                 // Force the next polling-style diff (if event_driven flips off) to detect a change.
@@ -934,13 +1501,134 @@ impl Presence {
             None
         };
 
+        // Cancel stale provider jobs so a new track's cover fetch doesn't
+        // waste bandwidth competing with the old one.
+        if is_track_change {
+            let mut token = self.cover_cancel_token.lock();
+            token.cancel();
+            *token = CancellationToken::new();
+            self.cover_fetch_generation.store(0, Ordering::Release);
+        }
+
         let Some(_discord_client) = &self.discord_client else {
             return Ok(EventOutcome::Continue);
         };
 
         self.ensure_connection()?;
 
-        if let Err(err) = self.update_activity(&self.player, generation).await {
+        // Get current track's art decision from the health state machine.
+        // For TrackChanged events, run a full health transition so the state
+        // machine can react to the new track.
+        // Other events keep the existing snapshot behaviour.
+        let art_decision;
+        let playback_status: Option<PlaybackStatus>;
+        if is_track_change {
+            let metadata = match self.player.get_metadata() {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!("Failed to get metadata in handle_event: {}", e);
+                    return Ok(EventOutcome::Continue);
+                }
+            };
+            let track = health::TrackFingerprint::from_mpris(&metadata);
+            let position = self.player.get_position().unwrap_or_default();
+            let now = Instant::now();
+            let status = self
+                .player
+                .get_playback_status()
+                .unwrap_or(PlaybackStatus::Playing);
+            playback_status = Some(status);
+            let is_browser =
+                Self::is_browser_source(self.player.bus_name(), self.player.identity());
+            let gen = generation.unwrap_or(0);
+            let input = health::HealthCheckInput {
+                playback_status: status,
+                position,
+                track: &track,
+                track_length: track.length,
+                is_browser_source: is_browser,
+                generation: gen,
+                now,
+                last_event: now,
+            };
+            let outcome = {
+                let mut h = self.health.lock();
+                h.transition(&input)
+            };
+            match outcome {
+                health::TransitionOutcome::Push {
+                    art_decision: ad, ..
+                } => {
+                    art_decision = ad;
+                }
+                health::TransitionOutcome::Clear => {
+                    self.clear_discord_activity_with_reason(&format!(
+                        "Clearing Discord activity - player {} is stalled/stopped/paused (event)",
+                        self.player.identity()
+                    ))?;
+                    return Ok(EventOutcome::Continue);
+                }
+                health::TransitionOutcome::Noop => {
+                    return Ok(EventOutcome::Continue);
+                }
+            }
+        } else {
+            playback_status = self.player.get_playback_status().ok();
+            // Non-TrackChanged events: skip Discord push if nothing
+            // changed since the last tick (same guard as the polling
+            // path in update()). Without this, the bridge's MPRIS
+            // signals (e.g. TrackMetadataChanged from each DOM poll,
+            // or Playing/Paused from YouTube ad breaks) push to
+            // Discord every 1-3 seconds.
+            let metadata = match self.player.get_metadata() {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!(
+                        "Failed to get metadata for significant_change check in handle_event: {}",
+                        e
+                    );
+                    return Ok(EventOutcome::Continue);
+                }
+            };
+            let new_state = PlaybackState::from_with_status(
+                &self.player,
+                playback_status.unwrap_or(PlaybackStatus::Stopped),
+                &metadata,
+            );
+            let effective_interval = if self.config.event_driven() {
+                self.config.fallback_poll_interval()
+            } else {
+                self.config.interval()
+            };
+            {
+                let previous_state = self.last_player_state.as_ref();
+                if let Some(prev) = previous_state {
+                    let has_sig = new_state.has_significant_changes(prev)
+                        || new_state.has_position_jump(
+                            prev,
+                            Duration::from_millis(effective_interval),
+                            Duration::ZERO,
+                        );
+                    if !has_sig {
+                        trace!(
+                            "Skipping Discord push from event - no significant changes for {}",
+                            self.player.identity()
+                        );
+                        self.last_player_state = Some(new_state);
+                        return Ok(EventOutcome::Continue);
+                    }
+                }
+            }
+            self.last_player_state = Some(new_state);
+
+            // Snapshot existing art_decision for the push.
+            let current_track = health::TrackFingerprint::from_mpris(&metadata);
+            art_decision = self.health.lock().art_decision(&current_track);
+        }
+        if let Err(err) = self
+            .update_activity(generation, art_decision, playback_status)
+            .await
+        {
             if matches!(err, DiscordError::ActivityError(_)) {
                 if !self.error_logged.load(Ordering::Relaxed) {
                     warn!("Discord connection error, will attempt to reconnect next event");
@@ -970,7 +1658,10 @@ impl Presence {
             self.stop_listener();
         }
         let cancel = Arc::new(AtomicBool::new(false));
-        let handle = events::spawn_listener(
+        // The JoinHandle is intentionally dropped — the listener thread blocks
+        // on a D-Bus call we can't interrupt, so it's detached and exits on its
+        // own once `cancel` flips or the player disappears.
+        let _ = events::spawn_listener(
             current_bus.clone(),
             norm_id,
             tx,
@@ -979,19 +1670,18 @@ impl Presence {
             self.update_notify.clone(),
         );
         self.listener_cancel = Some(cancel);
-        self.listener_handle = Some(handle);
         self.listener_bus = Some(current_bus);
     }
 
-    /// Cancel the listener thread (detached; thread exits on the next event or D-Bus tick).
+    /// Cancel the listener thread. NOTE: cancellation is best-effort — the
+    /// thread blocks on `mpris::Player::events()` and only checks the cancel
+    /// flag on the next D-Bus event, so it may live on briefly after this
+    /// returns. The trailing `ListenerExited` event is dropped silently by
+    /// `Mprisence::handle_player_event` when the norm_id is no longer tracked.
     pub fn stop_listener(&mut self) {
         if let Some(cancel) = self.listener_cancel.take() {
             cancel.store(true, Ordering::Relaxed);
         }
-        // Drop the JoinHandle without joining — the blocking D-Bus call cannot be interrupted
-        // synchronously, so the thread is left to exit on its own when the next event arrives
-        // or the player disappears.
-        self.listener_handle.take();
         self.listener_bus = None;
     }
 }
@@ -1000,6 +1690,22 @@ impl Drop for Presence {
     fn drop(&mut self) {
         self.stop_listener();
     }
+}
+
+/// Create a fresh D-Bus connection to a player and re-read its playback
+/// status. Used to detect stale-connection state where the stored
+/// `Presence::player` holds a connection to an old MPRIS object that was
+/// replaced (e.g. bridge pruning + re-creating its sources).
+async fn recheck_playback_status(bus_name: &str) -> Option<PlaybackStatus> {
+    use mpris::PlayerFinder;
+    let mut finder = PlayerFinder::new().ok()?;
+    finder.set_player_timeout_ms(3000);
+    let player = finder
+        .iter_players()
+        .ok()?
+        .filter_map(|p| p.ok())
+        .find(|p| p.bus_name() == bus_name)?;
+    player.get_playback_status().ok()
 }
 
 #[cfg(test)]
@@ -1048,5 +1754,15 @@ mod tests {
             resolve_status_display_type(&default_app_details),
             StatusDisplayType::Details
         );
+    }
+
+    #[test]
+    fn art_log_summary_truncates_embedded_payloads() {
+        let data_url = format!("data:image/png;base64,{}", "A".repeat(512));
+        let summary = summarize_log_value("mpris:artUrl", &data_url);
+
+        assert!(summary.contains("embedded art"));
+        assert!(summary.len() < data_url.len());
+        assert!(!summary.contains(&"A".repeat(300)));
     }
 }

@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::time::Duration;
 
 use crate::cover::sources::ArtSource;
@@ -6,6 +5,7 @@ use crate::utils::{
     format_audio_channels, format_bit_depth, format_bitrate, format_duration, format_sample_rate,
     format_track_number,
 };
+use blake3::Hasher;
 use lofty::{
     file::{AudioFile, TaggedFile, TaggedFileExt},
     prelude::*,
@@ -187,6 +187,9 @@ pub struct MetadataSource {
     mpris_metadata: Option<Metadata>,
     tagged_file: Option<TaggedFile>,
     override_url: Option<String>,
+    /// Memoized cover-cache key. Computed once via `generate_cache_key()`
+    /// and reused across fast-path and slow-path lookups on the same track.
+    cache_key: std::sync::OnceLock<String>,
 }
 
 impl MetadataSource {
@@ -195,11 +198,8 @@ impl MetadataSource {
             mpris_metadata,
             tagged_file: lofty_tagged_file,
             override_url: None,
+            cache_key: std::sync::OnceLock::new(),
         }
-    }
-
-    pub fn from_mpris(metadata: Metadata) -> Self {
-        Self::from_mpris_with_override(metadata, None)
     }
 
     pub fn from_mpris_with_override(metadata: Metadata, override_url: Option<String>) -> Self {
@@ -222,24 +222,19 @@ impl MetadataSource {
             match urlencoding::decode(encoded_path) {
                 Ok(decoded_cow) => {
                     let decoded_path = decoded_cow.into_owned();
-                    Self::lofty_tag_from_path(&decoded_path)
+                    lofty::read_from_path(&decoded_path).map_err(|e| e.to_string())
                 }
                 Err(e) => {
                     warn!(
                         "Failed to URL-decode path '{}': {}. Lofty might fail.",
                         encoded_path, e
                     );
-                    Self::lofty_tag_from_path(encoded_path)
+                    lofty::read_from_path(encoded_path).map_err(|e| e.to_string())
                 }
             }
         } else {
             Err(format!("Unsupported URL scheme: {}", url.scheme()))
         }
-    }
-
-    fn lofty_tag_from_path<P: AsRef<Path>>(path: P) -> Result<TaggedFile, String> {
-        let tagged_file = lofty::read_from_path(path).map_err(|e| e.to_string())?;
-        Ok(tagged_file)
     }
 
     impl_metadata_getter!(title, "xesam:title", ItemKey::TrackTitle);
@@ -367,27 +362,28 @@ impl MetadataSource {
         self.tagged_file.as_ref().map(|t| t.properties())
     }
 
-    pub fn art_source(&self) -> Option<ArtSource> {
+    pub fn art_source_with_options(&self, options: ArtSourceOptions) -> Option<ArtSource> {
         trace!("Getting art source from metadata");
 
-        self.mpris_metadata
+        let art_url = options
+            .allow_mpris_art_url
+            .then(|| self.mpris_metadata.as_ref().and_then(|m| m.art_url()))
+            .flatten();
+        let embedded = self
+            .tagged_file
             .as_ref()
-            .and_then(|m| m.art_url())
-            .and_then(ArtSource::from_art_url)
-            .or_else(|| {
-                self.tagged_file
-                    .as_ref()
-                    .and_then(|t| t.primary_tag())
-                    .and_then(|tag| tag.pictures().first())
-                    .map(|picture| ArtSource::Bytes(picture.data().to_vec()))
-            })
+            .and_then(|t| t.primary_tag())
+            .and_then(|tag| tag.pictures().first())
+            .map(|picture| picture.data().to_vec());
+
+        select_art_source(art_url, embedded)
     }
 
-    #[allow(dead_code)]
     pub fn mpris_metadata(&self) -> Option<&Metadata> {
         self.mpris_metadata.as_ref()
     }
 
+    /// Exposed for the integration test crate and potential external consumers.
     #[allow(dead_code)]
     pub fn lofty_tag(&self) -> Option<&TaggedFile> {
         self.tagged_file.as_ref()
@@ -414,6 +410,68 @@ impl MetadataSource {
             .map(String::from)
     }
 
+    /// Returns the memoized cover-cache key for this track.
+    /// On first call, generates the key via BLAKE3 hashing of sorted
+    /// metadata fields; subsequent calls return the cached string.
+    /// This avoids redundant hashing when both the fast-path and
+    /// background cover-fetch paths need the same key.
+    pub fn cache_key(&self) -> &str {
+        self.cache_key
+            .get_or_init(|| Self::generate_cache_key(self))
+    }
+
+    fn generate_cache_key(&self) -> String {
+        let mut hasher = Hasher::new();
+        let mut key_components = Vec::new();
+
+        if let Some(title) = self.title() {
+            if !title.is_empty() {
+                key_components.push(format!("title:{}", title));
+            }
+        }
+        if let Some(mut artists) = self.artists() {
+            if !artists.is_empty() {
+                artists.sort_unstable();
+                key_components.push(format!("artists:{}", artists.join("|")));
+            }
+        }
+        if let Some(album) = self.album() {
+            if !album.is_empty() {
+                key_components.push(format!("album:{}", album));
+                if let Some(mut album_artists) = self.album_artists() {
+                    if !album_artists.is_empty() && Some(&album_artists) != self.artists().as_ref()
+                    {
+                        album_artists.sort_unstable();
+                        key_components.push(format!("album_artists:{}", album_artists.join("|")));
+                    }
+                }
+            }
+        }
+        if let Some(url) = self.url() {
+            if !url.is_empty() {
+                key_components.push(format!("url:{}", url));
+            }
+        }
+        if let Some(track_id) = self.track_id() {
+            if !track_id.is_empty() {
+                key_components.push(format!("track_id:{}", track_id));
+            }
+        }
+        if let Some(art_url) = self
+            .mpris_metadata()
+            .and_then(|m| m.art_url())
+            .filter(|s| !s.is_empty())
+        {
+            key_components.push(format!("art_url:{}", art_url));
+        }
+        if key_components.is_empty() {
+            key_components.push("default_mprisence_key".to_string());
+        }
+        let combined = key_components.join("||");
+        hasher.update(combined.as_bytes());
+        hasher.finalize().to_hex().to_string()
+    }
+
     pub fn content_created(&self) -> Option<String> {
         self.mpris_metadata
             .as_ref()
@@ -437,15 +495,24 @@ impl MetadataSource {
         };
 
         if let Some(artists) = self.artists() {
-            metadata.artists = artists.clone();
-            metadata.artist_display = Some(artists.join(", "));
+            let artists: Vec<String> = artists.into_iter().filter(|s| !s.is_empty()).collect();
+            if !artists.is_empty() {
+                metadata.artist_display = Some(artists.join(", "));
+                metadata.artists = artists;
+            }
         }
 
         metadata.album = self.album();
 
         if let Some(album_artists) = self.album_artists() {
-            metadata.album_artists = album_artists.clone();
-            metadata.album_artist_display = Some(album_artists.join(", "));
+            let album_artists: Vec<String> = album_artists
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !album_artists.is_empty() {
+                metadata.album_artist_display = Some(album_artists.join(", "));
+                metadata.album_artists = album_artists;
+            }
         }
 
         metadata.track_number = self.track_number();
@@ -523,5 +590,92 @@ impl MetadataSource {
         }
 
         metadata
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ArtSourceOptions {
+    pub allow_mpris_art_url: bool,
+}
+
+impl Default for ArtSourceOptions {
+    fn default() -> Self {
+        Self {
+            allow_mpris_art_url: true,
+        }
+    }
+}
+
+/// Pick the best art source from the available inputs.
+///
+/// Priority:
+/// 1. `mpris:artUrl` if it is an `http(s)://` URL — Discord can consume it
+///    directly without a provider upload.
+/// 2. `mpris:artUrl` for any other scheme (`data:image/...;base64,...`,
+///    `file://`, bare path) — needs upload via the provider chain.
+/// 3. Embedded picture from the local file's tag.
+fn select_art_source(art_url: Option<&str>, embedded_bytes: Option<Vec<u8>>) -> Option<ArtSource> {
+    if let Some(url) = art_url {
+        if let Some(src) = ArtSource::from_art_url(url) {
+            return Some(src);
+        }
+    }
+
+    embedded_bytes.map(ArtSource::Bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::select_art_source;
+    use crate::cover::sources::ArtSource;
+    use std::path::PathBuf;
+
+    const PLASMA_FILE: &str = "file:///tmp/plasma-browser-integration_artwork_zmXyTR.jpg";
+
+    #[test]
+    fn remote_http_art_url_wins() {
+        let curated = "https://cdn.example.com/cover.png";
+        let got = select_art_source(Some(curated), None);
+        match got {
+            Some(ArtSource::Url(url)) => assert_eq!(url, curated),
+            other => panic!("expected curated http URL, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn file_art_url_keeps_file() {
+        let got = select_art_source(Some(PLASMA_FILE), None);
+        match got {
+            Some(ArtSource::File(path)) => assert_eq!(
+                path,
+                PathBuf::from("/tmp/plasma-browser-integration_artwork_zmXyTR.jpg")
+            ),
+            other => panic!("expected file source, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn no_art_url_with_embedded_returns_bytes() {
+        let bytes = vec![1u8, 2, 3, 4];
+        let got = select_art_source(None, Some(bytes.clone()));
+        match got {
+            Some(ArtSource::Bytes(b)) => assert_eq!(b, bytes),
+            other => panic!("expected embedded bytes, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn data_art_url_falls_back_to_base64() {
+        let data_uri = "data:image/png;base64,iVBORw0KGgo=";
+        let got = select_art_source(Some(data_uri), None);
+        match got {
+            Some(ArtSource::Base64(payload)) => assert_eq!(payload, "iVBORw0KGgo="),
+            other => panic!("expected base64 source, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn all_inputs_empty_returns_none() {
+        assert!(select_art_source(None, None).is_none());
     }
 }

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use reqwest::{header, Client};
 use std::time::Duration;
+use tokio_util::sync::CancellationToken;
 
 use crate::cover::error::CoverArtError;
 use crate::cover::sources::ArtSource;
@@ -66,5 +67,6 @@ pub trait CoverArtProvider: Send + Sync {
         &self,
         source: ArtSource,
         metadata_source: &MetadataSource,
+        cancel: &CancellationToken,
     ) -> Result<Option<CoverResult>, CoverArtError>;
 }

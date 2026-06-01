@@ -1,7 +1,7 @@
 use crate::{
     config::{
         get_config,
-        schema::{ActivityType, PlayerConfig, StatusDisplayType},
+        schema::{ActivityType, PlayerConfig, StatusDisplayType, WebPlayerConfig},
     },
     error::Error,
     player::{
@@ -88,10 +88,9 @@ impl Command {
                         let player_bus_name = canonical_player_bus_name(player.bus_name());
                         let id = normalize_player_identity(&identity);
                         let allowed = config.is_player_allowed(&identity, &player_bus_name);
-                        let player_config = config.get_player_config(&identity, &player_bus_name);
                         let status = player.get_playback_status().ok();
 
-                        let (title, artists, album, length) = match player.get_metadata() {
+                        let (title, artists, album, length, url) = match player.get_metadata() {
                             Ok(metadata) => {
                                 let title = metadata.title().map(|value| value.to_string());
                                 let artists = metadata.artists().map(|values| {
@@ -104,11 +103,24 @@ impl Command {
                                 let length = metadata
                                     .length()
                                     .map(|value| Duration::from_micros(value.as_micros() as u64));
+                                let url = metadata.url().map(|value| value.to_string());
 
-                                (title, artists, album, length)
+                                (title, artists, album, length, url)
                             }
-                            Err(_) => (None, None, None, None),
+                            Err(_) => (None, None, None, None, None),
                         };
+
+                        // Resolve URL-aware config so the CLI reflects what
+                        // the runtime would actually push (web_player overrides
+                        // can fully replace the browser's player config).
+                        let (player_config, _suffix) = config
+                            .get_player_config_with_title_fallback(
+                                &identity,
+                                &player_bus_name,
+                                url.as_deref(),
+                                title.as_deref(),
+                            );
+                        let web_player_match = config.matched_web_player_for_url(url.as_deref());
 
                         entries.push(PlayerDisplay {
                             id,
@@ -119,6 +131,8 @@ impl Command {
                             artists,
                             album,
                             length,
+                            url,
+                            web_player_match,
                             config: player_config,
                             allowed,
                             is_duplicate: false,
@@ -218,7 +232,7 @@ impl Command {
                             ),
                             format_cell(&identity_display, NAME_COLUMN_WIDTH),
                             format_cell(&summary_title, TITLE_COLUMN_WIDTH),
-                            summary_status_text(
+                            detail_status_text(
                                 entry.status.as_ref(),
                                 entry.config.ignore,
                                 entry.allowed,
@@ -261,6 +275,12 @@ impl Command {
                             }
                             if let Some(length) = entry.length {
                                 println!("  Length   : {}", format_track_length(length));
+                            }
+                            if let Some(url) = &entry.url {
+                                println!("  URL      : {}", url);
+                            }
+                            if let Some((key, website)) = &entry.web_player_match {
+                                println!("  Website  : {}", format_web_player_match(key, website));
                             }
                             println!(
                                 "  Presence : {}",
@@ -340,6 +360,9 @@ impl Command {
                     for (index, (identity, cfg)) in player_configs.iter().enumerate() {
                         let display = player_config_display_name(identity);
                         println!("{} {}", player_config_icon(cfg.ignore), display);
+                        if let Some(name) = cfg.name.as_deref() {
+                            print_nested_key_value("name", name, 4);
+                        }
                         print_nested_key_value("app_id", &cfg.app_id, 4);
                         print_nested_key_value(
                             "allow_streaming",
@@ -363,6 +386,69 @@ impl Command {
                         }
 
                         if index + 1 < player_configs.len() {
+                            println!();
+                        }
+                    }
+                }
+
+                let mut web_player_configs: Vec<(String, WebPlayerConfig)> =
+                    config.web_player_configs().into_iter().collect();
+                web_player_configs.sort_by(|a, b| a.0.cmp(&b.0));
+
+                println!("\nWebsite Overrides");
+                println!("{}", create_divider());
+                if web_player_configs.is_empty() {
+                    println!("  (none)");
+                } else {
+                    for (index, (key, cfg)) in web_player_configs.iter().enumerate() {
+                        println!("{} {}", player_config_icon(cfg.ignore), key);
+                        if cfg.match_patterns.len() == 1 {
+                            print_nested_key_value("match_pattern", &cfg.match_patterns[0], 4);
+                        } else if !cfg.match_patterns.is_empty() {
+                            print_nested_key_value(
+                                "match_patterns",
+                                cfg.match_patterns.join(", "),
+                                4,
+                            );
+                        }
+                        if let Some(name) = cfg.name.as_deref() {
+                            print_nested_key_value("name", name, 4);
+                        }
+                        if let Some(app_id) = cfg.app_id.as_deref() {
+                            print_nested_key_value("app_id", app_id, 4);
+                        } else {
+                            print_nested_key_value("app_id", "(inherits from player)", 4);
+                        }
+                        if let Some(icon) = cfg.icon.as_deref() {
+                            print_nested_key_value("icon", icon, 4);
+                        }
+                        if let Some(allow_streaming) = cfg.allow_streaming {
+                            print_nested_key_value(
+                                "allow_streaming",
+                                format_bool(allow_streaming),
+                                4,
+                            );
+                        }
+                        if let Some(show_icon) = cfg.show_icon {
+                            print_nested_key_value("show_icon", format_bool(show_icon), 4);
+                        }
+                        print_nested_key_value("ignore", format_bool(cfg.ignore), 4);
+                        if let Some(sdt) = cfg.status_display_type {
+                            print_nested_key_value(
+                                "status_display_type",
+                                format_status_display_type(sdt),
+                                4,
+                            );
+                        }
+                        if let Some(activity_type) = cfg.override_activity_type {
+                            print_nested_key_value(
+                                "activity_type",
+                                format_activity_type(Some(activity_type)),
+                                4,
+                            );
+                        }
+
+                        if index + 1 < web_player_configs.len() {
                             println!();
                         }
                     }
@@ -404,6 +490,13 @@ struct PlayerDisplay {
     artists: Option<Vec<String>>,
     album: Option<String>,
     length: Option<Duration>,
+    /// xesam:url from the player's MPRIS metadata. Surfaced in the
+    /// detailed view so the user can see what the runtime sees when
+    /// resolving web_player overrides.
+    url: Option<String>,
+    /// (key, resolved config) of the `[web_player.*]` entry that the runtime
+    /// would project onto this player. None when no web_player matches.
+    web_player_match: Option<(String, WebPlayerConfig)>,
     config: PlayerConfig,
     allowed: bool,
     /// True when another bus name for the same identity was chosen as the
@@ -440,15 +533,6 @@ fn playback_status_word(status: Option<&PlaybackStatus>) -> Option<&'static str>
         Some(PlaybackStatus::Stopped) => Some("stopped"),
         None => None,
     }
-}
-
-fn summary_status_text(
-    status: Option<&PlaybackStatus>,
-    ignored: bool,
-    allowed: bool,
-    is_duplicate: bool,
-) -> String {
-    detail_status_text(status, ignored, allowed, is_duplicate)
 }
 
 fn detail_status_text(
@@ -519,6 +603,17 @@ fn format_artists(artists: &[String]) -> String {
 fn format_track_length(duration: Duration) -> String {
     let total_seconds = duration.as_secs();
     format!("{:02}:{:02}", total_seconds / 60, total_seconds % 60)
+}
+
+fn format_web_player_match(key: &str, website: &WebPlayerConfig) -> String {
+    let pattern_summary = if website.match_patterns.is_empty() {
+        "no patterns".to_string()
+    } else if website.match_patterns.len() == 1 {
+        format!("matched \"{}\"", website.match_patterns[0])
+    } else {
+        format!("patterns: {}", website.match_patterns.join(", "))
+    };
+    format!("{} ({})", key, pattern_summary)
 }
 
 fn format_presence(config: &PlayerConfig, allowed: bool, is_duplicate: bool) -> String {
