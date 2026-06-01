@@ -23,12 +23,12 @@ _(Note: Actual appearance depends on your configuration and the specific media p
 
 ## Supported Players
 
-Ready to use with popular media players (configured in [`config.default.toml`](./config/config.default.toml)):
+Ready to use with popular local players and web players. The full bundled support list lives in [`config.default.toml`](./config/config.default.toml):
 
 - **Media players**: VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer, Supersonic, Feishin, kew, Quod Libet, Euphonica
 - **Streaming apps**: YouTube Music, Spotify (disabled by default)
 - **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
-- **Web players**: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music, Pocket Casts, Apple Podcasts, Podurama, Spotify Web (disabled by default)
+- **Web players**: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music, YouTube (ignored by default)
 
 Note: MPD frontends (e.g., Euphonica) will also show MPD rich presence in Discord; you can disable the MPD entry in your config (see [Configuration Reference](#configuration-reference)).
 
@@ -270,22 +270,24 @@ mprisence can integrate web players through the metadata your browser already ex
 
 ### Supported web players
 
-Bundled `[web_player.*]` entries: YouTube, YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music, Pocket Casts, Apple Podcasts, Podurama, and Spotify Web (ships with `ignore = true`).
+Bundled `[web_player.*]` entries: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music, and YouTube.
+
+Most bundled web players are enabled (`ignore = false`). YouTube is ignored by default, and unmatched http/https browser URLs are ignored so random tabs do not show in Discord.
 
 Extension bridge support currently covers: YouTube Music, YouTube, SoundCloud, Bandcamp, TIDAL, and Apple Music.
 
-### Enable a web player
+### Configure a web player
 
-Web players are disabled by default. Enable each site in your mprisence config:
+Bundled defaults already include patterns, names, app IDs, icons, and `allow_streaming` for supported web players. Add a `[web_player.*]` block only when you want to change those defaults.
 
 ```toml
-[web_player.default]
-ignore = true
-
-[web_player.youtube_music]
-match_patterns = ["music.youtube.com"]
-ignore = false
-app_id = "1121632048155742288"  # optional: custom Discord app ID
+# Example: override bundled YouTube Music settings.
+# Defaults are documented in config/config.default.toml and config/config.example.toml.
+#
+# [web_player.youtube_music]
+# match_patterns = ["music.youtube.com"]
+# ignore = false
+# app_id = "1121632048155742288"
 ```
 
 Notes:

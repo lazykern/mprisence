@@ -240,20 +240,20 @@ status_display_type = "details"
 # show_icon = true
 # override_activity_type = "watching"
 
-# For the full list of bundled players and websites, see config.default.toml
+# For the full list of bundled local players and web players, see config.default.toml
 # on GitHub: https://github.com/lazykern/mprisence/blob/main/config/config.default.toml
 # It ships compiled into the binary and is merged underneath your user config,
 # so you only need to write the fields you want to change.
 
-# ------------------
-# Web Player Overrides
-# ------------------
-# Browsers (Firefox, Zen, Chrome, etc.) publish the playing tab's URL via
-# `xesam:url`. When the URL host matches a `[web_player.*]` entry, that entry
-# becomes the *authoritative* config for the player — its app_id, icon,
-# name, ignore, allow_streaming, and activity type fully replace the
-# browser's `[player.*]` config. So you do not need to also enable the
-# browser entry; adding (or overriding) a `[web_player.*]` is enough.
+# ----------------------
+# Web Player Integration
+# ----------------------
+# Browsers (Firefox, Zen, Chrome, etc.) can publish the playing tab's URL via
+# `xesam:url`. When the URL host matches a `[web_player.*]` entry, mprisence
+# applies that site's app_id, icon, name, ignore, allow_streaming, and activity
+# type instead of treating the source as a generic browser. So you do not need
+# to also enable the browser entry; adding or overriding a `[web_player.*]`
+# entry is enough.
 #
 # Pattern syntax (same as [player.*] keys):
 #   bare        -> exact host match, with substring fallback against the host
@@ -269,13 +269,16 @@ status_display_type = "details"
 # Merge semantics: user entries are merged per-key with the bundled
 # entries — user fields win, and unset fields (including
 # `match_pattern` / `match_patterns`) fall through to the bundled
-# entry. So flipping `ignore` on a bundled site only takes one line.
+# entry. So changing one field on a bundled site only takes one line.
+#
+# Most bundled web players are enabled (`ignore = false`). YouTube is ignored
+# by default, and unmatched http/https URLs are ignored by default.
 
 # [web_player.default]
 
-# Example: opt into Spotify Web (bundled with `ignore = true`).
+# Example: opt into YouTube video pages (bundled with `ignore = true`).
 # Patterns are inherited from the bundled entry — one line is enough.
-# [web_player.spotify_web]
+# [web_player.youtube]
 # ignore = false
 
 # Example: register a new web_player not in the bundle.
@@ -299,7 +302,6 @@ status_display_type = "details"
 #   qobuz           qobuz.com, play.qobuz.com, open.qobuz.com
 #   amazon_music    music.amazon.* (all regions)
 #   yandex_music    music.yandex.com, music.yandex.ru
-#   spotify_web     open.spotify.com  (ignore = true by default)
 #
 # Inspect resolved entries with `mprisence config`.
 # Check which web_player (if any) is currently matched for each player with
