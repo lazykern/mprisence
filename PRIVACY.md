@@ -4,24 +4,28 @@
 
 ## Overview
 
-The mprisence Bridge browser extension ("Extension") sends media playback metadata from supported websites (YouTube Music, YouTube, SoundCloud, Bandcamp, Tidal, Apple Music) to the mprisence native messaging host, which forwards it to the mprisence daemon for Discord Rich Presence display.
+mprisence Bridge is a browser extension that reads media playback metadata from supported websites (YouTube Music, YouTube, SoundCloud, Bandcamp, Tidal, Apple Music) and forwards it via native messaging to a local binary (`mprisence-web-bridge`) running on your computer.
+
+The extension does **not** communicate with Discord, the internet, or any remote server on its own. Its sole purpose is feeding web media data into the local MPRIS desktop standard so media keys and desktop integrations can work.
 
 ## What data is accessed
 
-When you play media on a supported website, the Extension reads the following from the page:
+When you play media on a supported website, the Extension reads the following from the page DOM:
 
 | Data | Purpose |
 |------|---------|
-| **Website URL** | Identify the media source and match it to a Discord application |
-| **Media metadata** (title, artist, album) | Display "now playing" information in Discord |
-| **Playback state** (playing/paused, position, duration) | Show current playback status and progress |
-| **Album art URL** | Fetch and display album cover art in Discord |
+| **Website URL** | Identify the media source |
+| **Media metadata** (title, artist, album) | Provide track info to MPRIS |
+| **Playback state** (playing/paused, position, duration) | Provide playback status to MPRIS |
+| **Album art URL** | Pass to MPRIS so desktop clients can display cover art |
 
 ## How data is used
 
-All data is transmitted exclusively to the **mprisence native messaging host** — a local binary running on your computer. The data is then forwarded to the **mprisence daemon**, also running locally, which publishes it to **Discord** via the Discord Rich Presence API.
+All data is sent via **native messaging** to the `mprisence-web-bridge` binary on your machine. That binary publishes MPRIS players on D-Bus so desktop applications (media keys, Discord via mprisence daemon, etc.) can see your web media.
 
-**Data flow:** Browser Extension → Native Messaging Host (local) → mprisence Daemon (local) → Discord API
+**Data flow:** Browser Extension → Native Messaging (local) → Bridge Binary (local) → D-Bus (local)
+
+The extension itself transmits nothing to the network.
 
 ## What data is NOT accessed
 
@@ -33,28 +37,24 @@ All data is transmitted exclusively to the **mprisence native messaging host** �
 
 ## Data storage
 
-Data is processed in real-time and is **not persistently stored** by the Extension or the native messaging host. Cached album art images are stored locally on your machine under `~/.cache/mprisence/cover_art/` and may be retained for performance.
+Data is processed in real-time and is not persistently stored by the Extension or the native messaging host.
 
 ## Data sharing
 
-- **No third-party sharing.** Data is transmitted only to Discord via their Rich Presence API for the sole purpose of displaying your current media activity.
+- **No third-party sharing.** The extension sends data only to a local binary on your computer.
 - **No data selling.** Your data is never sold, rented, or traded.
 - **No advertising.** Your data is never used for advertising or marketing purposes.
 
 ## Security
 
-- Communication between the Extension and the native messaging host uses Chrome/Firefox's built-in **native messaging** protocol, which is restricted to the extension ID registered in the native messaging manifest.
-- Communication with Discord uses **HTTPS** encryption.
-- No data is transmitted to any server operated by the Extension developer.
+- Communication between the Extension and the native messaging host uses the browser's built-in **native messaging** protocol, restricted to the registered extension ID.
+- No data is transmitted over the network by the extension.
 
 ## Third-party services
 
-The Extension communicates with:
-- **Discord** (discord.com) — to display your media activity via Rich Presence
-- **YouTube/YouTube Music** (i.ytimg.com) — to fetch album art thumbnails
-- **Other media websites** (as listed in the manifest) — to read playback metadata from the DOM
+The Extension reads data from the DOM of supported websites (as listed in the manifest). It does not communicate with any third-party API or server.
 
-All communication with these services is subject to their respective privacy policies.
+Downstream tools (e.g., the mprisence daemon, Discord) are separate software and subject to their own privacy policies.
 
 ## Changes to this policy
 
