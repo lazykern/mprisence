@@ -23,18 +23,11 @@ cargo build --release  # binary at target/release/mprisence
 ### Added
 
 - `[web_player.default]` config section with `ignore_unmatched` setting (was hardcoded `true`)
-- Privacy policy for extension store submission
-- Store-ready extension build zips (`extension/build.mjs --store`)
-- YouTube ads filtered from Discord presence by extension
 
 ### Changed
 
-- Extension renamed to "mprisence bridge"
-- `config` and `players list --detailed` CLI output now says "Web Player" instead of "Website"
-- `assets/icons/websites/` → `assets/icons/web-player/`
-- README restructured: normal setup first, bridge is optional
+- CLI output: `players list --detailed` and `config` now say "Web Player" instead of "Website"
 - 35 Rust dependency versions bumped
-- bench folder removed
 
 ### Fixed
 
