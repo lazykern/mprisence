@@ -1,5 +1,43 @@
 # Changelog
 
+## [1.7.0-beta.3] - 2026-06-01 (pre-release)
+
+This is a pre-release. Not published to crates.io.
+Install from the attached assets, or build from source:
+
+```sh
+cargo install --git https://github.com/lazykern/mprisence --tag v1.7.0-beta.3
+```
+
+Or clone and build manually:
+
+```sh
+git clone https://github.com/lazykern/mprisence.git
+cd mprisence
+git checkout v1.7.0-beta.3
+cargo build --release  # binary at target/release/mprisence
+```
+
+### Breaking
+
+- **Config key renamed**: `[website.*]` → `[web_player.*]`. If your config has `[website]` sections, rename them to `[web_player]` — old keys are no longer recognised.
+
+### Added
+
+- **Extension store submission prep**: privacy policy, store-ready build zips, extension renamed to "mprisence bridge"
+- **YouTube ads filtered**: ads on YouTube Music and YouTube no longer leak into Discord presence
+
+### Changed
+
+- **README restructured**: normal setup comes first, optional browser extension is explained alongside web player configuration — much clearer which feature you need
+- **35 dependency updates**: under-the-hood stability improvements
+- **CLI output**: `Website` labels changed to `Web Player` (e.g. `mprisence config`), no functional change
+- **Icon assets moved**: `assets/icons/websites/` → `assets/icons/web-player/`
+
+### Fixed
+
+- Chrome native messaging bridge not connecting after build
+
 ## [1.7.0-beta.2] - 2026-05-23 (pre-release)
 
 This is a pre-release. Not published to crates.io.
