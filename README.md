@@ -16,7 +16,7 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
 - **Media Players**: VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer, Supersonic, Feishin, kew, Quod Libet, Euphonica
 - **Streaming**: YouTube Music, Spotify (disabled by default)
 - **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
-- **Websites (overlays on top of any browser)**: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Spotify Web (disabled by default). When `xesam:url` matches a website's `match_pattern`, the website's icon and Discord application replace the browser's, so Discord shows e.g. *Listening to YouTube Music* instead of *Firefox*. See [Website Overrides](#website-overrides) below.
+- **Web player overrides (overlays on top of any browser)**: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Spotify Web (disabled by default). When `xesam:url` matches a `[web_player.*]` entry, the web player's icon and Discord application replace the browser's, so Discord shows e.g. *Listening to YouTube Music* instead of *Firefox*. See [Web Player Overrides](#web-player-overrides) below.
 - **Web Player Integration:** Bridge browser media players (YouTube Music, YouTube, SoundCloud, Bandcamp, Tidal, Apple Music) into MPRIS via a native messaging host + browser extension, unlocking MPRIS controls and Discord presence for web media. See [Web Player Integration](#web-player-integration).
 
 Note: MPD frontends (e.g., Euphonica) will also show MPD rich presence in Discord; you can disable the MPD entry in your config (see [Configuration Reference](#configuration-reference)
@@ -99,16 +99,16 @@ playerctl -p mprisence_web.youtube_music.* position 30+
 Web players are **disabled by default**. Enable them in your mprisence config:
 
 ```toml
-[website.default]
+[web_player.default]
 ignore = true
 
-[website.youtube_music]
+[web_player.youtube_music]
 match_patterns = ["music.youtube.com"]
 ignore = false
 app_id = "1121632048155742288"  # optional: custom Discord app ID
 ```
 
-See `config/config.example.toml` for all available website entries.
+See `config/config.example.toml` for all available web_player entries.
 
 ### Logs
 
@@ -347,11 +347,11 @@ status_display_type = "name" # name | state | details
 status_display_type = "details"
 ```
 
-### Website Overrides
+### Web Player Overrides
 
-Browsers like Firefox, Zen or Chrome publish the playing tab's URL through MPRIS (`xesam:url`). mprisence inspects that URL and, when its host matches a `[website.<key>]` entry, **uses that website entry as the authoritative configuration for the player** — so listening to YouTube Music in any browser shows up as *Listening to YouTube Music* in Discord instead of *Firefox* or *Zen*.
+Browsers like Firefox, Zen or Chrome publish the playing tab's URL through MPRIS (`xesam:url`). mprisence inspects that URL and, when its host matches a `[web_player.<key>]` entry, **uses that entry as the authoritative configuration for the player** — so listening to YouTube Music in any browser shows up as *Listening to YouTube Music* in Discord instead of *Firefox* or *Zen*.
 
-The website entry fully replaces the browser's `[player.*]` config for that URL: `ignore`, `allow_streaming`, `app_id`, `icon`, `name`, and activity type all come from the matched website. You do not need to also enable or unhide the browser's `[player.*]` entry — adding a `[website.*]` is enough.
+The web player entry fully replaces the browser's `[player.*]` config for that URL: `ignore`, `allow_streaming`, `app_id`, `icon`, `name`, and activity type all come from the matched entry. You do not need to also enable or unhide the browser's `[player.*]` entry — adding a `[web_player.*]` is enough.
 
 When the URL changes (e.g. you navigate from `music.youtube.com` to `soundcloud.com`), mprisence transparently recycles its Discord IPC client so the new application's name and icon take effect.
 
@@ -359,7 +359,7 @@ Bundled entries: YouTube, YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDA
 
 ```toml
 # Top-level table — sibling to [player.*].
-[website.youtube_music]
+[web_player.youtube_music]
 match_pattern = "music.youtube.com"      # exact host, `*?` wildcards, or `re:` / `/.../` regex
 app_id        = "1125082278339559505"    # your Discord application id
 icon          = "https://…/yt-music.png"
@@ -369,7 +369,7 @@ ignore        = false                    # set true to skip presence for this si
 # Per-user override: enable Spotify Web (bundled config ships ignore = true).
 # Patterns are inherited from the bundled entry — you only need to write the
 # fields you want to change.
-[website.spotify_web]
+[web_player.spotify_web]
 ignore = false
 app_id = "YOUR_SPOTIFY_WEB_APP_ID"
 ```
@@ -378,9 +378,9 @@ Notes:
 
 - The pattern is matched against the URL **host** (e.g. `music.youtube.com`). If host parsing fails, the full URL is used as a fallback target for substring matching.
 - A more specific pattern always wins (exact host > regex > wildcard > plain substring).
-- User entries are merged with bundled entries by key, user fields winning. **Fields you leave unset fall through to the bundled entry, including `match_pattern`/`match_patterns`** — so a user `[website.youtube] ignore = false` block with no patterns still matches `youtube.com` via the bundled patterns.
-- Any http/https URL that does NOT match a `[website.*]` entry is auto-ignored so random browser audio (ads, podcasts on unknown sites) does not leak into Discord. Opt back in by adding a `[website.*]` entry that matches the host.
-- Inspect resolved entries with `mprisence config` — the *Website Overrides* section lists every site and its effective values. `mprisence players list -d` shows the matched website (if any) for each running player so you can see exactly what the daemon would push.
+- User entries are merged with bundled entries by key, user fields winning. **Fields you leave unset fall through to the bundled entry, including `match_pattern`/`match_patterns`** — so a user `[web_player.youtube] ignore = false` block with no patterns still matches `youtube.com` via the bundled patterns.
+- Any http/https URL that does NOT match a `[web_player.*]` entry is auto-ignored so random browser audio (ads, podcasts on unknown sites) does not leak into Discord. Opt back in by adding a `[web_player.*]` entry that matches the host.
+- Inspect resolved entries with `mprisence config` — the *Web Player Overrides* section lists every site and its effective values. `mprisence players list -d` shows the matched web player (if any) for each running player so you can see exactly what the daemon would push.
 
 ### Configuration Reference
 
