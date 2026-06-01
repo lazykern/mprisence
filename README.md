@@ -19,7 +19,7 @@ _(Note: Actual appearance depends on your configuration and the specific media p
 - **Smart activity type**: “Listening” / “Watching” / etc. based on content (configurable)
 - **Per-player overrides**: app IDs, icons, status, and more
 - **Rich metadata**: access detailed fields (including technical audio info) inside templates
-- **Web media support**: browser URL overrides, plus an optional browser extension bridge for sites/tabs that need better metadata or controls
+- **Web player integration**: use browser-published MPRIS metadata, or the optional extension bridge for richer metadata, cover art, and controls
 
 ## Supported Players
 
@@ -28,7 +28,7 @@ Ready to use with popular media players (configured in [`config.default.toml`](.
 - **Media players**: VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer, Supersonic, Feishin, kew, Quod Libet, Euphonica
 - **Streaming apps**: YouTube Music, Spotify (disabled by default)
 - **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
-- **Web player overrides**: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music, Pocket Casts, Apple Podcasts, Podurama, Spotify Web (disabled by default)
+- **Web players**: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music, Pocket Casts, Apple Podcasts, Podurama, Spotify Web (disabled by default)
 
 Note: MPD frontends (e.g., Euphonica) will also show MPD rich presence in Discord; you can disable the MPD entry in your config (see [Configuration Reference](#configuration-reference)).
 
@@ -259,29 +259,33 @@ status_display_type = "details"
 - [`config.default.toml`](./config/config.default.toml): Default configurations for popular players.
 - [`src/metadata.rs`](./src/metadata.rs): Definitive source for all available template variables.
 
-## Web Media Support
+## Web Player Integration
 
-mprisence supports web media in two separate ways:
+mprisence can integrate web players through the metadata your browser already exposes over MPRIS. If that metadata is too limited — missing rich fields, cover art, or reliable controls — use the optional browser extension bridge. Both paths use the same `[web_player.*]` configuration.
 
-| Use case | Feature | Requires extension? | Requires browser MPRIS? |
-| --- | --- | --- | --- |
-| Browser already exposes media via MPRIS, but Discord shows “Firefox” or “Chrome” | [Web player overrides](#web-player-overrides) | No | Yes |
-| Browser/site does not expose useful MPRIS metadata or controls | [Browser Extension Bridge](#browser-extension-bridge) | Yes | No |
-| Native apps like VLC, MPV, Rhythmbox | Normal player config | No | No |
+### How it works
 
-Web player overrides and the browser bridge have separate support lists. Overrides are configured by `[web_player.*]` entries. The bridge currently supports only the sites listed in the bridge section.
+- **Browser MPRIS metadata:** Some browsers publish the active media tab as an MPRIS player and include the page URL in `xesam:url`. mprisence matches that URL against `[web_player.*]` entries and applies the site's app ID, icon, name, and behavior instead of treating it as a generic browser.
+- **Extension bridge:** The extension reads richer metadata directly from supported pages, sends it to the local native messaging host (`mprisence-web-bridge`), and the bridge publishes per-tab MPRIS players on D-Bus. mprisence discovers those players like any other MPRIS player.
 
-### Web Player Overrides
+### Supported web players
 
-Use this when a browser already publishes media through MPRIS and includes the tab URL in `xesam:url`. When the URL host matches a `[web_player.<key>]` entry, mprisence uses that web player entry instead of the browser's `[player.*]` config — so Discord shows *Listening to YouTube Music* instead of *Firefox* or *Chrome*.
+Bundled `[web_player.*]` entries: YouTube, YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music, Pocket Casts, Apple Podcasts, Podurama, and Spotify Web (ships with `ignore = true`).
 
-Bundled override entries: YouTube, YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music, Pocket Casts, Apple Podcasts, Podurama, and Spotify Web (ships with `ignore = true`).
+Extension bridge support currently covers: YouTube Music, YouTube, SoundCloud, Bandcamp, TIDAL, and Apple Music.
+
+### Enable a web player
+
+Web players are disabled by default. Enable each site in your mprisence config:
 
 ```toml
+[web_player.default]
+ignore = true
+
 [web_player.youtube_music]
-match_pattern = "music.youtube.com"
+match_patterns = ["music.youtube.com"]
 ignore = false
-app_id = "1125082278339559505"
+app_id = "1121632048155742288"  # optional: custom Discord app ID
 ```
 
 Notes:
@@ -290,11 +294,9 @@ Notes:
 - Unmatched http/https URLs are auto-ignored. Opt back in by adding a `[web_player.*]` entry.
 - Inspect resolved entries with `mprisence config` or `mprisence players list -d`.
 
-### Browser Extension Bridge
+### Extension bridge setup
 
-Use this when browser MPRIS is missing, incomplete, or lacks controls. The browser extension reads playback metadata from supported pages, sends it to the local native messaging host (`mprisence-web-bridge`), and the bridge publishes per-tab MPRIS players on D-Bus. mprisence then discovers them like normal players.
-
-**Bridge-supported sites:** YouTube Music, YouTube, SoundCloud, Bandcamp, TIDAL, Apple Music
+Install this only if browser-provided MPRIS metadata is not rich enough for the web players you use.
 
 #### Bridge prerequisites
 
@@ -336,20 +338,6 @@ Temporary local install:
 2. Enable **Developer mode** (top-right)
 3. Click **Load unpacked**
 4. Select the `extension/dist/chromium/` folder
-
-#### Enable a bridged site
-
-Web players are disabled by default. Enable each site in your mprisence config:
-
-```toml
-[web_player.default]
-ignore = true
-
-[web_player.youtube_music]
-match_patterns = ["music.youtube.com"]
-ignore = false
-app_id = "1121632048155742288"  # optional: custom Discord app ID
-```
 
 #### Run & verify
 
