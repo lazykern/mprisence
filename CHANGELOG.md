@@ -9,8 +9,6 @@ Install from the attached assets, or build from source:
 cargo install --git https://github.com/lazykern/mprisence --tag v1.7.0-beta.3
 ```
 
-Or clone and build manually:
-
 ```sh
 git clone https://github.com/lazykern/mprisence.git
 cd mprisence
@@ -20,23 +18,27 @@ cargo build --release  # binary at target/release/mprisence
 
 ### Breaking
 
-- **Config key renamed**: `[website.*]` → `[web_player.*]`. If your config has `[website]` sections, rename them to `[web_player]` — old keys are no longer recognised.
+- `[website.*]` → `[web_player.*]` in config. Rename any `[website]` sections to `[web_player]`.
 
 ### Added
 
-- **Extension store submission prep**: privacy policy, store-ready build zips, extension renamed to "mprisence bridge"
-- **YouTube ads filtered**: ads on YouTube Music and YouTube no longer leak into Discord presence
+- `[web_player.default]` config section with `ignore_unmatched` setting (was hardcoded `true`)
+- Privacy policy for extension store submission
+- Store-ready extension build zips (`extension/build.mjs --store`)
+- YouTube ads filtered from Discord presence by extension
 
 ### Changed
 
-- **README restructured**: normal setup comes first, optional browser extension is explained alongside web player configuration — much clearer which feature you need
-- **35 dependency updates**: under-the-hood stability improvements
-- **CLI output**: `Website` labels changed to `Web Player` (e.g. `mprisence config`), no functional change
-- **Icon assets moved**: `assets/icons/websites/` → `assets/icons/web-player/`
+- Extension renamed to "mprisence bridge"
+- `config` and `players list --detailed` CLI output now says "Web Player" instead of "Website"
+- `assets/icons/websites/` → `assets/icons/web-player/`
+- README restructured: normal setup first, bridge is optional
+- 35 Rust dependency versions bumped
+- bench folder removed
 
 ### Fixed
 
-- Chrome native messaging bridge not connecting after build
+- Chrome native messaging bridge not registering (missing extension ID)
 
 ## [1.7.0-beta.2] - 2026-05-23 (pre-release)
 
