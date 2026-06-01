@@ -46,7 +46,6 @@ export class AppleMusicProvider implements Provider {
     };
 
     // ── Primary: MediaSession API ──────────────────────────────
-    let confidence: "provider" | "dom" = "dom";
     let pageUrl: string | undefined;
 
     try {
@@ -68,7 +67,6 @@ export class AppleMusicProvider implements Provider {
             });
             meta.art_url = this.resolveArtwork(best.src || undefined);
           }
-          confidence = "provider";
         }
       }
     } catch {
@@ -111,7 +109,6 @@ export class AppleMusicProvider implements Provider {
       status,
       position_ms: Math.floor((audio.currentTime || 0) * 1000),
       duration_ms: Math.floor(audio.duration * 1000),
-      rate: audio.playbackRate ?? 1.0,
     };
 
     // ── Capabilities ───────────────────────────────────────────
@@ -131,14 +128,12 @@ export class AppleMusicProvider implements Provider {
       previous: prevBtn ? !prevBtn.disabled : false,
       seek: true,
       set_position: true,
-      raise: true,
     };
 
     return {
       metadata: meta,
       playback,
       capabilities,
-      confidence,
       pageUrl,
     };
   }

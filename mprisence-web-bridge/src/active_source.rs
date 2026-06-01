@@ -42,7 +42,10 @@ impl SourceRegistry {
         let mut removed = Vec::new();
         self.sources.retain(|id, state| {
             if state.is_stale(STALE_TIMEOUT) {
-                debug!("source {id}: stale ({}s), removing", STALE_TIMEOUT.as_secs());
+                debug!(
+                    "source {id}: stale ({}s), removing",
+                    STALE_TIMEOUT.as_secs()
+                );
                 removed.push(id.clone());
                 false
             } else {
@@ -71,7 +74,7 @@ impl SourceRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{Capabilities, ConfidenceLevel, MediaMetadata, PlaybackState, Status};
+    use crate::protocol::{Capabilities, MediaMetadata, PlaybackState, Status};
     use std::time::Instant;
 
     fn make_source(id: &str, status: Status) -> SourceState {
@@ -84,7 +87,6 @@ mod tests {
                 status,
                 position_ms: 0,
                 duration_ms: 100_000,
-                rate: 1.0,
             },
             metadata: MediaMetadata {
                 title: Some("Test".into()),
@@ -100,9 +102,7 @@ mod tests {
                 previous: false,
                 seek: false,
                 set_position: false,
-                raise: false,
             },
-            confidence: ConfidenceLevel::Fallback,
             last_seen: Instant::now(),
             canonical_url: None,
         }

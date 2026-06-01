@@ -52,7 +52,6 @@ export class TidalProvider implements Provider {
     };
 
     // ── Primary: MediaSession API ──────────────────────────────
-    let confidence: "provider" | "dom" = "dom";
     try {
       const ms = (navigator as any).mediaSession;
       if (ms?.metadata) {
@@ -70,7 +69,6 @@ export class TidalProvider implements Provider {
           });
           meta.art_url = this.resolveArtwork(best.src || undefined);
         }
-        confidence = "provider";
       }
     } catch {
       // MediaSession not available
@@ -109,7 +107,6 @@ export class TidalProvider implements Provider {
       status,
       position_ms: positionMs,
       duration_ms: durationMs,
-      rate: video.playbackRate ?? 1.0,
     };
 
     // ── Capabilities ───────────────────────────────────────────
@@ -126,14 +123,12 @@ export class TidalProvider implements Provider {
       previous: prevBtn ? !prevBtn.disabled : false,
       seek: !!progressSlider,
       set_position: !!progressSlider,
-      raise: false,
     };
 
     return {
       metadata: meta,
       playback,
       capabilities,
-      confidence,
     };
   }
 

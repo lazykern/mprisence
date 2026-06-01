@@ -153,7 +153,6 @@ export class YouTubeMusicProvider implements Provider {
       status,
       position_ms: Math.floor(currentSec * 1000),
       duration_ms: Math.floor(totalSec * 1000),
-      rate: video?.playbackRate ?? 1.0,
     };
 
     const capabilities: Capabilities = {
@@ -162,14 +161,12 @@ export class YouTubeMusicProvider implements Provider {
       previous: true,
       seek: true,
       set_position: true,
-      raise: true,
     };
 
     return {
       metadata,
       playback,
       capabilities,
-      confidence: "provider",
       canonicalUrl: videoId ? `https://music.youtube.com/watch?v=${videoId}` : undefined,
     };
   }

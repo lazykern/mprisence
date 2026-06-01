@@ -21,11 +21,7 @@ fn main() {
         .map(|o| !o.stdout.is_empty())
         .unwrap_or(false);
 
-    let sha = if dirty {
-        format!("{sha}-dirty")
-    } else {
-        sha
-    };
+    let sha = if dirty { format!("{sha}-dirty") } else { sha };
 
     println!("cargo:rustc-env=GIT_SHA={sha}");
     println!("cargo:warning=git SHA: {sha}");

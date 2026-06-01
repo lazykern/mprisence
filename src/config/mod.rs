@@ -1,5 +1,5 @@
-use crate::utils::normalize_player_identity;
 use crate::player::{is_mprisence_web_bridge_bus, BRIDGE_CONFIG_KEY};
+use crate::utils::normalize_player_identity;
 use figment::providers::{Format, Toml};
 use figment::Figment;
 use log::trace;
@@ -149,7 +149,7 @@ impl ConfigManager {
 
         // Bridge players all resolve to the stable [player.mprisence_web] config key.
         // This allows a single config entry to set ignore=true for all bridge players,
-        // with individual sites un-ignored by [website.*] overrides.
+        // with individual sites un-ignored by [web_player.*] overrides.
         let (config_identity, config_bus) = if is_mprisence_web_bridge_bus(player_bus_name) {
             (BRIDGE_CONFIG_KEY, BRIDGE_CONFIG_KEY)
         } else {
@@ -163,27 +163,27 @@ impl ConfigManager {
             );
         }
         let base = guard.get_player_config(config_identity, config_bus);
-        guard.apply_website_overrides_by_title(base, title)
+        guard.apply_web_player_overrides_by_title(base, title)
     }
 
-    pub fn website_configs(&self) -> HashMap<String, schema::WebsiteConfig> {
+    pub fn web_player_configs(&self) -> HashMap<String, schema::WebPlayerConfig> {
         self.config
             .read()
             .expect("Failed to read config: RwLock poisoned")
-            .effective_website_configs()
+            .effective_web_player_configs()
     }
 
-    /// Returns the matched website key and its resolved config for a URL,
-    /// if any `[website.*]` entry applies. Used by the CLI to surface which
+    /// Returns the matched web_player key and its resolved config for a URL,
+    /// if any `[web_player.*]` entry applies. Used by the CLI to surface which
     /// override the runtime would project onto a player.
-    pub fn matched_website_for_url(
+    pub fn matched_web_player_for_url(
         &self,
         url: Option<&str>,
-    ) -> Option<(String, schema::WebsiteConfig)> {
+    ) -> Option<(String, schema::WebPlayerConfig)> {
         self.config
             .read()
             .expect("Failed to read config: RwLock poisoned")
-            .matched_website_for_url(url)
+            .matched_web_player_for_url(url)
     }
 
     pub fn time_config(&self) -> schema::TimeConfig {
@@ -461,9 +461,9 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     config.bundled_player = bundled.player;
     config.user_player = load_user_player_configs(path)?;
     config.user_player_patterns = collect_user_player_patterns(path)?;
-    config.bundled_website = bundled.website;
-    config.user_website = load_user_website_configs(path)?;
-    config.rebuild_merged_website();
+    config.bundled_web_player = bundled.web_player;
+    config.user_web_player = load_user_web_player_configs(path)?;
+    config.rebuild_merged_web_player();
     config.precompile_patterns();
     Ok(config)
 }
@@ -532,23 +532,23 @@ fn load_user_player_configs(
     Ok(parsed.player)
 }
 
-fn load_user_website_configs(
+fn load_user_web_player_configs(
     path: &Path,
-) -> Result<HashMap<String, schema::WebsiteConfigLayer>, ConfigError> {
+) -> Result<HashMap<String, schema::WebPlayerConfigLayer>, ConfigError> {
     if !path.exists() {
         return Ok(HashMap::new());
     }
 
     #[derive(serde::Deserialize)]
-    struct WebsiteOnly {
+    struct WebPlayerOnly {
         #[serde(default)]
-        #[serde(with = "schema::normalized_website_string")]
-        website: HashMap<String, schema::WebsiteConfigLayer>,
+        #[serde(with = "schema::normalized_web_player_string")]
+        web_player: HashMap<String, schema::WebPlayerConfigLayer>,
     }
 
     let contents = std::fs::read_to_string(path)?;
-    let parsed: WebsiteOnly = toml::from_str(&contents)?;
-    Ok(parsed.website)
+    let parsed: WebPlayerOnly = toml::from_str(&contents)?;
+    Ok(parsed.web_player)
 }
 
 fn collect_user_player_patterns(path: &Path) -> Result<HashSet<String>, ConfigError> {
@@ -671,14 +671,14 @@ mod tests {
     }
 
     #[test]
-    fn user_website_overrides_bundled_at_load_time() {
+    fn user_web_player_overrides_bundled_at_load_time() {
         let temp_dir = temp_config_dir();
         let config_path = temp_dir.join("config.toml");
 
         fs::write(
             &config_path,
             r#"
-[website.youtube_music]
+[web_player.youtube_music]
 match_pattern = "music.youtube.com"
 app_id = "USER_APP"
 icon = "user-icon"

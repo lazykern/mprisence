@@ -32,16 +32,14 @@ var GenericMediaProvider = class {
     const playback = {
       status: media.paused ? "paused" : media.ended ? "stopped" : "playing",
       position_ms: Math.floor(media.currentTime * 1e3),
-      duration_ms: Math.floor(dur * 1e3),
-      rate: media.playbackRate
+      duration_ms: Math.floor(dur * 1e3)
     };
     const caps = {
       play_pause: true,
       next: false,
       previous: false,
       seek: true,
-      set_position: true,
-      raise: false
+      set_position: true
     };
     if ("mediaSession" in navigator) {
       const ms = navigator.mediaSession;
@@ -61,8 +59,7 @@ var GenericMediaProvider = class {
     return {
       metadata: meta,
       playback,
-      capabilities: caps,
-      confidence: "dom"
+      capabilities: caps
     };
   }
   async command(cmd, positionMs) {
@@ -169,22 +166,19 @@ var YouTubeMusicProvider = class {
     const playback = {
       status,
       position_ms: Math.floor(currentSec * 1e3),
-      duration_ms: Math.floor(totalSec * 1e3),
-      rate: video?.playbackRate ?? 1
+      duration_ms: Math.floor(totalSec * 1e3)
     };
     const capabilities = {
       play_pause: true,
       next: true,
       previous: true,
       seek: true,
-      set_position: true,
-      raise: true
+      set_position: true
     };
     return {
       metadata,
       playback,
       capabilities,
-      confidence: "provider",
       canonicalUrl: videoId ? `https://music.youtube.com/watch?v=${videoId}` : void 0
     };
   }
@@ -315,22 +309,19 @@ var YouTubeProvider = class {
     const playback = {
       status,
       position_ms: Math.floor(ct * 1e3),
-      duration_ms: Math.floor(dur * 1e3),
-      rate: video.playbackRate || 1
+      duration_ms: Math.floor(dur * 1e3)
     };
     const capabilities = {
       play_pause: true,
       next: false,
       previous: false,
       seek: true,
-      set_position: true,
-      raise: true
+      set_position: true
     };
     return {
       metadata,
       playback,
       capabilities,
-      confidence: "provider",
       pageUrl: watchUrl || void 0,
       canonicalUrl: watchUrl || void 0
     };
@@ -374,10 +365,8 @@ var SoundCloudProvider = class {
     let playback = {
       status: "stopped",
       position_ms: 0,
-      duration_ms: 0,
-      rate: 1
+      duration_ms: 0
     };
-    let confidence = "dom";
     let pageUrl;
     let hasMs = false;
     try {
@@ -397,7 +386,6 @@ var SoundCloudProvider = class {
             });
             meta.art_url = resolveArtwork(best.src || void 0);
           }
-          confidence = "provider";
           hasMs = true;
         }
       }
@@ -454,8 +442,7 @@ var SoundCloudProvider = class {
     playback = {
       status: isPlaying ? "playing" : hasMs ? "paused" : "stopped",
       position_ms: positionMs,
-      duration_ms: durationMs,
-      rate: 1
+      duration_ms: durationMs
     };
     const hasNext = !!document.querySelector(".playControls__next") || !!document.querySelector(".skipButton__forward");
     const hasPrev = !!document.querySelector(".playControls__prev") || !!document.querySelector(".skipButton__backward");
@@ -466,15 +453,13 @@ var SoundCloudProvider = class {
       previous: hasPrev,
       seek: false,
       // no audio element for seeking
-      set_position: false,
-      raise: true
+      set_position: false
     };
     if (!meta.title && !hasMs) return null;
     return {
       metadata: meta,
       playback,
       capabilities,
-      confidence,
       pageUrl
     };
   }
@@ -630,8 +615,7 @@ var BandcampProvider = class {
     const playback = {
       status: isPlaying ? "playing" : "paused",
       position_ms: positionMs,
-      duration_ms: durationMs,
-      rate: audio?.playbackRate ?? 1
+      duration_ms: durationMs
     };
     const prevIcon = this.qs(
       ".carousel-player .prev-icon"
@@ -644,10 +628,9 @@ var BandcampProvider = class {
       next: nextIcon ? !nextIcon.classList.contains("disabled") : false,
       previous: prevIcon ? !prevIcon.classList.contains("disabled") : false,
       seek: true,
-      set_position: true,
-      raise: false
+      set_position: true
     };
-    return { metadata: meta, playback, capabilities, confidence: "provider" };
+    return { metadata: meta, playback, capabilities };
   }
   async commandCarousel(cmd, positionMs) {
     switch (cmd) {
@@ -727,18 +710,16 @@ var BandcampProvider = class {
     const playback = {
       status: isPlaying ? "playing" : "paused",
       position_ms: positionMs,
-      duration_ms: durationMs,
-      rate: audio.playbackRate ?? 1
+      duration_ms: durationMs
     };
     const capabilities = {
       play_pause: true,
       next: !!this.qs(".inline_player .nextbutton"),
       previous: !!this.qs(".inline_player .prevbutton"),
       seek: true,
-      set_position: true,
-      raise: false
+      set_position: true
     };
-    return { metadata: meta, playback, capabilities, confidence: "provider" };
+    return { metadata: meta, playback, capabilities };
   }
   async commandInline(cmd, positionMs) {
     switch (cmd) {
@@ -833,7 +814,6 @@ var TidalProvider = class {
       art_url: void 0,
       track_id: void 0
     };
-    let confidence = "dom";
     try {
       const ms = navigator.mediaSession;
       if (ms?.metadata) {
@@ -849,7 +829,6 @@ var TidalProvider = class {
           });
           meta.art_url = this.resolveArtwork(best.src || void 0);
         }
-        confidence = "provider";
       }
     } catch {
     }
@@ -875,8 +854,7 @@ var TidalProvider = class {
     const playback = {
       status,
       position_ms: positionMs,
-      duration_ms: durationMs,
-      rate: video.playbackRate ?? 1
+      duration_ms: durationMs
     };
     const nextBtn = document.querySelector(
       'button[aria-label="Next"]'
@@ -889,14 +867,12 @@ var TidalProvider = class {
       next: nextBtn ? !nextBtn.disabled : false,
       previous: prevBtn ? !prevBtn.disabled : false,
       seek: !!progressSlider,
-      set_position: !!progressSlider,
-      raise: false
+      set_position: !!progressSlider
     };
     return {
       metadata: meta,
       playback,
-      capabilities,
-      confidence
+      capabilities
     };
   }
   async command(cmd, positionMs) {
@@ -976,7 +952,6 @@ var AppleMusicProvider = class {
       art_url: void 0,
       track_id: void 0
     };
-    let confidence = "dom";
     let pageUrl;
     try {
       const ms = navigator.mediaSession;
@@ -995,7 +970,6 @@ var AppleMusicProvider = class {
             });
             meta.art_url = this.resolveArtwork(best.src || void 0);
           }
-          confidence = "provider";
         }
       }
     } catch {
@@ -1021,8 +995,7 @@ var AppleMusicProvider = class {
     const playback = {
       status,
       position_ms: Math.floor((audio.currentTime || 0) * 1e3),
-      duration_ms: Math.floor(audio.duration * 1e3),
-      rate: audio.playbackRate ?? 1
+      duration_ms: Math.floor(audio.duration * 1e3)
     };
     const playBtn = document.querySelector(
       'button[aria-label="Play"], button[data-testid="play"]'
@@ -1038,14 +1011,12 @@ var AppleMusicProvider = class {
       next: nextBtn ? !nextBtn.disabled : false,
       previous: prevBtn ? !prevBtn.disabled : false,
       seek: true,
-      set_position: true,
-      raise: true
+      set_position: true
     };
     return {
       metadata: meta,
       playback,
       capabilities,
-      confidence,
       pageUrl
     };
   }
@@ -1140,8 +1111,6 @@ var lastDurationMs = -1;
 var lastAlbum = "";
 var lastAlbumArtist = "";
 var lastTrackId = "";
-var lastRate = 1;
-var lastConfidence = "";
 var browser = detectBrowser();
 var tabId = getTabId();
 var sourceIdBase = makeSourceId(browser, tabId, 0);
@@ -1173,9 +1142,8 @@ window.addEventListener("mprisence-media-state", ((event) => {
     };
     const result = {
       metadata,
-      playback: data.playback || { status: "stopped", position_ms: 0, duration_ms: 0, rate: 1 },
-      capabilities: data.capabilities || { play_pause: true, next: false, previous: false, seek: false, set_position: false, raise: false },
-      confidence: data.confidence || "dom"
+      playback: data.playback || { status: "stopped", position_ms: 0, duration_ms: 0 },
+      capabilities: data.capabilities || { play_pause: true, next: false, previous: false, seek: false, set_position: false }
     };
     const pwTitle = result.metadata.title ?? "";
     const pwArtist = result.metadata.artist.join(",");
@@ -1298,7 +1266,7 @@ function sendUpdate(result, force = false) {
   const albumKey = result.metadata.album ?? "";
   const albumArtistKey = normalizeStringList(result.metadata.album_artist).join(",");
   const trackIdKey = result.metadata.track_id ?? "";
-  const unchanged = lastSourceId === sourceId && lastTitle === titleKey && lastArtist === artistKey && lastState === result.playback.status && lastArtUrl === (result.metadata.art_url ?? "") && lastPageUrl === url && lastCanonicalUrl === (canonicalUrl ?? "") && lastPositionSec === positionSec && lastDurationMs === result.playback.duration_ms && lastAlbum === albumKey && lastAlbumArtist === albumArtistKey && lastTrackId === trackIdKey && lastRate === result.playback.rate && lastConfidence === result.confidence;
+  const unchanged = lastSourceId === sourceId && lastTitle === titleKey && lastArtist === artistKey && lastState === result.playback.status && lastArtUrl === (result.metadata.art_url ?? "") && lastPageUrl === url && lastCanonicalUrl === (canonicalUrl ?? "") && lastPositionSec === positionSec && lastDurationMs === result.playback.duration_ms && lastAlbum === albumKey && lastAlbumArtist === albumArtistKey && lastTrackId === trackIdKey;
   if (!force && unchanged) {
     return;
   }
@@ -1317,8 +1285,6 @@ function sendUpdate(result, force = false) {
   lastAlbum = albumKey;
   lastAlbumArtist = albumArtistKey;
   lastTrackId = trackIdKey;
-  lastRate = result.playback.rate;
-  lastConfidence = result.confidence;
   const urlObj = new URL(url);
   const provider = providers.find((p) => p.matches(urlObj));
   const site = provider?.siteKey ?? provider?.constructor.name.replace("Provider", "").replace(/([A-Z])/g, "_$1").toLowerCase().replace(/^_/, "").replace(/^generic$/, "generic") ?? "generic";
@@ -1331,9 +1297,7 @@ function sendUpdate(result, force = false) {
     playback: result.playback,
     metadata: result.metadata,
     capabilities: result.capabilities,
-    confidence: result.confidence,
-    canonical_url: canonicalUrl || void 0,
-    _ext_fingerprint: true ? "431fe82-dirty" : void 0
+    canonical_url: canonicalUrl || void 0
   };
   safeSendMessage(msg);
 }

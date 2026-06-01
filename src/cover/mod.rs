@@ -422,8 +422,13 @@ impl CoverManager {
         }
 
         // 4. Try configured providers with the prepared source (or metadata-only)
-        self.try_providers(source_for_providers.as_ref(), metadata_source, &cache_key, cancel)
-            .await
+        self.try_providers(
+            source_for_providers.as_ref(),
+            metadata_source,
+            &cache_key,
+            cancel,
+        )
+        .await
     }
 
     async fn try_providers(

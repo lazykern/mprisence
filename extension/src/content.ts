@@ -12,11 +12,8 @@
  * injection or dynamic eval.
  */
 
-// Injected by esbuild define at build time
-declare var __GIT_SHA__: string | undefined;
-
 import { detectBrowser, makeSourceId } from "./utils/browser-detect";
-import type { ConfidenceLevel, ExtMessage, Capabilities, PlaybackState, MediaMetadata } from "./types";
+import type { ExtMessage, Capabilities, PlaybackState, MediaMetadata } from "./types";
 import type { ProviderResult } from "./providers/base";
 import { GenericMediaProvider } from "./providers/base";
 import { YouTubeMusicProvider } from "./providers/youtube-music";
@@ -52,8 +49,6 @@ let lastDurationMs = -1;
 let lastAlbum = "";
 let lastAlbumArtist = "";
 let lastTrackId = "";
-let lastRate = 1;
-let lastConfidence: ConfidenceLevel | "" = "";
 
 const browser = detectBrowser();
 const tabId = getTabId();
@@ -107,9 +102,8 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
     };
     const result: ProviderResult = {
       metadata,
-      playback: data.playback || { status: "stopped", position_ms: 0, duration_ms: 0, rate: 1.0 },
-      capabilities: data.capabilities || { play_pause: true, next: false, previous: false, seek: false, set_position: false, raise: false },
-      confidence: (data.confidence as ConfidenceLevel) || "dom",
+      playback: data.playback || { status: "stopped", position_ms: 0, duration_ms: 0 },
+      capabilities: data.capabilities || { play_pause: true, next: false, previous: false, seek: false, set_position: false },
     };
 
     // Art-only merge: page-world sends square yt3 cover art from
@@ -318,9 +312,7 @@ function sendUpdate(result: ProviderResult, force = false): void {
     lastDurationMs === result.playback.duration_ms &&
     lastAlbum === albumKey &&
     lastAlbumArtist === albumArtistKey &&
-    lastTrackId === trackIdKey &&
-    lastRate === result.playback.rate &&
-    lastConfidence === result.confidence;
+    lastTrackId === trackIdKey;
   // Event-driven: drop a send only when nothing changed. The keepalive uses
   // force=true to refresh the bridge's last_seen even when unchanged.
   if (!force && unchanged) {
@@ -346,8 +338,6 @@ function sendUpdate(result: ProviderResult, force = false): void {
   lastAlbum = albumKey;
   lastAlbumArtist = albumArtistKey;
   lastTrackId = trackIdKey;
-  lastRate = result.playback.rate;
-  lastConfidence = result.confidence;
 
   // Detect stable site key from first matching provider.
   const urlObj = new URL(url);
@@ -368,9 +358,7 @@ function sendUpdate(result: ProviderResult, force = false): void {
     playback: result.playback,
     metadata: result.metadata,
     capabilities: result.capabilities,
-    confidence: result.confidence,
     canonical_url: canonicalUrl || undefined,
-    _ext_fingerprint: typeof __GIT_SHA__ !== "undefined" ? __GIT_SHA__ : undefined,
   };
 
   safeSendMessage(msg);

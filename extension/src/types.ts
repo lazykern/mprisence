@@ -5,13 +5,11 @@ export const PROTOCOL_VERSION = 1;
 export type BrowserKind = "firefox" | "chromium" | "brave" | "vivaldi" | "edge";
 
 export type Status = "playing" | "paused" | "stopped";
-export type ConfidenceLevel = "provider" | "dom" | "fallback";
 
 export interface PlaybackState {
   status: Status;
   position_ms: number;
   duration_ms: number;
-  rate: number;
 }
 
 export interface MediaMetadata {
@@ -29,7 +27,6 @@ export interface Capabilities {
   previous: boolean;
   seek: boolean;
   set_position: boolean;
-  raise: boolean;
 }
 
 // Extension → Bridge
@@ -44,9 +41,7 @@ export type ExtMessage =
       playback: PlaybackState;
       metadata: MediaMetadata;
       capabilities: Capabilities;
-      confidence: ConfidenceLevel;
       canonical_url?: string;
-      _ext_fingerprint?: string;
     }
   | { type: "remove"; source_id: string };
 
@@ -68,5 +63,4 @@ export type CommandKind =
   | "next"
   | "previous"
   | "seek"
-  | "set_position"
-  | "raise";
+  | "set_position";

@@ -117,7 +117,11 @@ impl CatboxProvider {
         Ok(())
     }
 
-    async fn upload_from_bytes(&self, data: &[u8], cancel: &CancellationToken) -> Result<String, CoverArtError> {
+    async fn upload_from_bytes(
+        &self,
+        data: &[u8],
+        cancel: &CancellationToken,
+    ) -> Result<String, CoverArtError> {
         let prepared = self.prepare_upload_bytes(data.to_vec(), cancel).await?;
         let temp_path = Self::temp_file_path();
         trace!(
@@ -144,7 +148,11 @@ impl CatboxProvider {
     /// in bytes. Skips work for small images. Re-encodes as JPEG q=85 because
     /// album covers don't need alpha and JPEG shrinks far better than PNG.
     /// CPU-bound; runs on a blocking task so the async runtime stays free.
-    async fn prepare_upload_bytes(&self, bytes: Vec<u8>, cancel: &CancellationToken) -> Result<Vec<u8>, CoverArtError> {
+    async fn prepare_upload_bytes(
+        &self,
+        bytes: Vec<u8>,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<u8>, CoverArtError> {
         const MAX_DIM: u32 = 512;
         const MAX_BYTES: usize = 256 * 1024;
 

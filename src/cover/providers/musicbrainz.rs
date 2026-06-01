@@ -385,7 +385,10 @@ impl MusicbrainzProvider {
             debug!("Searching MusicBrainz Recordings: {}", url);
 
             if cancel.is_cancelled() {
-                debug!("MusicBrainz track search cancelled (attempt {})", attempt_idx + 1);
+                debug!(
+                    "MusicBrainz track search cancelled (attempt {})",
+                    attempt_idx + 1
+                );
                 return Ok(None);
             }
 
@@ -582,7 +585,10 @@ impl CoverArtProvider for MusicbrainzProvider {
                 if !album_artists.is_empty() {
                     let album_artists_refs: Vec<&String> = album_artists.iter().collect();
                     debug!("Attempting album-based search for '{}' with artists", album);
-                    if let Some(url) = self.search_album(&album, &album_artists_refs, cancel).await? {
+                    if let Some(url) = self
+                        .search_album(&album, &album_artists_refs, cancel)
+                        .await?
+                    {
                         info!("Successfully found cover art via album search: {}", url);
                         return Ok(Some(CoverResult {
                             url,

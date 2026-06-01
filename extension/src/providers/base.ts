@@ -1,6 +1,5 @@
 import type {
   Capabilities,
-  ConfidenceLevel,
   MediaMetadata,
   PlaybackState,
 } from "../types";
@@ -9,7 +8,6 @@ export interface ProviderResult {
   metadata: MediaMetadata;
   playback: PlaybackState;
   capabilities: Capabilities;
-  confidence: ConfidenceLevel;
   /** Override the page URL sent in ExtMessage (e.g. mini player watch URL) */
   pageUrl?: string;
   /** Canonical track/page URL when distinct from the visible page URL. */
@@ -67,7 +65,6 @@ export class GenericMediaProvider implements Provider {
           : "playing",
       position_ms: Math.floor(media.currentTime * 1000),
       duration_ms: Math.floor(dur * 1000),
-      rate: media.playbackRate,
     };
 
     const caps: Capabilities = {
@@ -76,7 +73,6 @@ export class GenericMediaProvider implements Provider {
       previous: false,
       seek: true,
       set_position: true,
-      raise: false,
     };
 
     // Try Media Session API for richer metadata
@@ -102,7 +98,6 @@ export class GenericMediaProvider implements Provider {
       metadata: meta,
       playback,
       capabilities: caps,
-      confidence: "dom",
     };
   }
 

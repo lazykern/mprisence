@@ -199,7 +199,13 @@ async fn handle_extension_message(
     cmd_tx: &mpsc::Sender<TaggedCommand>,
 ) {
     match msg {
-        ExtMessage::Hello { browser, extension_version, protocol, git_sha, extension_fingerprint } => {
+        ExtMessage::Hello {
+            browser,
+            extension_version,
+            protocol,
+            git_sha,
+            extension_fingerprint,
+        } => {
             info!("Extension connected: {browser:?} v{extension_version}");
 
             if protocol != protocol::PROTOCOL_VERSION {
@@ -225,19 +231,28 @@ async fn handle_extension_message(
             }
         }
 
-        ExtMessage::Update { source_id, url, origin, site, playback, metadata, capabilities, confidence, canonical_url, _ext_fingerprint } => {
+        ExtMessage::Update {
+            source_id,
+            url,
+            origin,
+            site,
+            playback,
+            metadata,
+            capabilities,
+            canonical_url,
+        } => {
             let site_for_player = site.clone();
             let state = SourceState {
                 source_id: source_id.clone(),
-                url, origin, site,
-                playback, metadata, capabilities, confidence,
+                url,
+                origin,
+                site,
+                playback,
+                metadata,
+                capabilities,
                 canonical_url,
                 last_seen: std::time::Instant::now(),
             };
-            // Log extension fingerprint for version-checking.
-            if let Some(fp) = &_ext_fingerprint {
-                trace!("ext fingerprint for {source_id}: {fp}");
-            }
 
             registry.upsert(state);
 
@@ -245,10 +260,16 @@ async fn handle_extension_message(
             let had_player_before = players.has_player(&source_id);
             let current_count = players.player_count();
             debug!("ensuring player for {source_id} site={site_for_player} (had={had_player_before} total_players={current_count})");
-            match players.ensure_player(&source_id, &site_for_player, cmd_tx).await {
+            match players
+                .ensure_player(&source_id, &site_for_player, cmd_tx)
+                .await
+            {
                 Some(publisher) => {
                     if !had_player_before {
-                        info!("PlayerManager: new player created for {source_id}, bus={}", publisher.bus_name());
+                        info!(
+                            "PlayerManager: new player created for {source_id}, bus={}",
+                            publisher.bus_name()
+                        );
                     }
                     if let Some(state) = registry.get(&source_id) {
                         publisher.publish(Some(state)).await;
@@ -272,8 +293,7 @@ async fn handle_extension_message(
 
 async fn cmd_install(browsers: Vec<String>) {
     let requested = |name: &str| browsers.is_empty() || browsers.iter().any(|b| b == name);
-    let binary = std::env::current_exe()
-        .expect("could not resolve bridge binary path");
+    let binary = std::env::current_exe().expect("could not resolve bridge binary path");
 
     if requested("firefox") {
         install_firefox_manifest(&binary);
@@ -418,23 +438,39 @@ async fn cmd_doctor() {
             match std::fs::read_to_string(&manifest_path) {
                 Ok(content) => {
                     if let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&content) {
-                        let path_ok = manifest.get("path")
+                        let path_ok = manifest
+                            .get("path")
                             .and_then(|p| p.as_str())
                             .map(|p| std::path::Path::new(p).exists())
                             .unwrap_or(false);
                         if path_ok {
-                            println!("✓ {browser} manifest: {} (binary OK)", manifest_path.display());
+                            println!(
+                                "✓ {browser} manifest: {} (binary OK)",
+                                manifest_path.display()
+                            );
                         } else {
-                            println!("⚠ {browser} manifest: {} (binary missing/stale)", manifest_path.display());
+                            println!(
+                                "⚠ {browser} manifest: {} (binary missing/stale)",
+                                manifest_path.display()
+                            );
                         }
                     } else {
-                        println!("⚠ {browser} manifest: {} (invalid JSON)", manifest_path.display());
+                        println!(
+                            "⚠ {browser} manifest: {} (invalid JSON)",
+                            manifest_path.display()
+                        );
                     }
                 }
-                Err(e) => println!("✗ {browser} manifest: {} (read error: {e})", manifest_path.display()),
+                Err(e) => println!(
+                    "✗ {browser} manifest: {} (read error: {e})",
+                    manifest_path.display()
+                ),
             }
         } else {
-            println!("✗ {browser} manifest: not found at {}", manifest_path.display());
+            println!(
+                "✗ {browser} manifest: not found at {}",
+                manifest_path.display()
+            );
         }
     }
 
@@ -453,7 +489,9 @@ async fn debug_fake_player(mpris_name: String) {
 
     let (cmd_tx, mut _cmd_rx) = mpsc::channel::<TaggedCommand>(64);
 
-    let publisher = MprisPublisher::new(&mpris_name, "debug:fake:1", cmd_tx).await.unwrap();
+    let publisher = MprisPublisher::new(&mpris_name, "debug:fake:1", cmd_tx)
+        .await
+        .unwrap();
     let run_task = publisher.run_task();
     let _handle = tokio::task::spawn_local(run_task);
 
@@ -467,7 +505,6 @@ async fn debug_fake_player(mpris_name: String) {
             status: Status::Playing,
             position_ms: 42000,
             duration_ms: 212000,
-            rate: 1.0,
         },
         metadata: MediaMetadata {
             title: Some("Never Gonna Give You Up".into()),
@@ -486,10 +523,8 @@ async fn debug_fake_player(mpris_name: String) {
             previous: true,
             seek: true,
             set_position: true,
-            raise: true,
         },
         canonical_url: Some("https://music.youtube.com/watch?v=dQw4w9WgXcQ".into()),
-        confidence: ConfidenceLevel::Provider,
         last_seen: std::time::Instant::now(),
     };
 

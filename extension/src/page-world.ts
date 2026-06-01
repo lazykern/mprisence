@@ -42,16 +42,14 @@
     const media = video ?? audio;
 
     let metadata: Record<string, any> = { artist: [], album_artist: [] };
-    let playback = { status: "stopped", position_ms: 0, duration_ms: 0, rate: 1.0 };
+    let playback = { status: "stopped", position_ms: 0, duration_ms: 0 };
     let capabilities = {
       play_pause: true,
       next: false,
       previous: false,
       seek: false,
       set_position: false,
-      raise: true,
     };
-    let confidence = "dom";
 
     // Get metadata from Media Session API (richer than DOM)
     try {
@@ -77,7 +75,6 @@
           metadata.art_url = resolveArtworkUrl(best.src || undefined);
         }
 
-        confidence = "provider";
       }
     } catch {
       // Media Session not available
@@ -92,7 +89,6 @@
             : "playing",
         position_ms: Math.floor((media.currentTime || 0) * 1000),
         duration_ms: Math.floor((media.duration || 0) * 1000),
-        rate: media.playbackRate || 1.0,
       };
 
       capabilities = {
@@ -108,7 +104,6 @@
       metadata,
       playback,
       capabilities,
-      confidence,
     };
   }
 
@@ -265,7 +260,6 @@
         status: "playing",
         position_ms: 0,
         duration_ms: 0,
-        rate: 1.0,
       },
       capabilities: {
         play_pause: true,
@@ -273,9 +267,7 @@
         previous: false,
         seek: false,
         set_position: false,
-        raise: true,
       },
-      confidence: "provider",
     });
   }
 

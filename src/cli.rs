@@ -1,7 +1,7 @@
 use crate::{
     config::{
         get_config,
-        schema::{ActivityType, PlayerConfig, StatusDisplayType, WebsiteConfig},
+        schema::{ActivityType, PlayerConfig, StatusDisplayType, WebPlayerConfig},
     },
     error::Error,
     player::{
@@ -111,7 +111,7 @@ impl Command {
                         };
 
                         // Resolve URL-aware config so the CLI reflects what
-                        // the runtime would actually push (website overrides
+                        // the runtime would actually push (web_player overrides
                         // can fully replace the browser's player config).
                         let (player_config, _suffix) = config
                             .get_player_config_with_title_fallback(
@@ -120,7 +120,7 @@ impl Command {
                                 url.as_deref(),
                                 title.as_deref(),
                             );
-                        let website_match = config.matched_website_for_url(url.as_deref());
+                        let web_player_match = config.matched_web_player_for_url(url.as_deref());
 
                         entries.push(PlayerDisplay {
                             id,
@@ -132,7 +132,7 @@ impl Command {
                             album,
                             length,
                             url,
-                            website_match,
+                            web_player_match,
                             config: player_config,
                             allowed,
                             is_duplicate: false,
@@ -279,8 +279,8 @@ impl Command {
                             if let Some(url) = &entry.url {
                                 println!("  URL      : {}", url);
                             }
-                            if let Some((key, website)) = &entry.website_match {
-                                println!("  Website  : {}", format_website_match(key, website));
+                            if let Some((key, website)) = &entry.web_player_match {
+                                println!("  Website  : {}", format_web_player_match(key, website));
                             }
                             println!(
                                 "  Presence : {}",
@@ -391,16 +391,16 @@ impl Command {
                     }
                 }
 
-                let mut website_configs: Vec<(String, WebsiteConfig)> =
-                    config.website_configs().into_iter().collect();
-                website_configs.sort_by(|a, b| a.0.cmp(&b.0));
+                let mut web_player_configs: Vec<(String, WebPlayerConfig)> =
+                    config.web_player_configs().into_iter().collect();
+                web_player_configs.sort_by(|a, b| a.0.cmp(&b.0));
 
                 println!("\nWebsite Overrides");
                 println!("{}", create_divider());
-                if website_configs.is_empty() {
+                if web_player_configs.is_empty() {
                     println!("  (none)");
                 } else {
-                    for (index, (key, cfg)) in website_configs.iter().enumerate() {
+                    for (index, (key, cfg)) in web_player_configs.iter().enumerate() {
                         println!("{} {}", player_config_icon(cfg.ignore), key);
                         if cfg.match_patterns.len() == 1 {
                             print_nested_key_value("match_pattern", &cfg.match_patterns[0], 4);
@@ -448,7 +448,7 @@ impl Command {
                             );
                         }
 
-                        if index + 1 < website_configs.len() {
+                        if index + 1 < web_player_configs.len() {
                             println!();
                         }
                     }
@@ -492,11 +492,11 @@ struct PlayerDisplay {
     length: Option<Duration>,
     /// xesam:url from the player's MPRIS metadata. Surfaced in the
     /// detailed view so the user can see what the runtime sees when
-    /// resolving website overrides.
+    /// resolving web_player overrides.
     url: Option<String>,
-    /// (key, resolved config) of the `[website.*]` entry that the runtime
-    /// would project onto this player. None when no website matches.
-    website_match: Option<(String, WebsiteConfig)>,
+    /// (key, resolved config) of the `[web_player.*]` entry that the runtime
+    /// would project onto this player. None when no web_player matches.
+    web_player_match: Option<(String, WebPlayerConfig)>,
     config: PlayerConfig,
     allowed: bool,
     /// True when another bus name for the same identity was chosen as the
@@ -605,7 +605,7 @@ fn format_track_length(duration: Duration) -> String {
     format!("{:02}:{:02}", total_seconds / 60, total_seconds % 60)
 }
 
-fn format_website_match(key: &str, website: &WebsiteConfig) -> String {
+fn format_web_player_match(key: &str, website: &WebPlayerConfig) -> String {
     let pattern_summary = if website.match_patterns.is_empty() {
         "no patterns".to_string()
     } else if website.match_patterns.len() == 1 {

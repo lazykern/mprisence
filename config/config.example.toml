@@ -192,10 +192,11 @@ litter_hours = 24
 [player]
 # Default configuration for all players
 # Priority: user entries override bundled ones. Fields left unset in a higher-priority entry fall back to lower matches, then [player.default], then built-in defaults. If identity and bus-name differ, an exact user bus-name entry wins.
-# A non-default [player.*] match opts that player in unless it explicitly sets ignore = true, so custom player entries do not need ignore = false.
+# [player.default].ignore_unmatched controls unknown players. Matched [player.*] entries start enabled unless some matched layer sets ignore = true.
 # Fields:
 #   name: Display name override shown in templates (replaces the auto-detected player identity in the `{{{player}}}` variable)
 #   ignore: Don't show rich presence for this player
+#   ignore_unmatched: Only meaningful in [player.default]. Hide players with no matching [player.*] entry.
 #   app_id: Discord application ID (get yours at: https://discord.com/developers/docs/quick-start/overview-of-apps)
 #   icon: Player icon URL (shown as small image)
 #   show_icon: Show player icon in Discord (as small image)
@@ -206,13 +207,13 @@ litter_hours = 24
 #       "state"   -> Rendered template.state value (default: "{{{artists}}}")
 #       "details" -> Rendered template.details value (default: "{{{title}}}")
 #   override_activity_type: Will always show this activity type regardless of media content type
-default = { ignore = true, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false, status_display_type = "name" }
+default = { ignore_unmatched = true, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false, status_display_type = "name" }
 
 # ------------------
 # Example Player-Specific Settings
 # ------------------
 # Each player can override any of the default settings above.
-# Defining a player entry enables that player by default; add ignore = true to keep it hidden.
+# Matched player entries start enabled by default; add ignore = true to keep one hidden.
 # Example for VLC Media Player:
 [player.vlc_media_player]
 app_id = "1124968989538402334"
@@ -245,14 +246,14 @@ status_display_type = "details"
 # so you only need to write the fields you want to change.
 
 # ------------------
-# Website Overrides
+# Web Player Overrides
 # ------------------
 # Browsers (Firefox, Zen, Chrome, etc.) publish the playing tab's URL via
-# `xesam:url`. When the URL host matches a `[website.*]` entry, that entry
+# `xesam:url`. When the URL host matches a `[web_player.*]` entry, that entry
 # becomes the *authoritative* config for the player — its app_id, icon,
 # name, ignore, allow_streaming, and activity type fully replace the
 # browser's `[player.*]` config. So you do not need to also enable the
-# browser entry; adding (or overriding) a `[website.*]` is enough.
+# browser entry; adding (or overriding) a `[web_player.*]` is enough.
 #
 # Pattern syntax (same as [player.*] keys):
 #   bare        -> exact host match, with substring fallback against the host
@@ -261,22 +262,24 @@ status_display_type = "details"
 #
 # Specificity wins: exact > regex > wildcard > substring.
 #
-# Any http/https URL that does NOT match a `[website.*]` entry is
+# Any http/https URL that does NOT match a `[web_player.*]` entry is
 # auto-ignored, so unknown browser audio (ads, random tabs) stays out
-# of Discord. Opt back in by adding a matching `[website.*]` entry.
+# of Discord. Opt back in by adding a matching `[web_player.*]` entry.
 #
 # Merge semantics: user entries are merged per-key with the bundled
 # entries — user fields win, and unset fields (including
 # `match_pattern` / `match_patterns`) fall through to the bundled
 # entry. So flipping `ignore` on a bundled site only takes one line.
 
+# [web_player.default]
+
 # Example: opt into Spotify Web (bundled with `ignore = true`).
 # Patterns are inherited from the bundled entry — one line is enough.
-# [website.spotify_web]
+# [web_player.spotify_web]
 # ignore = false
 
-# Example: register a new website not in the bundle.
-# [website.last_fm]
+# Example: register a new web_player not in the bundle.
+# [web_player.last_fm]
 # match_pattern = "last.fm"
 # name = "Last.fm"
 # app_id = "YOUR_DISCORD_APP_ID"
@@ -284,7 +287,7 @@ status_display_type = "details"
 # allow_streaming = true
 # ignore = false
 
-# Bundled `[website.*]` keys + patterns (override any of these by writing
+# Bundled `[web_player.*]` keys + patterns (override any of these by writing
 # the same key in this file):
 #   youtube_music   music.youtube.com
 #   youtube         youtube.com, youtu.be
@@ -299,5 +302,5 @@ status_display_type = "details"
 #   spotify_web     open.spotify.com  (ignore = true by default)
 #
 # Inspect resolved entries with `mprisence config`.
-# Check which website (if any) is currently matched for each player with
+# Check which web_player (if any) is currently matched for each player with
 # `mprisence players list --detailed`.

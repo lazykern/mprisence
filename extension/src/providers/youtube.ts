@@ -148,7 +148,6 @@ export class YouTubeProvider implements Provider {
       status,
       position_ms: Math.floor(ct * 1000),
       duration_ms: Math.floor(dur * 1000),
-      rate: video.playbackRate || 1.0,
     };
 
     const capabilities: Capabilities = {
@@ -157,14 +156,12 @@ export class YouTubeProvider implements Provider {
       previous: false,
       seek: true,
       set_position: true,
-      raise: true,
     };
 
     return {
       metadata,
       playback,
       capabilities,
-      confidence: "provider",
       pageUrl: watchUrl || undefined,
       canonicalUrl: watchUrl || undefined,
     };

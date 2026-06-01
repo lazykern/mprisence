@@ -9,8 +9,8 @@ use player::{
     bridge_browser, canonical_player_bus_name, compute_presence_migrations,
     events::{EventOutcome, PlayerEvent, PlayerEventKind},
     is_mprisence_web_bridge_bus, is_playerctld_no_active_error, merge_url_duplicates,
-    select_richest_player, select_winner_idx, should_suppress_native,
-    BucketSummary, PlayerIdentifier,
+    select_richest_player, select_winner_idx, should_suppress_native, BucketSummary,
+    PlayerIdentifier,
 };
 use presence::Presence;
 use smol_str::SmolStr;
@@ -208,7 +208,9 @@ impl Mprisence {
             }
 
             let metadata = player.get_metadata().ok();
-            let url = metadata.as_ref().and_then(|m| m.url().map(|s| s.to_string()));
+            let url = metadata
+                .as_ref()
+                .and_then(|m| m.url().map(|s| s.to_string()));
             let title = metadata
                 .as_ref()
                 .and_then(|m| m.title().map(|s| s.to_string()));
@@ -461,7 +463,7 @@ impl Mprisence {
                 (pid.identity.clone(), pid.player_bus_name.clone())
             };
             let allowed = self.config.is_player_allowed(&identity, &player_bus_name);
-            // Use URL-aware config to respect website overrides (e.g. SoundCloud
+            // Use URL-aware config to respect web_player overrides (e.g. SoundCloud
             // un-ignoring a browser that is ignored by default).
             // Also try title-suffix inference for players without xesam:url.
             let url = presence.current_url();

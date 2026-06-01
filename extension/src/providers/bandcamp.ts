@@ -152,7 +152,6 @@ export class BandcampProvider implements Provider {
       status: isPlaying ? "playing" : "paused",
       position_ms: positionMs,
       duration_ms: durationMs,
-      rate: audio?.playbackRate ?? 1.0,
     };
 
     const prevIcon = this.qs<HTMLElement>(
@@ -167,10 +166,9 @@ export class BandcampProvider implements Provider {
       previous: prevIcon ? !prevIcon.classList.contains("disabled") : false,
       seek: true,
       set_position: true,
-      raise: false,
     };
 
-    return { metadata: meta, playback, capabilities, confidence: "provider" };
+    return { metadata: meta, playback, capabilities };
   }
 
   private async commandCarousel(cmd: string, positionMs?: number): Promise<void> {
@@ -278,7 +276,6 @@ export class BandcampProvider implements Provider {
       status: isPlaying ? "playing" : "paused",
       position_ms: positionMs,
       duration_ms: durationMs,
-      rate: audio.playbackRate ?? 1.0,
     };
 
     const capabilities: Capabilities = {
@@ -287,10 +284,9 @@ export class BandcampProvider implements Provider {
       previous: !!this.qs<HTMLElement>(".inline_player .prevbutton"),
       seek: true,
       set_position: true,
-      raise: false,
     };
 
-    return { metadata: meta, playback, capabilities, confidence: "provider" };
+    return { metadata: meta, playback, capabilities };
   }
 
   private async commandInline(cmd: string, positionMs?: number): Promise<void> {

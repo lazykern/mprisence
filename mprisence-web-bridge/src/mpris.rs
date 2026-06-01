@@ -1,8 +1,6 @@
 use crate::protocol::{MediaMetadata, SourceState, Status};
 use log::{debug, info, trace, warn};
-use mpris_server::{
-    zbus::zvariant::ObjectPath, Metadata, Player, Time, TrackId,
-};
+use mpris_server::{zbus::zvariant::ObjectPath, Metadata, Player, Time, TrackId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -58,21 +56,49 @@ impl PublishDecision {
 fn compute_publish_decision(prev: &PublishedSnapshot, next: &PublishedSnapshot) -> PublishDecision {
     if prev.meta != next.meta {
         let MetaSnapshot {
-            track_id: pt, title: pti, artists: pa, album: pal, album_artists: paa,
-            art_url: pau, length_us: pl, url: pu
+            track_id: pt,
+            title: pti,
+            artists: pa,
+            album: pal,
+            album_artists: paa,
+            art_url: pau,
+            length_us: pl,
+            url: pu,
         } = &prev.meta;
         let MetaSnapshot {
-            track_id: nt, title: nti, artists: na, album: nal, album_artists: naa,
-            art_url: nau, length_us: nl, url: nu
+            track_id: nt,
+            title: nti,
+            artists: na,
+            album: nal,
+            album_artists: naa,
+            art_url: nau,
+            length_us: nl,
+            url: nu,
         } = &next.meta;
-        if pt != nt { debug!("     meta.track_id: {:?} -> {:?}", pt, nt); }
-        if pti != nti { debug!("     meta.title: {:?} -> {:?}", pti, nti); }
-        if pa != na { debug!("     meta.artists: {:?} -> {:?}", pa, na); }
-        if pal != nal { debug!("     meta.album: {:?} -> {:?}", pal, nal); }
-        if paa != naa { debug!("     meta.album_artists: {:?} -> {:?}", paa, naa); }
-        if pau != nau { debug!("     meta.art_url: {:?} -> {:?}", pau, nau); }
-        if pl != nl { debug!("     meta.length_us: {} -> {}", pl, nl); }
-        if pu != nu { debug!("     meta.url: {:?} -> {:?}", pu, nu); }
+        if pt != nt {
+            debug!("     meta.track_id: {:?} -> {:?}", pt, nt);
+        }
+        if pti != nti {
+            debug!("     meta.title: {:?} -> {:?}", pti, nti);
+        }
+        if pa != na {
+            debug!("     meta.artists: {:?} -> {:?}", pa, na);
+        }
+        if pal != nal {
+            debug!("     meta.album: {:?} -> {:?}", pal, nal);
+        }
+        if paa != naa {
+            debug!("     meta.album_artists: {:?} -> {:?}", paa, naa);
+        }
+        if pau != nau {
+            debug!("     meta.art_url: {:?} -> {:?}", pau, nau);
+        }
+        if pl != nl {
+            debug!("     meta.length_us: {} -> {}", pl, nl);
+        }
+        if pu != nu {
+            debug!("     meta.url: {:?} -> {:?}", pu, nu);
+        }
     }
     if prev.caps != next.caps {
         debug!("     caps: {:?} -> {:?}", prev.caps, next.caps);
@@ -143,11 +169,23 @@ impl PlayerManager {
                     Ok(publisher) => {
                         let run_task = publisher.run_task();
                         let handle = tokio::task::spawn_local(run_task);
-                        info!("Created MPRIS player for source {source_id} → {}", publisher.bus_name());
-                        Some(&entry.insert(PlayerEntry { publisher, _handle: handle }).publisher)
+                        info!(
+                            "Created MPRIS player for source {source_id} → {}",
+                            publisher.bus_name()
+                        );
+                        Some(
+                            &entry
+                                .insert(PlayerEntry {
+                                    publisher,
+                                    _handle: handle,
+                                })
+                                .publisher,
+                        )
                     }
                     Err(e) => {
-                        warn!("Failed to create MPRIS player for {source_id} (suffix={suffix}): {e}");
+                        warn!(
+                            "Failed to create MPRIS player for {source_id} (suffix={suffix}): {e}"
+                        );
                         None
                     }
                 }
@@ -176,7 +214,10 @@ impl PlayerManager {
     }
 
     pub fn list_bus_names(&self) -> Vec<String> {
-        self.players.values().map(|e| e.publisher.bus_name().to_string()).collect()
+        self.players
+            .values()
+            .map(|e| e.publisher.bus_name().to_string())
+            .collect()
     }
 }
 
@@ -211,7 +252,13 @@ pub fn bridge_player_suffix(_source_id: &str, _site: &str) -> String {
 #[allow(dead_code)]
 fn dbus_safe_value(raw: &str) -> String {
     raw.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
 }
 
@@ -241,7 +288,6 @@ impl MprisPublisher {
             .can_go_next(false)
             .can_go_previous(false)
             .can_seek(false)
-            .can_raise(false)
             .build()
             .await?;
 
@@ -250,15 +296,21 @@ impl MprisPublisher {
         // Wire D-Bus method callbacks to forward commands to the extension
         let sid = source_id.to_string();
         let tx = cmd_tx.clone();
-        arc_player.connect_play_pause(move |_| { let _ = tx.try_send((sid.clone(), MprisCommand::PlayPause)); });
+        arc_player.connect_play_pause(move |_| {
+            let _ = tx.try_send((sid.clone(), MprisCommand::PlayPause));
+        });
 
         let sid = source_id.to_string();
         let tx = cmd_tx.clone();
-        arc_player.connect_next(move |_| { let _ = tx.try_send((sid.clone(), MprisCommand::Next)); });
+        arc_player.connect_next(move |_| {
+            let _ = tx.try_send((sid.clone(), MprisCommand::Next));
+        });
 
         let sid = source_id.to_string();
         let tx = cmd_tx.clone();
-        arc_player.connect_previous(move |_| { let _ = tx.try_send((sid.clone(), MprisCommand::Previous)); });
+        arc_player.connect_previous(move |_| {
+            let _ = tx.try_send((sid.clone(), MprisCommand::Previous));
+        });
 
         let sid = source_id.to_string();
         let tx = cmd_tx.clone();
@@ -274,11 +326,15 @@ impl MprisPublisher {
 
         let sid = source_id.to_string();
         let tx = cmd_tx.clone();
-        arc_player.connect_play(move |_| { let _ = tx.try_send((sid.clone(), MprisCommand::Play)); });
+        arc_player.connect_play(move |_| {
+            let _ = tx.try_send((sid.clone(), MprisCommand::Play));
+        });
 
         let sid = source_id.to_string();
         let tx = cmd_tx.clone();
-        arc_player.connect_pause(move |_| { let _ = tx.try_send((sid.clone(), MprisCommand::Pause)); });
+        arc_player.connect_pause(move |_| {
+            let _ = tx.try_send((sid.clone(), MprisCommand::Pause));
+        });
 
         info!("MPRIS player published on bus: {bus_name}");
 
@@ -451,24 +507,17 @@ fn build_snapshot(source: Option<&SourceState>) -> PublishedSnapshot {
 fn build_metadata(source: Option<&SourceState>) -> Metadata {
     let mut builder = Metadata::builder();
 
-    // Always include the bridge marker so mprisence can detect bridge players.
-    builder = builder.other("mprisence:bridge", "true");
-
     if let Some(s) = source {
         let meta = &s.metadata;
 
-        // ── Custom mprisence metadata (stable keys only) ───────
-        builder = builder.other("mprisence:sourceId", s.source_id.clone());
-        builder = builder.other("mprisence:site", s.site.clone());
-        builder = builder.other("mprisence:origin", s.origin.clone());
-        builder = builder.other("mprisence:pageUrl", s.url.clone());
-        if let Some(ref cu) = s.canonical_url {
-            if !cu.is_empty() && !cu.starts_with("blob:") {
-                builder = builder.other("mprisence:canonicalUrl", cu.clone());
-            }
-        }
-        // Browser is the first ':'-segment of the source_id (e.g. "firefox:tab:12:0").
-        let browser = s.source_id.split(':').next().unwrap_or("unknown").to_string();
+        // Browser is the only custom key the daemon consumes. It lets
+        // mprisence suppress duplicate native browser MPRIS players.
+        let browser = s
+            .source_id
+            .split(':')
+            .next()
+            .unwrap_or("unknown")
+            .to_string();
         builder = builder.other("mprisence:browser", browser);
 
         // ── Standard MPRIS metadata ────────────────────────────
@@ -492,8 +541,7 @@ fn build_metadata(source: Option<&SourceState>) -> Metadata {
             builder = builder.artist(artists);
         }
         if !meta.album_artist.is_empty() {
-            let album_artists: Vec<&str> =
-                meta.album_artist.iter().map(|s| s.as_str()).collect();
+            let album_artists: Vec<&str> = meta.album_artist.iter().map(|s| s.as_str()).collect();
             builder = builder.album_artist(album_artists);
         }
         if let Some(art_url) = &meta.art_url {
@@ -543,7 +591,13 @@ fn make_track_id(s: &SourceState, meta: &MediaMetadata) -> String {
             // D-Bus ObjectPath only allows [A-Za-z0-9_]
             let safe: String = tid
                 .chars()
-                .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+                .map(|c| {
+                    if c.is_alphanumeric() || c == '_' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
                 .collect();
             return format!("/mprisence/track/{safe}");
         }
@@ -601,7 +655,13 @@ mod tests {
         let mut next = snap();
         next.status = Some(Status::Paused);
         let d = compute_publish_decision(&snap(), &next);
-        assert_eq!(d, PublishDecision { status: true, ..Default::default() });
+        assert_eq!(
+            d,
+            PublishDecision {
+                status: true,
+                ..Default::default()
+            }
+        );
     }
 
     #[test]
@@ -609,7 +669,13 @@ mod tests {
         let mut next = snap();
         next.meta.title = "Different".into();
         let d = compute_publish_decision(&snap(), &next);
-        assert_eq!(d, PublishDecision { metadata: true, ..Default::default() });
+        assert_eq!(
+            d,
+            PublishDecision {
+                metadata: true,
+                ..Default::default()
+            }
+        );
     }
 
     #[test]
@@ -617,7 +683,13 @@ mod tests {
         let mut next = snap();
         next.caps.can_next = true;
         let d = compute_publish_decision(&snap(), &next);
-        assert_eq!(d, PublishDecision { caps: true, ..Default::default() });
+        assert_eq!(
+            d,
+            PublishDecision {
+                caps: true,
+                ..Default::default()
+            }
+        );
     }
 
     #[test]
@@ -625,6 +697,12 @@ mod tests {
         let mut next = snap();
         next.identity = "SoundCloud".into();
         let d = compute_publish_decision(&snap(), &next);
-        assert_eq!(d, PublishDecision { identity: true, ..Default::default() });
+        assert_eq!(
+            d,
+            PublishDecision {
+                identity: true,
+                ..Default::default()
+            }
+        );
     }
 }

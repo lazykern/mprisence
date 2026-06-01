@@ -19,7 +19,6 @@
 
 import type {
   Capabilities,
-  ConfidenceLevel,
   MediaMetadata,
   PlaybackState,
 } from "../types";
@@ -46,10 +45,8 @@ export class SoundCloudProvider implements Provider {
       status: "stopped",
       position_ms: 0,
       duration_ms: 0,
-      rate: 1.0,
     };
 
-    let confidence: ConfidenceLevel = "dom";
     let pageUrl: string | undefined;
 
     // ── Primary: MediaSession API ──────────────────────────────
@@ -72,7 +69,6 @@ export class SoundCloudProvider implements Provider {
             });
             meta.art_url = resolveArtwork(best.src || undefined);
           }
-          confidence = "provider";
           hasMs = true;
         }
       }
@@ -155,7 +151,6 @@ export class SoundCloudProvider implements Provider {
       status: isPlaying ? "playing" : hasMs ? "paused" : "stopped",
       position_ms: positionMs,
       duration_ms: durationMs,
-      rate: 1.0,
     };
 
     // ── Capabilities check ─────────────────────────────────────
@@ -175,7 +170,6 @@ export class SoundCloudProvider implements Provider {
       previous: hasPrev,
       seek: false,    // no audio element for seeking
       set_position: false,
-      raise: true,
     };
 
     // Must have at least a title to be useful
@@ -185,7 +179,6 @@ export class SoundCloudProvider implements Provider {
       metadata: meta,
       playback,
       capabilities,
-      confidence,
       pageUrl,
     };
   }

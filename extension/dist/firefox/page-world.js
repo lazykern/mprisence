@@ -22,16 +22,14 @@
     const audio = document.querySelector("audio");
     const media = video ?? audio;
     let metadata = { artist: [], album_artist: [] };
-    let playback = { status: "stopped", position_ms: 0, duration_ms: 0, rate: 1 };
+    let playback = { status: "stopped", position_ms: 0, duration_ms: 0 };
     let capabilities = {
       play_pause: true,
       next: false,
       previous: false,
       seek: false,
-      set_position: false,
-      raise: true
+      set_position: false
     };
-    let confidence = "dom";
     try {
       const ms = navigator.mediaSession;
       if (ms?.metadata) {
@@ -52,7 +50,6 @@
           });
           metadata.art_url = resolveArtworkUrl(best.src || void 0);
         }
-        confidence = "provider";
       }
     } catch {
     }
@@ -60,8 +57,7 @@
       playback = {
         status: media.paused ? "paused" : media.ended ? "stopped" : "playing",
         position_ms: Math.floor((media.currentTime || 0) * 1e3),
-        duration_ms: Math.floor((media.duration || 0) * 1e3),
-        rate: media.playbackRate || 1
+        duration_ms: Math.floor((media.duration || 0) * 1e3)
       };
       capabilities = {
         ...capabilities,
@@ -74,8 +70,7 @@
       type: "media-state",
       metadata,
       playback,
-      capabilities,
-      confidence
+      capabilities
     };
   }
   let lastMeta = "";
@@ -185,18 +180,15 @@
       playback: {
         status: "playing",
         position_ms: 0,
-        duration_ms: 0,
-        rate: 1
+        duration_ms: 0
       },
       capabilities: {
         play_pause: true,
         next: false,
         previous: false,
         seek: false,
-        set_position: false,
-        raise: true
-      },
-      confidence: "provider"
+        set_position: false
+      }
     });
   }
   function checkYtmVideoId() {

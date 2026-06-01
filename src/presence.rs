@@ -94,12 +94,7 @@ fn summarize_log_value_with_limit(
         } else {
             "truncated"
         };
-        format!(
-            "{}… [{}; {} chars total]",
-            truncated,
-            reason,
-            rendered_len
-        )
+        format!("{}… [{}; {} chars total]", truncated, reason, rendered_len)
     } else {
         rendered
     }
@@ -144,7 +139,7 @@ pub struct Presence {
     cmus: cmus::CmusState,
     discord_client: Option<Arc<Mutex<DiscordIpcClient>>>,
     /// The Discord application id the current `discord_client` was opened with.
-    /// Each cycle re-resolves the effective app id (player + website overlay).
+    /// Each cycle re-resolves the effective app id (player + web_player overlay).
     /// A mismatch triggers IPC client recycling so the new app's icon/name
     /// takes effect.
     last_effective_app_id: Mutex<Option<String>>,
@@ -305,7 +300,7 @@ impl Presence {
             return Ok(());
         }
         // Resolve the app id with URL/title context so a tab covered by a
-        // `[website.*]` override opens its IPC connection with the correct
+        // `[web_player.*]` override opens its IPC connection with the correct
         // app id directly. Without this, the URL-aware resolution later in
         // `update_activity` would tear the just-opened connection down and
         // reopen it, racing the first `set_activity` write.
@@ -432,7 +427,10 @@ impl Presence {
             }
         };
         let track = health::TrackFingerprint::from_mpris(&metadata);
-        trace!("Raw MPRIS metadata: {}", summarize_metadata_for_log(&metadata));
+        trace!(
+            "Raw MPRIS metadata: {}",
+            summarize_metadata_for_log(&metadata)
+        );
         let position = self.player.get_position().unwrap_or_default();
         let now = Instant::now();
         let generation = self.update_generation.load(Ordering::Relaxed);
@@ -822,8 +820,8 @@ impl Presence {
 
             let url_changed = match (last_url.as_deref(), track_url.as_deref()) {
                 (Some(last), Some(current)) => last != current,
-                (None, Some(_)) => true,   // first URL seen
-                (Some(_), None) => false,  // URL disappeared — keep last
+                (None, Some(_)) => true,  // first URL seen
+                (Some(_), None) => false, // URL disappeared — keep last
                 (None, None) => false,
             };
 
@@ -834,8 +832,8 @@ impl Presence {
                 (Some(last), Some(current)) => {
                     utils::normalize_art_url(last) != utils::normalize_art_url(&current)
                 }
-                (None, Some(_)) => true,   // first art URL seen
-                (Some(_), None) => false,  // art URL disappeared — keep last
+                (None, Some(_)) => true,  // first art URL seen
+                (Some(_), None) => false, // art URL disappeared — keep last
                 (None, None) => false,
             };
 
@@ -984,7 +982,7 @@ impl Presence {
         trace!("Template rendering complete, proceeding to activity push");
 
         // Reconcile the Discord IPC client when the resolved app id changes
-        // (e.g. the active [website.*] overlay matched a different service).
+        // (e.g. the active [web_player.*] overlay matched a different service).
         let new_app_id = player_config.app_id.clone();
         let needs_app_swap = {
             let last = self.last_effective_app_id.lock();
@@ -1575,10 +1573,7 @@ impl Presence {
                 }
             }
         } else {
-            playback_status = self
-                .player
-                .get_playback_status()
-                .ok();
+            playback_status = self.player.get_playback_status().ok();
             // Non-TrackChanged events: skip Discord push if nothing
             // changed since the last tick (same guard as the polling
             // path in update()). Without this, the bridge's MPRIS
@@ -1588,7 +1583,10 @@ impl Presence {
             let metadata = match self.player.get_metadata() {
                 Ok(m) => m,
                 Err(e) => {
-                    warn!("Failed to get metadata for significant_change check in handle_event: {}", e);
+                    warn!(
+                        "Failed to get metadata for significant_change check in handle_event: {}",
+                        e
+                    );
                     return Ok(EventOutcome::Continue);
                 }
             };
@@ -1627,7 +1625,10 @@ impl Presence {
             let current_track = health::TrackFingerprint::from_mpris(&metadata);
             art_decision = self.health.lock().art_decision(&current_track);
         }
-        if let Err(err) = self.update_activity(generation, art_decision, playback_status).await {
+        if let Err(err) = self
+            .update_activity(generation, art_decision, playback_status)
+            .await
+        {
             if matches!(err, DiscordError::ActivityError(_)) {
                 if !self.error_logged.load(Ordering::Relaxed) {
                     warn!("Discord connection error, will attempt to reconnect next event");

@@ -113,7 +113,10 @@ impl PlaybackState {
             position: player.get_position().map(|d| d.as_secs() as u32).ok(),
             volume: player.get_volume().map(|v| (v * 100.0) as u8).ok(),
             url: metadata.and_then(|m| m.url().map(|s| s.to_string().into_boxed_str())),
-            art_url: metadata.and_then(|m| m.art_url().map(|s| utils::normalize_art_url(&s).into_boxed_str())),
+            art_url: metadata.and_then(|m| {
+                m.art_url()
+                    .map(|s| utils::normalize_art_url(&s).into_boxed_str())
+            }),
         }
     }
 }
@@ -184,9 +187,11 @@ pub fn should_suppress_native(
         Some("plasma") => bridged_sources
             .iter()
             .any(|(_, bridged_url)| same_url_or_origin(native_url, bridged_url)),
-        Some(browser) => bridged_sources.iter().any(|(bridged_browser, bridged_url)| {
-            bridged_browser == browser && same_url_or_origin(native_url, bridged_url)
-        }),
+        Some(browser) => bridged_sources
+            .iter()
+            .any(|(bridged_browser, bridged_url)| {
+                bridged_browser == browser && same_url_or_origin(native_url, bridged_url)
+            }),
         None => false,
     }
 }
@@ -196,7 +201,9 @@ fn same_url_or_origin(a: &str, b: &str) -> bool {
         return true;
     }
     match (origin_of(a), origin_of(b)) {
-        (Some(origin_a), Some(origin_b)) => origin_a == origin_b && (is_origin_only(a) || is_origin_only(b)),
+        (Some(origin_a), Some(origin_b)) => {
+            origin_a == origin_b && (is_origin_only(a) || is_origin_only(b))
+        }
         _ => false,
     }
 }
@@ -213,38 +220,6 @@ pub fn bridge_browser(metadata: &mpris::Metadata) -> Option<String> {
 /// Instead of `mprisence_web.youtube_music.abc123` matching individual config,
 /// all bridge players use `mprisence_web` as their config lookup key.
 pub const BRIDGE_CONFIG_KEY: &str = "mprisence_web";
-
-/// Returns true if MPRIS metadata contains the bridge marker.
-#[allow(dead_code)]
-pub fn has_bridge_metadata_marker(metadata: &mpris::Metadata) -> bool {
-    metadata
-        .get("mprisence:bridge")
-        .and_then(|v| v.as_str())
-        .map(|s| s == "true")
-        .unwrap_or(false)
-}
-
-/// Extracts the group key from bridge MPRIS metadata.
-/// Returns the value of `mprisence:group` (the site), or None if not a bridge player.
-#[allow(dead_code)]
-pub fn bridge_group_key(metadata: &mpris::Metadata) -> Option<String> {
-    if !has_bridge_metadata_marker(metadata) {
-        return None;
-    }
-    metadata
-        .get("mprisence:group")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-}
-
-/// Extracts the site from bridge MPRIS metadata.
-#[allow(dead_code)]
-pub fn bridge_site(metadata: &mpris::Metadata) -> Option<String> {
-    metadata
-        .get("mprisence:site")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-}
 
 /// Score a player's metadata richness (higher = richer).
 /// Used to break ties when multiple bus names expose the same content.
@@ -510,8 +485,7 @@ fn compute_url_merges(groups: &[GroupSnapshot]) -> Vec<(SmolStr, SmolStr)> {
                     if let Some(existing) = url_to_norm
                         .iter()
                         .find(|(k, v)| {
-                            *v != &group.norm_id
-                                && origin_of(k).as_deref() == Some(origin_str)
+                            *v != &group.norm_id && origin_of(k).as_deref() == Some(origin_str)
                         })
                         .map(|(_, v)| v.clone())
                     {
@@ -1022,25 +996,23 @@ mod bridge_tests {
     }
 
     #[test]
-    fn bridge_group_key_extracts_site() {
-        // We can't easily construct Metadata in tests because it's built by mpris_server.
-        // The function signature is tested via integration.
-        // This test just verifies the function exists and compiles.
-        assert_eq!(BRIDGE_CONFIG_KEY, "mprisence_web");
-    }
-
-    #[test]
     fn suppresses_native_browser_when_bridge_present() {
         assert!(native_browser_of("firefox.instance_1_5376").is_some());
         assert!(native_browser_of("plasma-browser-integration").is_some());
         assert!(native_browser_of("spotify").is_none());
         assert!(native_browser_of("mprisence_web.youtube.abc").is_none());
 
-        assert_eq!(native_browser_of("firefox.instance_1_5376"), Some("firefox"));
+        assert_eq!(
+            native_browser_of("firefox.instance_1_5376"),
+            Some("firefox")
+        );
         assert_eq!(native_browser_of("chromium.instance_2"), Some("chromium"));
         assert_eq!(native_browser_of("spotify"), None);
 
-        let bridged_sources = [("firefox".to_string(), "https://www.youtube.com/watch?v=abc".to_string())];
+        let bridged_sources = [(
+            "firefox".to_string(),
+            "https://www.youtube.com/watch?v=abc".to_string(),
+        )];
 
         // firefox native bus suppressed only when it exposes a bridged URL
         assert!(should_suppress_native(
@@ -1073,6 +1045,10 @@ mod bridge_tests {
             Some("https://soundcloud.com/discover"),
             &bridged_sources
         ));
-        assert!(!should_suppress_native("plasma-browser-integration", Some("https://x"), &[]));
+        assert!(!should_suppress_native(
+            "plasma-browser-integration",
+            Some("https://x"),
+            &[]
+        ));
     }
 }
