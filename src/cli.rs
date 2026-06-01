@@ -279,8 +279,8 @@ impl Command {
                             if let Some(url) = &entry.url {
                                 println!("  URL      : {}", url);
                             }
-                            if let Some((key, website)) = &entry.web_player_match {
-                                println!("  Website  : {}", format_web_player_match(key, website));
+                            if let Some((key, wp)) = &entry.web_player_match {
+                                println!("  Web Player: {}", format_web_player_match(key, wp));
                             }
                             println!(
                                 "  Presence : {}",
@@ -395,7 +395,7 @@ impl Command {
                     config.web_player_configs().into_iter().collect();
                 web_player_configs.sort_by(|a, b| a.0.cmp(&b.0));
 
-                println!("\nWebsite Overrides");
+                println!("\nWeb Players");
                 println!("{}", create_divider());
                 if web_player_configs.is_empty() {
                     println!("  (none)");
