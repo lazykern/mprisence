@@ -5,7 +5,7 @@
 
 # mprisence
 
-**Discord Rich Presence for Linux media players, with optional web-player bridge**
+**Discord Rich Presence for Linux media players, with web-player bridge**
 
 [![crates.io](https://img.shields.io/crates/v/mprisence?style=flat-square)](https://crates.io/crates/mprisence)
 [![AUR version](https://img.shields.io/aur/version/mprisence?style=flat-square)](https://aur.archlinux.org/packages/mprisence)
@@ -18,7 +18,7 @@
 
 `mprisence` reads MPRIS metadata over D-Bus, renders Discord Rich Presence from configurable templates, and keeps it in sync with your current media.
 
-It works well for local players such as **VLC**, **MPV**, **Rhythmbox**, **Strawberry**, **CMUS**, **MPD**, and more. For browsers, it can use regular browser MPRIS support or an optional **native bridge + extension** for richer site-specific metadata and controls.
+It works well for local players such as **VLC**, **MPV**, **Rhythmbox**, **Strawberry**, **CMUS**, **MPD**, and more. For browsers, it can use regular browser MPRIS support or the **web-player bridge** (native host + extension) for richer site-specific metadata and controls.
 
 <p align="center">
   <img src="assets/example.gif" alt="mprisence demo" width="548" />
@@ -38,7 +38,7 @@ local player or browser tab
   → Discord Rich Presence
 ```
 
-Optional browser bridge path:
+Browser bridge path:
 
 ```text
 supported website
@@ -57,12 +57,12 @@ supported website
 - Per-player and per-site overrides for app ID, icon, activity type, streaming policy, and status text
 - Cover art from metadata, local files, Catbox/Litterbox, MusicBrainz, or ImgBB
 - Hot reload for most config changes
-- Optional browser bridge for better metadata, cover art, URLs, and controls on web players
+- Browser bridge for better metadata, cover art, URLs, and controls on web players
 
 ## Quick start
 
 > [!NOTE]
-> Most users only need `mprisence`. Bridge and extension are optional.
+> Most users only need `mprisence`. The bridge requires extra setup: build extension, register native host, load into browser.
 
 ### 1. Install
 
@@ -213,7 +213,7 @@ playerctl -l
 mprisence players list --detailed
 ```
 
-### Optional bridge + extension
+### Bridge + extension
 
 Use bridge when browser MPRIS misses title, cover art, canonical URL, duration, or reliable controls.
 

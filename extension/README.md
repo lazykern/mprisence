@@ -1,8 +1,8 @@
 # mprisence Web Extension
 
-Browser extension for `mprisence` web bridge mode.
+Browser extension that sends rich media metadata from supported websites to the `mprisence` native host via Chrome-native messaging.
 
-The extension reads media metadata from supported websites, sends updates to the background script, and the background script forwards them to native host `mprisence.web.bridge`.
+The extension reads media metadata (title, artist, cover art, position, duration, playback state) from supported websites, aggregates it in the background script, and forwards it to the native host `mprisence.web.bridge`, which publishes each tab as its own MPRIS D-Bus player.
 
 ## Build
 
