@@ -415,58 +415,18 @@ Then remove the extension from your browser.
 
 ## Supported players
 
-The full bundled support list lives in [`config.default.toml`](./config/config.default.toml).
+Full list in [`config.default.toml`](./config/config.default.toml).
 
-Common local players:
+**Unconfigured players are ignored by default.** To enable one, set `ignore = false` in a matching `[player.*]` or `[web_player.*]` section. Or set `ignore_unmatched = false` on `[player.default]` to allow everything.
 
-- VLC
-- MPV
-- Audacious
-- Elisa
-- Lollypop
-- Rhythmbox
-- CMUS
-- MPD
-- Musikcube
-- Clementine
-- Strawberry
-- Amberol
-- SMPlayer
-- Supersonic
-- Feishin
-- kew
-- Quod Libet
-- Euphonica
+- **Local** (18): VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer, Supersonic, Feishin, kew, Quod Libet, Euphonica
+- **Streaming apps**: YouTube Music; Spotify (disabled by default)
+- **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
+- **Web players**: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music; YouTube (ignored by default)
 
-Streaming apps:
+MPD frontends can also expose MPD presence. Disable the MPD entry to avoid both showing.
 
-- YouTube Music
-- Spotify, disabled by default
-
-Browsers, disabled by default as generic players:
-
-- Firefox
-- Zen
-- Chrome
-- Edge
-- Brave
-
-Web players:
-
-- YouTube Music
-- SoundCloud
-- Apple Music
-- Bandcamp
-- TIDAL
-- Deezer
-- Qobuz
-- Amazon Music
-- Yandex Music
-- YouTube, ignored by default
-
-MPD frontends can also expose MPD rich presence. Disable the MPD entry if you do not want both frontend and MPD activity.
-
-Want a player name, icon, or web-player preset added? Open an issue with the player name, MPRIS identity, and website URL if relevant.
+Want a player name, icon, or web-player preset added? [Open an issue](https://github.com/lazykern/mprisence/issues/new) with the player name, MPRIS identity, and website URL.
 
 ## CLI commands
 
