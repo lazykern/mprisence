@@ -1,49 +1,49 @@
-# WARNING:
-# IF THE RICH PRESENCE DOES NOT GET UPDATED
-# PLEASE CHECK THE LOGS FOR ANY ERRORS
+# =================
+# mprisence config
+# =================
+#
+# Copy this file to one of:
+#   ~/.config/mprisence/config.toml
+#   ~/.config/mprisence.toml
+#   ./mprisence.toml (cwd)
+#
+# Validate your config:
+#   mprisence config
 
 # ------------------
 # Basic Settings
 # ------------------
 
-# When true (default), mprisence subscribes to MPRIS PropertiesChanged / Seeked
-# signals and pushes Discord updates the moment they fire. When false, mprisence
-# falls back to polling every `interval` ms. Restart mprisence to switch modes.
-event_driven = true
+# event_driven = true                  # subscribe to MPRIS signals (default). false = poll-only.
+# fallback_poll_interval = 5000        # ms between fallback polls (event-driven mode)
+# interval = 2000                      # ms between polls (poll-only mode)
 
-# Event-driven mode only: how often to do a fallback poll to catch any
-# missed changes and discover newly launched or quit players (milliseconds).
-fallback_poll_interval = 5000
-
-# Polling fallback only: how often to poll each player (milliseconds).
-interval = 2000
-
-# Restrict discovery to specific players (by identity, wildcard, or regex).
-# Matches against player identity or the bus-name "player" part (e.g., "vlc"),
-# not the full D-Bus name. Leave empty to allow all players (default behavior).
+# Restrict discovery to specific players (identity, wildcard, or regex).
+# Matches player identity or bus-name "player" part (e.g. "vlc"), not full D-Bus name.
+# Empty = allow all.
 # Examples:
 # allowed_players = ["vlc_media_player", "*mpd*", "re:.*youtube_music.*"]
-allowed_players = []
+# allowed_players = []
 
 # ------------------
 # Display Template
 # ------------------
 [template]
-# First line in Discord presence for all activity types
-details = "{{{title}}}"
+# First line in Discord presence
+# details = "{{{title}}}"
 
-# Second line in Discord presence for all activity types
-state = "{{{artist_display}}}"
-# or
+# Second line in Discord presence
+# state = "{{{artist_display}}}"
+# Or with Handlebars helpers:
 # state = "{{#each artists}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}"
 
 # Text shown when hovering over the large image
-# For "listening" activity type: Shows as third line
-large_text = "{{#if album}}{{{album}}}{{#if year}} ({{{year}}}){{/if}}{{/if}}"
+# For "listening": shown as third line
+# large_text = "{{#if album}}{{{album}}}{{#if year}} ({{{year}}}){{/if}}{{/if}}"
 
 # Text shown when hovering over the small image (player icon)
 # Only visible when show_icon = true
-small_text = "{{#if player}}{{{player}}}{{else}}MPRIS{{/if}}"
+# small_text = "{{#if player}}{{{player}}}{{else}}MPRIS{{/if}}"
 
 # Templates are rendered using Handlebars
 #
@@ -115,7 +115,7 @@ small_text = "{{#if player}}{{{player}}}{{else}}MPRIS{{/if}}"
 [activity_type]
 # Automatically determine activity type based on media content
 # audio -> "listening", video -> "watching", etc.
-use_content_type = true
+# use_content_type = true
 
 # Default activity type when content type detection is disabled
 # or when the type cannot be determined
@@ -124,7 +124,7 @@ use_content_type = true
 #   "watching"  - Shows as "Watching ..."
 #   "playing"   - Shows as "Playing ..."
 #   "competing" - Shows as "Competing in ..."
-default = "listening"
+# default = "listening"
 
 # ------------------
 # Time Settings
@@ -134,12 +134,12 @@ default = "listening"
 # When enabled:
 # - For "listening": Shows as progress bar
 # - For other types: Shows as elapsed/remaining time
-show = true
+# show = true
 
 # Time display mode:
 # true = show elapsed time (e.g., 1:23)
 # false = show remaining time (e.g., -1:23)
-as_elapsed = false
+# as_elapsed = false
 
 # ------------------
 # Cover Art Settings
@@ -148,18 +148,18 @@ as_elapsed = false
 # List of file names (without extension) to search for local cover art.
 # Files are searched in the order listed.
 # Extensions like .jpg, .jpeg, .png, .gif are automatically checked.
-file_names = ["cover", "folder", "front", "album", "art"]
+# file_names = ["cover", "folder", "front", "album", "art"]
 
 # How many parent directories to search upwards from the media file's location
 # for local cover art. 0 means only search in the same directory.
-local_search_depth = 2
+# local_search_depth = 2
 
 [cover.provider]
 # Cover art providers (in order of preference)
 # "catbox"     - Upload using Catbox (optionally via temp Litterbox)
 # "musicbrainz" - Fetch from MusicBrainz database
 # "imgbb"      - Upload and host on ImgBB
-provider = ["catbox", "musicbrainz"]
+# provider = ["catbox", "musicbrainz"]
 
 [cover.provider.imgbb]
 # Your ImgBB API key (required to use the imgbb provider).
@@ -168,77 +168,75 @@ provider = ["catbox", "musicbrainz"]
 
 # Expiration time in seconds for images uploaded to ImgBB.
 # 0 means the image never expires.
-expiration = 86400 # 24 hours
+# expiration = 86400 # 24 hours
 
 [cover.provider.musicbrainz]
-# Minimum score (0-100) required for a MusicBrainz result to be considered valid.
-# Higher values mean stricter matching, lower values allow more potential matches and are more likely to be false positives.
-min_score = 100
+# Minimum score (0-100) required for a MusicBrainz result.
+# Higher = stricter matching, lower = more matches (more false positives).
+# min_score = 100
 
 [cover.provider.catbox]
-# Upload files via catbox.moe. No API key is required, but you can set your user hash
+# Upload files via catbox.moe. No API key required, but you can set your user hash
 # if you want to delete uploads later.
 # user_hash = "your_catbox_user_hash"
 
 # When true, uploads go to the temporary Litterbox service rather than Catbox itself.
-# Enabled by default so Catbox uploads prefer temporary Litterbox hosting first.
 # Valid values for litter_hours are 1, 12, 24, or 72 hours. Anything else is clamped to 24.
-use_litter = true
-litter_hours = 24
+# use_litter = true
+# litter_hours = 24
 
 # ------------------
 # Player Settings
 # ------------------
 [player]
-# Default configuration for all players
-# Priority: user entries override bundled ones. Fields left unset in a higher-priority entry fall back to lower matches, then [player.default], then built-in defaults. If identity and bus-name differ, an exact user bus-name entry wins.
-# [player.default].ignore_unmatched controls unknown players. Matched [player.*] entries start enabled unless some matched layer sets ignore = true.
+# Default config for all players.
+# Priority: user entries > bundled entries > [player.default] > built-in defaults.
+# Fields left unset in a higher-priority entry fall back to lower matches.
+#
+# [player.default].ignore_unmatched controls unknown players (hide/show).
+# Matched [player.*] entries start enabled unless some matched layer sets ignore = true.
+#
 # Fields:
-#   name: Display name override shown in templates (replaces the auto-detected player identity in the `{{{player}}}` variable)
+#   name: Display name override (replaces auto-detected identity in {{{player}}} variable)
 #   ignore: Don't show rich presence for this player
-#   ignore_unmatched: Only meaningful in [player.default]. Hide players with no matching [player.*] entry.
-#   app_id: Discord application ID (get yours at: https://discord.com/developers/docs/quick-start/overview-of-apps)
+#   ignore_unmatched: Only in [player.default]. Hide players with no matching [player.*] entry.
+#   app_id: Discord application ID (get yours: https://discord.com/developers/docs/quick-start/overview-of-apps)
 #   icon: Player icon URL (shown as small image)
-#   show_icon: Show player icon in Discord (as small image)
-#   allow_streaming: Enable Discord rich presence for web-based media (browsers, streaming services). When false, HTTP/HTTPS sources are skipped and any existing activity is cleared.
-#   status_display_type: Controls which text Discord shows in your status.
-#       For example:
+#   show_icon: Show player icon in Discord
+#   allow_streaming: Enable presence for web-based media (browsers, streaming services)
+#   status_display_type: Which text shows in your Discord status:
 #       "name"    -> Player/app name
 #       "state"   -> Rendered template.state value (default: "{{{artists}}}")
 #       "details" -> Rendered template.details value (default: "{{{title}}}")
-#   override_activity_type: Will always show this activity type regardless of media content type
-default = { ignore_unmatched = true, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false, status_display_type = "name" }
+#   override_activity_type: Always use this activity type regardless of media content
+
+# default = { ignore_unmatched = true, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false, status_display_type = "name" }
 
 # ------------------
-# Example Player-Specific Settings
+# Example: Player Overrides
 # ------------------
-# Each player can override any of the default settings above.
-# Matched player entries start enabled by default; add ignore = true to keep one hidden.
-# Example for VLC Media Player:
-[player.vlc_media_player]
-app_id = "1124968989538402334"
-icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/VLC_Icon.svg/1200px-VLC_Icon.svg.png"
-show_icon = true
-allow_streaming = true
-status_display_type = "details"
+# Each player can override any default setting above.
+# Matched entries start enabled; add ignore = true to keep one hidden.
+#
+# Example: override Spotify
+# [player.spotify]
+# ignore = true
+#
+# Example: override VLC
+# [player.vlc_media_player]
+# app_id = "YOUR_DISCORD_APP_ID"
+# icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/VLC_Icon.svg/1200px-VLC_Icon.svg.png"
+# show_icon = true
+# allow_streaming = true
+# status_display_type = "details"
 # override_activity_type = "watching"
 
 # Regex: prefix with re: or wrap in /.../ to match player name or bus name.
-# Example for multiple MPD bridges such as mpdris2-rs:
+# Example: match multiple MPD bridges (mpdris2-rs variants)
 # [player."re:.*mpdris2.*"]
-# app_id = "1126153268486213672"
+# app_id = "YOUR_DISCORD_APP_ID"
 # icon = "https://www.musicpd.org/logo.png"
 # allow_streaming = true
-
-# You can add more player-specific configurations below, like:
-# [player.spotify]
-# ignore = true # Example: ignore Spotify
-#
-# [player.mpv]
-# app_id = "YOUR_MPV_DISCORD_APP_ID"
-# icon = "URL_TO_MPV_ICON"
-# show_icon = true
-# override_activity_type = "watching"
 
 # For the full list of bundled local players and web players, see config.default.toml
 # on GitHub: https://github.com/lazykern/mprisence/blob/main/config/config.default.toml
@@ -276,8 +274,8 @@ status_display_type = "details"
 
 # [web_player.default]
 
-# Example: opt into YouTube video pages (bundled with `ignore = true`).
-# Patterns are inherited from the bundled entry — one line is enough.
+# Example: enable YouTube video pages (bundled with `ignore = true`).
+# Patterns are inherited from the bundled entry — one line is all you need.
 # [web_player.youtube]
 # ignore = false
 
@@ -289,7 +287,7 @@ status_display_type = "details"
 # icon = "https://example.com/last-fm.png"
 # ignore = false
 
-# Bundled `[web_player.*]` keys + patterns (override any of these by writing
+# Bundled `[web_player.*]` keys + patterns (override any by writing
 # the same key in this file):
 #   youtube_music   music.youtube.com
 #   youtube         youtube.com, youtu.be
