@@ -1,6 +1,6 @@
 # mprisence Web Extension
 
-Browser extension half of `mprisence-web-bridge`.
+Browser extension half of `mprisence` web bridge.
 
 The extension reads media metadata from supported websites, sends updates to the background script, and the background script forwards them to native host `mprisence.web.bridge`.
 

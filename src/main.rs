@@ -35,22 +35,37 @@ mod player;
 mod presence;
 mod template;
 mod utils;
+mod web_bridge;
 
 use crate::cli::Cli;
 
 #[tokio::main]
 async fn main() -> Result<(), error::Error> {
+    let raw_args: Vec<String> = std::env::args().collect();
+    let cli_args = raw_args.get(1..).unwrap_or(&[]);
+
+    if web_bridge::looks_like_native_host_invocation(cli_args)
+        || web_bridge::is_explicit_host_command(cli_args)
+    {
+        web_bridge::init_host_logging();
+        web_bridge::run_host().await;
+        return Ok(());
+    }
+
     env_logger::init();
-
-    info!("Starting mprisence");
-
-    config::initialize()?;
 
     let cli = Cli::parse();
 
     match cli.command {
-        Some(cmd) => cmd.execute().await?,
+        Some(cmd) => {
+            if cmd.requires_config() {
+                config::initialize()?;
+            }
+            cmd.execute().await?
+        }
         None => {
+            info!("Starting mprisence");
+            config::initialize()?;
             let mut mprisence = Mprisence::new()?;
             mprisence.run().await?;
         }

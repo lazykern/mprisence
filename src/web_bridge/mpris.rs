@@ -1,4 +1,4 @@
-use crate::protocol::{MediaMetadata, SourceState, Status};
+use super::protocol::{MediaMetadata, SourceState, Status};
 use log::{debug, info, trace, warn};
 use mpris_server::{zbus::zvariant::ObjectPath, Metadata, Player, Time, TrackId};
 use std::collections::HashMap;
@@ -112,6 +112,7 @@ fn compute_publish_decision(prev: &PublishedSnapshot, next: &PublishedSnapshot) 
 }
 
 /// Commands received from MPRIS clients (user pressing play/pause in their desktop).
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum MprisCommand {
     PlayPause,
@@ -213,6 +214,7 @@ impl PlayerManager {
         self.players.contains_key(source_id)
     }
 
+    #[allow(dead_code)]
     pub fn list_bus_names(&self) -> Vec<String> {
         self.players
             .values()
@@ -222,6 +224,7 @@ impl PlayerManager {
 }
 
 /// Stable config key all bridge MPRIS players resolve to.
+#[allow(dead_code)]
 pub const BRIDGE_CONFIG_KEY: &str = "mprisence_web";
 
 fn make_player_suffix(source_id: &str, site: &str) -> String {
@@ -243,6 +246,7 @@ fn simple_hash(input: &str) -> String {
 /// Returns the MPRIS bus suffix for a bridge player.
 /// Produces `mprisence_web.<site>.<hash>` so `canonical_player_bus_name`
 /// can extract the stable `mprisence_web` prefix.
+#[allow(dead_code)]
 pub fn bridge_player_suffix(_source_id: &str, _site: &str) -> String {
     make_player_suffix(_source_id, _site)
 }

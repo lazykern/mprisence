@@ -1,117 +1,70 @@
 mod active_source;
-mod mpris;
+pub mod mpris;
 mod native_messaging;
-mod protocol;
+pub mod protocol;
 
 use active_source::SourceRegistry;
-use clap::{Parser, Subcommand};
 use log::{debug, error, info, trace, warn};
 use mpris::{MprisPublisher, PlayerManager, TaggedCommand};
 use native_messaging::{read_message, send_message};
 use protocol::{BridgeMessage, ExtMessage, SourceState};
-use std::io::stdout;
+use std::{
+    io::stdout,
+    path::{Path, PathBuf},
+};
 use tokio::io::BufReader;
 use tokio::sync::mpsc;
 use tokio::time::{interval, Duration};
 
-/// Firefox extension ID — must match manifest.firefox.json
-const EXTENSION_ID: &str = "mprisence-bridge@lazykern.github.io";
+/// Firefox extension ID — must match extension/manifest.firefox.json
+pub const EXTENSION_ID: &str = "mprisence-bridge@lazykern.github.io";
 /// Chrome extension ID — from chrome://extensions when loaded unpacked
-const CHROME_EXTENSION_ID: &str = "pphdmbejbipjlocngoefnmjoijcbdejf";
+pub const CHROME_EXTENSION_ID: &str = "pphdmbejbipjlocngoefnmjoijcbdejf";
 /// Native messaging host name. Must match extension/src/utils/native-messaging.ts.
-const HOST_NAME: &str = "mprisence.web.bridge";
+pub const HOST_NAME: &str = "mprisence.web.bridge";
+const HOST_MANIFEST_FILENAME: &str = "mprisence.web.bridge.json";
+const BRIDGE_LOG_PATH: &str = "/tmp/bridge-stderr.log";
 
-/// Firefox/Chromium native messaging protocol passes extra positional args:
-///   1. manifest path (Firefox)
-///   2. caller origin (Firefox) / extension ID (Chromium)
-/// We must accept these without error so Clap doesn't reject them.
-#[derive(Parser)]
-#[command(name = "mprisence-web-bridge")]
-#[command(about = "Browser → MPRIS bridge for mprisence")]
-#[command(version)]
-#[command(trailing_var_arg = true)]
-struct Cli {
-    /// Extra native-messaging host args passed by the browser (ignored).
-    #[arg(hide = true)]
-    native_args: Vec<String>,
-
-    #[command(subcommand)]
-    command: Option<BridgeCommand>,
-}
-
-#[derive(Subcommand)]
-enum BridgeCommand {
-    /// Run the bridge (native messaging host).
-    #[command(hide = true)]
-    Run {
-        #[arg(long, default_value = "web")]
-        _mpris_name: String,
-    },
-    /// Install native messaging host manifests for detected browsers.
-    Install {
-        /// Only install for specific browser(s): firefox, chromium
-        #[arg(short, long)]
-        browser: Vec<String>,
-    },
-    /// Remove native messaging host manifests.
-    Uninstall {
-        /// Only remove for specific browser(s): firefox, chromium
-        #[arg(short, long)]
-        browser: Vec<String>,
-    },
-    /// Check native messaging setup.
-    Doctor,
-    /// Run with a fake test source (for development).
-    #[command(hide = true)]
-    DebugFakePlayer {
-        #[arg(long, default_value = "web_debug")]
-        mpris_name: String,
-    },
-}
-
-/// Single-threaded tokio runtime — mpris_server::Player returns !Send
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
-    // Log to /tmp/bridge-stderr.log so we can debug multi-player issues.
-    // Firefox discards native host stderr.
+pub fn init_host_logging() {
     let _ = std::fs::create_dir_all("/tmp");
     let log_file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open("/tmp/bridge-stderr.log")
+        .open(BRIDGE_LOG_PATH)
         .expect("open bridge log file");
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"))
+
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"))
         .target(env_logger::Target::Pipe(Box::new(log_file)))
-        .init();
-
-    let cli = Cli::parse();
-
-    match cli.command {
-        Some(BridgeCommand::Run { .. }) => run_bridge().await,
-        Some(BridgeCommand::Install { browser }) => cmd_install(browser).await,
-        Some(BridgeCommand::Uninstall { browser }) => cmd_uninstall(browser).await,
-        Some(BridgeCommand::Doctor) => cmd_doctor().await,
-        Some(BridgeCommand::DebugFakePlayer { mpris_name }) => debug_fake_player(mpris_name).await,
-        None => run_bridge().await,
-    }
+        .try_init();
 }
 
-// ─── Run ──────────────────────────────────────────────────────────
+pub fn looks_like_native_host_invocation(args: &[String]) -> bool {
+    !args.is_empty()
+        && args.iter().any(|arg| {
+            arg == EXTENSION_ID
+                || arg == CHROME_EXTENSION_ID
+                || arg.starts_with("chrome-extension://")
+                || arg.ends_with(HOST_MANIFEST_FILENAME)
+                || arg.contains(&format!("/{HOST_MANIFEST_FILENAME}"))
+        })
+}
 
-async fn run_bridge() {
-    info!("Starting mprisence-web-bridge (multi-player)");
+pub fn is_explicit_host_command(args: &[String]) -> bool {
+    matches!(args, [web, host, ..] if web == "web" && host == "host")
+}
 
-    // Wrap in LocalSet so we can spawn_local() for each player's run task
+pub async fn run_host() {
+    info!("Starting mprisence web bridge (multi-player)");
+
     let local_set = tokio::task::LocalSet::new();
     local_set
         .run_until(async {
-            run_bridge_inner().await;
+            run_host_inner().await;
         })
         .await;
 }
 
-async fn run_bridge_inner() {
-    // Shared command channel: (source_id, command) pairs from all MPRIS players
+async fn run_host_inner() {
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<TaggedCommand>(64);
 
     let mut registry = SourceRegistry::new();
@@ -144,7 +97,6 @@ async fn run_bridge_inner() {
 
             Some((source_id, cmd)) = cmd_rx.recv() => {
                 trace!("← MPRIS cmd from {source_id}: {cmd:?}");
-                // Forward command to the extension (targeting specific source)
                 let msg = bridge_command_for(&source_id, &cmd);
                 if let Err(e) = send_message(&mut stdout(), &msg) {
                     warn!("Failed to send command: {e}");
@@ -152,8 +104,6 @@ async fn run_bridge_inner() {
             }
 
             _ = heartbeat_timer.tick() => {
-                // Prune sources that stopped sending updates; unpublish their
-                // MPRIS players. Live sources are published as updates arrive.
                 let removed = registry.prune_stale();
                 for id in &removed {
                     players.remove_player(id);
@@ -178,9 +128,6 @@ fn bridge_command_for(source_id: &str, cmd: &mpris::MprisCommand) -> BridgeMessa
         MprisCommand::Stop => protocol::CommandKind::Pause,
     };
     let position_ms = match cmd {
-        // SetPosition is absolute. Seek is relative (and may be negative), but
-        // the extension protocol only carries absolute position_ms, so don't
-        // send bogus wrapped offsets for Seek.
         MprisCommand::SetPosition(us) if *us >= 0 => Some((*us / 1000) as u64),
         _ => None,
     };
@@ -224,7 +171,7 @@ async fn handle_extension_message(
             let hello = BridgeMessage::Hello {
                 bridge_version: env!("CARGO_PKG_VERSION").to_string(),
                 protocol: protocol::PROTOCOL_VERSION,
-                git_sha: Some(env!("GIT_SHA").to_string()),
+                git_sha: option_env!("GIT_SHA").map(str::to_string),
             };
             if let Err(e) = send_message(stdout, &hello) {
                 warn!("Failed to send hello: {e}");
@@ -256,7 +203,6 @@ async fn handle_extension_message(
 
             registry.upsert(state);
 
-            // Ensure this source has an MPRIS player, then publish.
             let had_player_before = players.has_player(&source_id);
             let current_count = players.player_count();
             debug!("ensuring player for {source_id} site={site_for_player} (had={had_player_before} total_players={current_count})");
@@ -289,9 +235,7 @@ async fn handle_extension_message(
     }
 }
 
-// ─── Install / Uninstall / Doctor ────────────────────────────────
-
-async fn cmd_install(browsers: Vec<String>) {
+pub async fn install(browsers: Vec<String>) {
     let requested = |name: &str| browsers.is_empty() || browsers.iter().any(|b| b == name);
     let binary = std::env::current_exe().expect("could not resolve bridge binary path");
 
@@ -301,29 +245,29 @@ async fn cmd_install(browsers: Vec<String>) {
     if requested("chromium") {
         install_chromium_manifest(&binary);
     }
-    println!("Done. You may need to restart the browser.");
+    println!("Done. You may need to restart browser.");
 }
 
-fn manifest_dir_firefox() -> std::path::PathBuf {
+fn manifest_dir_firefox() -> PathBuf {
     let home = std::env::var_os("HOME").expect("$HOME not set");
-    std::path::PathBuf::from(home).join(".mozilla/native-messaging-hosts")
+    PathBuf::from(home).join(".mozilla/native-messaging-hosts")
 }
 
-fn manifest_dir_chromium() -> std::path::PathBuf {
+fn manifest_dir_chromium() -> PathBuf {
     let home = std::env::var_os("HOME").expect("$HOME not set");
-    std::path::PathBuf::from(home).join(".config/chromium/NativeMessagingHosts")
+    PathBuf::from(home).join(".config/chromium/NativeMessagingHosts")
 }
 
-fn manifest_dir_google_chrome() -> std::path::PathBuf {
+fn manifest_dir_google_chrome() -> PathBuf {
     let home = std::env::var_os("HOME").expect("$HOME not set");
-    std::path::PathBuf::from(home).join(".config/google-chrome/NativeMessagingHosts")
+    PathBuf::from(home).join(".config/google-chrome/NativeMessagingHosts")
 }
 
-fn chromium_manifest_targets() -> Vec<(String, std::path::PathBuf)> {
+fn chromium_manifest_targets() -> Vec<(String, PathBuf)> {
     let home = std::env::var_os("HOME").expect("$HOME not set");
-    let config_root = std::path::PathBuf::from(home).join(".config");
+    let config_root = PathBuf::from(home).join(".config");
 
-    let mut targets = std::collections::BTreeMap::<String, std::path::PathBuf>::new();
+    let mut targets = std::collections::BTreeMap::<String, PathBuf>::new();
     targets.insert("Chromium".into(), manifest_dir_chromium());
     targets.insert("Google Chrome".into(), manifest_dir_google_chrome());
 
@@ -358,13 +302,13 @@ fn chromium_manifest_targets() -> Vec<(String, std::path::PathBuf)> {
     targets.into_iter().collect()
 }
 
-fn install_firefox_manifest(binary: &std::path::Path) {
+fn install_firefox_manifest(binary: &Path) {
     let dir = manifest_dir_firefox();
-    let path = dir.join(format!("{HOST_NAME}.json"));
+    let path = dir.join(HOST_MANIFEST_FILENAME);
 
     let manifest = serde_json::json!({
         "name": HOST_NAME,
-        "description": "mprisence-web-bridge — sends browser media to MPRIS",
+        "description": "mprisence — sends browser media to MPRIS",
         "path": binary.to_str().expect("binary path is not UTF-8"),
         "type": "stdio",
         "allowed_extensions": [EXTENSION_ID],
@@ -377,17 +321,17 @@ fn install_firefox_manifest(binary: &std::path::Path) {
     println!("✓ Firefox: {}", path.display());
 }
 
-fn install_chromium_manifest(binary: &std::path::Path) {
+fn install_chromium_manifest(binary: &Path) {
     let manifest = serde_json::json!({
         "name": HOST_NAME,
-        "description": "mprisence-web-bridge — sends browser media to MPRIS",
+        "description": "mprisence — sends browser media to MPRIS",
         "path": binary.to_str().expect("binary path is not UTF-8"),
         "type": "stdio",
         "allowed_origins": [format!("chrome-extension://{CHROME_EXTENSION_ID}/")],
     });
 
     for (browser, dir) in chromium_manifest_targets() {
-        let path = dir.join(format!("{HOST_NAME}.json"));
+        let path = dir.join(HOST_MANIFEST_FILENAME);
         std::fs::create_dir_all(&dir).expect("create NativeMessagingHosts dir");
         std::fs::write(&path, serde_json::to_string_pretty(&manifest).unwrap())
             .expect("write Chromium native messaging manifest");
@@ -395,11 +339,11 @@ fn install_chromium_manifest(binary: &std::path::Path) {
     }
 }
 
-async fn cmd_uninstall(browsers: Vec<String>) {
+pub async fn uninstall(browsers: Vec<String>) {
     let requested = |name: &str| browsers.is_empty() || browsers.iter().any(|b| b == name);
 
     if requested("firefox") {
-        let path = manifest_dir_firefox().join(format!("{HOST_NAME}.json"));
+        let path = manifest_dir_firefox().join(HOST_MANIFEST_FILENAME);
         if path.exists() {
             std::fs::remove_file(&path).ok();
             println!("✗ Removed Firefox: {}", path.display());
@@ -409,7 +353,7 @@ async fn cmd_uninstall(browsers: Vec<String>) {
     }
     if requested("chromium") {
         for (browser, dir) in chromium_manifest_targets() {
-            let path = dir.join(format!("{HOST_NAME}.json"));
+            let path = dir.join(HOST_MANIFEST_FILENAME);
             if path.exists() {
                 std::fs::remove_file(&path).ok();
                 println!("✗ Removed {browser}: {}", path.display());
@@ -420,8 +364,8 @@ async fn cmd_uninstall(browsers: Vec<String>) {
     }
 }
 
-async fn cmd_doctor() {
-    println!("🧑‍⚕️ mprisence-web-bridge doctor\n");
+pub async fn doctor() {
+    println!("🧑‍⚕️ mprisence web doctor\n");
 
     let binary = std::env::current_exe().ok();
     match &binary {
@@ -433,7 +377,7 @@ async fn cmd_doctor() {
     targets.extend(chromium_manifest_targets());
 
     for (browser, dir) in targets {
-        let manifest_path = dir.join(format!("{HOST_NAME}.json"));
+        let manifest_path = dir.join(HOST_MANIFEST_FILENAME);
         if manifest_path.exists() {
             match std::fs::read_to_string(&manifest_path) {
                 Ok(content) => {
@@ -441,7 +385,7 @@ async fn cmd_doctor() {
                         let path_ok = manifest
                             .get("path")
                             .and_then(|p| p.as_str())
-                            .map(|p| std::path::Path::new(p).exists())
+                            .map(|p| Path::new(p).exists())
                             .unwrap_or(false);
                         if path_ok {
                             println!(
@@ -482,9 +426,17 @@ async fn cmd_doctor() {
     }
 }
 
-// ─── Debug Fake Player ────────────────────────────────────────────
+pub async fn debug_fake_player(mpris_name: String) {
+    let local_set = tokio::task::LocalSet::new();
+    local_set
+        .run_until(async move {
+            debug_fake_player_inner(mpris_name).await;
+            futures::future::pending::<()>().await;
+        })
+        .await;
+}
 
-async fn debug_fake_player(mpris_name: String) {
+async fn debug_fake_player_inner(mpris_name: String) {
     info!("Starting fake test player: {mpris_name}");
 
     let (cmd_tx, mut _cmd_rx) = mpsc::channel::<TaggedCommand>(64);

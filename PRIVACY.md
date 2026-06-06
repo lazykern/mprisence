@@ -4,7 +4,7 @@
 
 ## Overview
 
-mprisence Bridge is a browser extension that reads media playback metadata from supported websites (YouTube Music, YouTube, SoundCloud, Bandcamp, Tidal, Apple Music) and forwards it via native messaging to a local binary (`mprisence-web-bridge`) running on your computer.
+mprisence Bridge is a browser extension that reads media playback metadata from supported websites (YouTube Music, YouTube, SoundCloud, Bandcamp, Tidal, Apple Music) and forwards it via native messaging to a local binary (`mprisence`) running on your computer.
 
 The extension does **not** communicate with Discord, the internet, or any remote server on its own. Its sole purpose is feeding web media data into the local MPRIS desktop standard so media keys and desktop integrations can work.
 
@@ -21,7 +21,7 @@ When you play media on a supported website, the Extension reads the following fr
 
 ## How data is used
 
-All data is sent via **native messaging** to the `mprisence-web-bridge` binary on your machine. That binary publishes MPRIS players on D-Bus so desktop applications (media keys, Discord via mprisence daemon, etc.) can see your web media.
+All data is sent via **native messaging** to the `mprisence` binary on your machine. That binary publishes MPRIS players on D-Bus so desktop applications (media keys, Discord via mprisence daemon, etc.) can see your web media.
 
 ```
  ┌─────────────────────────────────────────────┐
@@ -31,7 +31,7 @@ All data is sent via **native messaging** to the `mprisence-web-bridge` binary o
             │  stdin/stdout (local)
             ▼
  ┌──────────────────────┐        ┌──────────────────────────┐
- │ mprisence-web-bridge │───────▶│  D-Bus MPRIS             │
+ │ mprisence (web host mode) │───────▶│  D-Bus MPRIS             │
  │ (local binary)       │pub.    │  org.mpris.MediaPlayer2. │
  │                      │MPRIS   │  mprisence_web.*         │
  └──────────────────────┘        └──────────────────────────┘

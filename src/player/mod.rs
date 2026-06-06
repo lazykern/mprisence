@@ -142,7 +142,7 @@ pub fn is_proxy_bus_name(canonical_bus_name: &str) -> bool {
     canonical_bus_name == "playerctld"
 }
 
-/// Returns true if this is a bridge MPRIS player from mprisence-web-bridge.
+/// Returns true if this is a bridge MPRIS player from mprisence web host mode.
 /// Detects by bus prefix: all bridge players share the `mprisence_web` namespace.
 /// Uses the raw bus name (before canonicalization) for reliable detection.
 pub fn is_mprisence_web_bridge_bus(raw_bus_name: &str) -> bool {

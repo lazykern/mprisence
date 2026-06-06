@@ -7,3 +7,4 @@ pub mod player;
 pub mod presence;
 pub mod template;
 pub mod utils;
+pub mod web_bridge;

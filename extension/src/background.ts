@@ -2,7 +2,7 @@
  * Background script (service worker for Chromium, persistent script for Firefox).
  *
  * Responsibilities:
- *   - Connect to native messaging host (mprisence-web-bridge)
+ *   - Connect to native messaging host (mprisence web host mode)
  *   - Forward content script updates to the bridge
  *   - Forward bridge commands to the correct content script
  *   - Handle heartbeat / connection lifecycle

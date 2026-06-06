@@ -1,5 +1,4 @@
 fn main() {
-    // Try to get git SHA
     let sha = std::process::Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()
@@ -13,7 +12,6 @@ fn main() {
         })
         .unwrap_or_else(|| "unknown".to_string());
 
-    // Check if working tree is dirty
     let dirty = std::process::Command::new("git")
         .args(["status", "--porcelain"])
         .output()
@@ -25,7 +23,5 @@ fn main() {
 
     println!("cargo:rustc-env=GIT_SHA={sha}");
     println!("cargo:warning=git SHA: {sha}");
-
-    // Re-run if git HEAD changes
-    println!("cargo:rerun-if-changed=../../.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/HEAD");
 }

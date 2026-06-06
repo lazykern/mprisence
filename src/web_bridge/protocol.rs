@@ -153,6 +153,7 @@ impl SourceState {
         self.last_seen.elapsed() > timeout
     }
 
+    #[allow(dead_code)]
     pub fn is_playing(&self) -> bool {
         matches!(self.playback.status, Status::Playing)
     }

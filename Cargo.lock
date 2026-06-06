@@ -1950,6 +1950,7 @@ dependencies = [
  "log",
  "mime_guess",
  "mpris",
+ "mpris-server",
  "notify",
  "parking_lot",
  "regex",
@@ -1966,21 +1967,6 @@ dependencies = [
  "url",
  "urlencoding",
  "walkdir",
-]
-
-[[package]]
-name = "mprisence-web-bridge"
-version = "0.1.0"
-dependencies = [
- "clap",
- "env_logger",
- "futures",
- "log",
- "mpris-server",
- "parking_lot",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]

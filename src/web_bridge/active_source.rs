@@ -1,4 +1,4 @@
-use crate::protocol::SourceState;
+use super::protocol::SourceState;
 use log::{debug, trace};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -73,8 +73,8 @@ impl SourceRegistry {
 
 #[cfg(test)]
 mod tests {
+    use super::super::protocol::{Capabilities, MediaMetadata, PlaybackState, Status};
     use super::*;
-    use crate::protocol::{Capabilities, MediaMetadata, PlaybackState, Status};
     use std::time::Instant;
 
     fn make_source(id: &str, status: Status) -> SourceState {

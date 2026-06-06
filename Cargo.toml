@@ -1,8 +1,5 @@
 [workspace]
 resolver = "2"
-members = [
-    "mprisence-web-bridge",
-]
 
 [package]
 name = "mprisence"
@@ -40,7 +37,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 smallvec = "1.15"
 smol_str = "0.3.6"
 thiserror = "2.0.17"
-tokio = { version = "1.50.0", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "process"] }
+tokio = { version = "1.50.0", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "process", "io-std"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 toml = "1.1.0"
 url = "2.5.7"
@@ -60,6 +57,7 @@ interprocess = "2.4.0"
 regex = "1"
 catbox = "0.8.2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+mpris-server = { version = "0.10", default-features = false, features = ["tokio"] }
 
 [dev-dependencies]
 

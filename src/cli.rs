@@ -35,9 +35,33 @@ pub enum Command {
         command: PlayersCommand,
     },
     Config,
+    Web {
+        #[command(subcommand)]
+        command: WebCommand,
+    },
     Version {
         #[command(subcommand)]
         command: Option<VersionCommand>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WebCommand {
+    Install {
+        #[arg(short, long)]
+        browser: Vec<String>,
+    },
+    Uninstall {
+        #[arg(short, long)]
+        browser: Vec<String>,
+    },
+    Doctor,
+    #[command(hide = true)]
+    Host,
+    #[command(hide = true)]
+    DebugFakePlayer {
+        #[arg(long, default_value = "web_debug")]
+        mpris_name: String,
     },
 }
 
@@ -55,6 +79,10 @@ pub enum VersionCommand {
 }
 
 impl Command {
+    pub fn requires_config(&self) -> bool {
+        matches!(self, Command::Players { .. } | Command::Config)
+    }
+
     pub async fn execute(self) -> Result<(), Error> {
         match self {
             Command::Players { command } => match command {
@@ -454,6 +482,15 @@ impl Command {
                     }
                 }
             }
+            Command::Web { command } => match command {
+                WebCommand::Install { browser } => crate::web_bridge::install(browser).await,
+                WebCommand::Uninstall { browser } => crate::web_bridge::uninstall(browser).await,
+                WebCommand::Doctor => crate::web_bridge::doctor().await,
+                WebCommand::Host => crate::web_bridge::run_host().await,
+                WebCommand::DebugFakePlayer { mpris_name } => {
+                    crate::web_bridge::debug_fake_player(mpris_name).await
+                }
+            },
             Command::Version { command } => match command {
                 Some(VersionCommand::Validate { version }) => {
                     match crate::utils::validate_version(&version) {

@@ -1,78 +1,79 @@
+<!-- prettier-ignore -->
+<div align="center">
+
+<img src="assets/icon.png" alt="mprisence logo" width="96" />
+
 # mprisence
 
-[![AUR version](https://img.shields.io/aur/version/mprisence)](https://aur.archlinux.org/packages/mprisence)
-[![Nixpkgs](https://img.shields.io/badge/NixOS-nixpkgs-blue?logo=nixos)](https://search.nixos.org/packages?query=mprisence)
+**Discord Rich Presence for Linux media players, with optional web-player bridge**
 
-Discord Rich Presence for Linux media players.
+[![crates.io](https://img.shields.io/crates/v/mprisence?style=flat-square)](https://crates.io/crates/mprisence)
+[![AUR version](https://img.shields.io/aur/version/mprisence?style=flat-square)](https://aur.archlinux.org/packages/mprisence)
+[![Nixpkgs](https://img.shields.io/badge/NixOS-nixpkgs-blue?logo=nixos&style=flat-square)](https://search.nixos.org/packages?query=mprisence)
+[![MIT](https://img.shields.io/badge/license-MIT-4b5563?style=flat-square)](LICENSE)
 
-mprisence reads MPRIS metadata from your player, renders it with your config, and updates Discord. It works with local players such as VLC, MPV, Rhythmbox, and browser/web players through browser MPRIS or the optional web bridge.
+[Overview](#overview) • [Quick start](#quick-start) • [Configuration](#configuration) • [Web players](#web-players) • [Development](#development) • [Troubleshooting](#troubleshooting)
 
-<img src="/assets/example.gif" width="548" height="548"/>
+</div>
 
-_(Appearance depends on your config and media player.)_
+`mprisence` reads MPRIS metadata over D-Bus, renders Discord Rich Presence from configurable templates, and keeps it in sync with your current media.
 
-## Choose your setup
+It works well for local players such as **VLC**, **MPV**, **Rhythmbox**, **Strawberry**, **CMUS**, **MPD**, and more. For browsers, it can use regular browser MPRIS support or an optional **native bridge + extension** for richer site-specific metadata and controls.
 
-1. **Using VLC, MPV, Rhythmbox, Audacious, or another local player?**
-   Start with [Quick start](#quick-start). You usually do not need config.
+<p align="center">
+  <img src="assets/example.gif" alt="mprisence demo" width="548" />
+</p>
 
-2. **Using browser media that already appears in `playerctl -l`?**
-   Start with [Web players](#web-players). You may need config if the site is not bundled.
+> [!IMPORTANT]
+> Discord must allow activity sharing: **Settings → Activity Privacy → Display current activity as a status message**.
 
-3. **Using YouTube Music, SoundCloud, Apple Music, or another site with poor browser metadata?**
-   Use [Extension bridge setup](#extension-bridge-setup) for better metadata, cover art, and controls.
+## Overview
 
-4. **Player appears in mprisence, but Discord does not update?**
-   See [Common recipes](#common-recipes).
+### How it works
 
-## What you get
+```text
+local player or browser tab
+  → MPRIS metadata on D-Bus
+  → mprisence
+  → Discord Rich Presence
+```
 
-- Discord Rich Presence from MPRIS players
-- Templates for title, artist, album, player name, and technical metadata
-- Per-player overrides for app ID, icon, display text, streaming, and activity type
-- Cover art from player metadata, local files, MusicBrainz, Catbox/Litterbox, or ImgBB
+Optional browser bridge path:
+
+```text
+supported website
+  → browser extension
+  → native messaging host
+  → MPRIS bridge player
+  → mprisence
+  → Discord Rich Presence
+```
+
+### Highlights
+
+- Event-driven MPRIS updates with polling fallback
+- No config required for common local-player setups
+- Handlebars templates for title, artist, album, player name, status, duration, IDs, and more
+- Per-player and per-site overrides for app ID, icon, activity type, streaming policy, and status text
+- Cover art from metadata, local files, Catbox/Litterbox, MusicBrainz, or ImgBB
 - Hot reload for most config changes
-- Web-player matching for supported browser URLs
-- Optional browser extension bridge for richer web-player metadata and controls
-
-## Before you start
-
-You need:
-
-- Linux desktop session with D-Bus
-- Discord desktop client or compatible client with Rich Presence support
-- Discord setting enabled: **Settings → Activity Privacy → Display current activity as a status message**
-- For service mode: systemd user session
-
-Important defaults:
-
-- **You do not need a config file for first run.**
-- **Unknown local players are hidden by default.** Add a small config entry if your player is not bundled.
-- **Unknown browser HTTP/HTTPS URLs are hidden by default**, so random tabs do not appear in Discord.
-- **Spotify is bundled but disabled by default.**
-- **YouTube video pages are bundled but ignored by default.**
+- Optional browser bridge for better metadata, cover art, URLs, and controls on web players
 
 ## Quick start
+
+> [!NOTE]
+> Most users only need `mprisence`. Bridge and extension are optional.
 
 ### 1. Install
 
 #### Arch Linux
 
 ```bash
-# Stable
 yay -S mprisence
-
-# Prebuilt binary
-yay -S mprisence-bin
+# or: yay -S mprisence-bin
 ```
 
-Enable and start the service:
-
-```bash
-systemctl --user enable --now mprisence.service
-```
-
-#### Nix, NixOS, Linux
+#### Nix / NixOS
 
 ```bash
 # without flakes
@@ -82,29 +83,15 @@ nix-env -iA nixpkgs.mprisence
 nix profile install nixpkgs#mprisence
 ```
 
-NixOS:
+#### Debian / Ubuntu
 
-```nix
-environment.systemPackages = [ pkgs.mprisence ];
-```
-
-Then run mprisence from a terminal or configure a user service for your setup.
-
-#### Debian, Ubuntu, derivatives
-
-Download the `.deb` package from [GitHub Releases](https://github.com/lazykern/mprisence/releases), then install it:
+Download `.deb` from [GitHub Releases](https://github.com/lazykern/mprisence/releases), then:
 
 ```bash
 sudo dpkg -i /path/to/mprisence_*.deb
 ```
 
-Enable and start the service:
-
-```bash
-systemctl --user enable --now mprisence.service
-```
-
-#### From crates.io
+#### crates.io
 
 ```bash
 cargo install mprisence
@@ -118,33 +105,21 @@ cd mprisence
 cargo install --path .
 ```
 
-### 2. Verify
+### 2. Start it
 
-Start a supported player and play media.
-
-If you started the service, check it:
-
-```bash
-systemctl --user status mprisence
-```
-
-If you did not start the service, run mprisence in a terminal:
+Run foreground:
 
 ```bash
 mprisence
 ```
 
-Then check player detection:
+Or enable user service:
 
 ```bash
-mprisence players list
+systemctl --user enable --now mprisence.service
 ```
 
-If your player appears and Discord shows activity, core setup works.
-
-### 3. Run as service
-
-If your package did not install a service file, create one manually:
+If your package did not install service file:
 
 ```bash
 mkdir -p ~/.config/systemd/user
@@ -154,34 +129,34 @@ systemctl --user daemon-reload
 systemctl --user enable --now mprisence.service
 ```
 
-If your `mprisence` binary is not in `~/.cargo/bin/`, edit `~/.config/systemd/user/mprisence.service` and change `ExecStart`.
+### 3. Verify
 
-Service commands:
+Start media playback, then check detected players:
+
+```bash
+mprisence players list
+mprisence players list --detailed
+```
+
+Useful service checks:
 
 ```bash
 systemctl --user status mprisence
-systemctl --user restart mprisence
 journalctl --user -u mprisence -f
-systemctl --user disable --now mprisence
 ```
 
 ## Configuration
 
-Config path:
+Config file path:
 
 ```text
 ~/.config/mprisence/config.toml
 ```
 
-or:
+> [!TIP]
+> No config file needed for first run. Create one only when you want overrides.
 
-```text
-$XDG_CONFIG_HOME/mprisence/config.toml
-```
-
-**You do not need a config file for first run.** Create one only when you want to customize behavior.
-
-Start from the example config:
+Start from example config:
 
 ```bash
 mkdir -p ~/.config/mprisence
@@ -189,77 +164,31 @@ curl -o ~/.config/mprisence/config.toml \
   https://raw.githubusercontent.com/lazykern/mprisence/main/config/config.example.toml
 ```
 
-Most config changes hot-reload.
-
 Reference files:
 
-- [`config.example.toml`](./config/config.example.toml): documented example config
-- [`config.default.toml`](./config/config.default.toml): bundled player and web-player defaults
-- [`src/metadata.rs`](./src/metadata.rs): template variables source of truth
+- [`config/config.example.toml`](./config/config.example.toml) — documented example config
+- [`config/config.default.toml`](./config/config.default.toml) — bundled player and web-player presets
+- [`src/metadata.rs`](./src/metadata.rs) — template variable source of truth
 
-## Common recipes
+Common knobs:
 
-### Show details instead of player name in Discord status
+- `template.details`, `template.state`, `template.large_text`, `template.small_text`
+- `[player.*]` for local-player overrides
+- `[web_player.*]` for site-specific browser overrides
+- `[activity_type]` and `[time]` for Discord display behavior
+- `[cover.provider]` for cover-art sources
+
+Example: show track details instead of player name in Discord status:
 
 ```toml
 [player.default]
-status_display_type = "details" # name | state | details
-```
-
-### Override one local player
-
-```toml
-[player.vlc_media_player]
-app_id = "1124968989538402334"
-icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/VLC_Icon.svg/1200px-VLC_Icon.svg.png"
-show_icon = true
 status_display_type = "details"
 ```
 
-### Enable an unsupported local player
-
-If `mprisence players list --detailed` shows your player but Discord does not update, add a matching entry. Replace `my_player` with the detected player identity.
-
-```toml
-[player.my_player]
-name = "My Player"
-ignore = false
-# allow_streaming = true # only if the media URL is http/https
-```
-
-For bus names or multiple variants, use regex:
-
-```toml
-[player."re:.*mpdris2.*"]
-name = "MPD"
-ignore = false
-```
-
-### Ignore a player
-
-```toml
-[player.spotify]
-ignore = true
-```
-
-### Enable YouTube video pages
-
-YouTube Music is enabled by default. YouTube video pages are ignored by default.
+Example: enable YouTube video pages:
 
 ```toml
 [web_player.youtube]
-ignore = false
-```
-
-### Add a custom web player
-
-```toml
-[web_player.last_fm]
-match_pattern = "last.fm"
-name = "Last.fm"
-app_id = "YOUR_DISCORD_APP_ID"
-icon = "https://example.com/last-fm.png"
-allow_streaming = true
 ignore = false
 ```
 
@@ -267,60 +196,28 @@ Inspect resolved config:
 
 ```bash
 mprisence config
-mprisence players list --detailed
 ```
-
-## Cover art
-
-mprisence can use cover art from metadata, local files, and online providers.
-
-Default provider behavior prefers Catbox/Litterbox for local or embedded art, then falls back to other configured providers such as MusicBrainz or ImgBB.
-
-### Catbox/Litterbox, no API key
-
-```toml
-[cover.provider]
-provider = ["catbox"]
-
-[cover.provider.catbox]
-use_litter = true
-litter_hours = 24
-# user_hash = "your_user_hash" # optional
-```
-
-### ImgBB, API key required
-
-```toml
-[cover.provider]
-provider = ["imgbb"]
-
-[cover.provider.imgbb]
-api_key = "YOUR_API_KEY_HERE"
-```
-
-Clear cover cache:
-
-```bash
-rm -rf ~/.cache/mprisence/cover_art
-```
-
-Authenticated or self-hosted art URLs from Feishin, Navidrome, Jellyfin, and similar players are treated as source images. mprisence re-hosts them through your configured providers before sending them to Discord.
 
 ## Web players
 
-mprisence supports web players in two ways.
+`mprisence` supports browser media in two ways.
 
 ### Browser MPRIS
 
-Some browsers publish the active media tab as an MPRIS player and include the page URL in `xesam:url`. mprisence matches that URL against `[web_player.*]` entries and applies the site config.
+Some browsers expose active media tab as MPRIS player and include page URL metadata. When that metadata is good enough, `mprisence` can match it against `[web_player.*]` presets and apply site config directly.
 
-Use this path first if your browser already exposes good metadata.
+Check what browser exposes:
 
-### When to use the bridge
+```bash
+playerctl -l
+mprisence players list --detailed
+```
 
-Use the extension bridge when browser MPRIS metadata is missing title, cover art, URL, duration, or reliable controls.
+### Optional bridge + extension
 
-Bridge support currently covers:
+Use bridge when browser MPRIS misses title, cover art, canonical URL, duration, or reliable controls.
+
+Bundled site support includes:
 
 - YouTube Music
 - YouTube
@@ -328,237 +225,150 @@ Bridge support currently covers:
 - Bandcamp
 - TIDAL
 - Apple Music
+- plus bundled web-player presets for Deezer, Qobuz, Amazon Music, Yandex Music, and more
 
-Bundled web-player entries include:
+> [!IMPORTANT]
+> No packaged bridge release yet. Build native host and extension from source.
 
-- YouTube Music
-- SoundCloud
-- Apple Music
-- Bandcamp
-- TIDAL
-- Deezer
-- Qobuz
-- Amazon Music
-- Yandex Music
-- YouTube, ignored by default
-
-Most bundled web players are enabled. Unmatched HTTP/HTTPS browser URLs are ignored.
-
-## Extension bridge setup
-
-**No packaged bridge release yet. Build bridge and extension yourself for now.**
-
-Install it only if browser MPRIS is not enough.
-
-You need:
-
-- Rust/Cargo
-- Node.js/npm
-- Firefox or Chromium-based browser
-- running `mprisence`
-
-Build and install:
+Build native host from repo root:
 
 ```bash
-# Build native bridge
-cargo build --release -p mprisence-web-bridge
+cargo build --release -p mprisence
+./target/release/mprisence web install
+./target/release/mprisence web doctor
+```
 
-# Register native messaging manifests
-./target/release/mprisence-web-bridge install
+Build extension:
 
-# Verify native messaging setup
-./target/release/mprisence-web-bridge doctor
-
-# Build browser extension
-cd mprisence-web-bridge/extension
+```bash
+cd extension
 npm install
-npm run build:firefox     # or: npm run build:chromium
-cd ../..
+npm run build:firefox   # or: npm run build:chromium
 ```
 
-Load extension:
+Load extension temporarily:
 
-### Firefox
+- **Firefox:** `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on** → `extension/dist/firefox/manifest.json`
+- **Chromium browsers:** `chrome://extensions` → **Developer mode** → **Load unpacked** → `extension/dist/chromium/`
 
-1. Open `about:debugging#/runtime/this-firefox`
-2. Click **Load Temporary Add-on**
-3. Select `mprisence-web-bridge/extension/dist/firefox/manifest.json`
+> [!NOTE]
+> Reloading extension kills content scripts on existing tabs. Refresh media tabs after reload.
 
-### Chromium, Chrome, Edge, Brave
-
-1. Open `chrome://extensions`
-2. Enable **Developer mode**
-3. Click **Load unpacked**
-4. Select `mprisence-web-bridge/extension/dist/chromium/`
-
-Verify bridge player:
+Bridge debugging:
 
 ```bash
-mprisence
 playerctl -l | grep mprisence_web
-playerctl -p mprisence_web.youtube_music.* play-pause
-```
-
-Bridge logs:
-
-```bash
 tail -f /tmp/bridge-stderr.log
 ```
 
-Uninstall bridge manifests:
+More detail:
+
+- [`extension/README.md`](./extension/README.md)
+
+## Development
+
+### Build workspace
+
+From repo root:
 
 ```bash
-./target/release/mprisence-web-bridge uninstall
+cargo build --release -p mprisence
+./target/release/mprisence web install
+cd extension && npm install && npm run build:firefox
 ```
 
-Then remove the extension from your browser.
+### Repository layout
 
-## Supported players
+| Path | Purpose |
+| --- | --- |
+| [`src/`](./src) | core daemon: MPRIS discovery, metadata, cover art, config, Discord presence |
+| [`src/web_bridge/`](./src/web_bridge) | native host mode that publishes browser sources as MPRIS players |
+| [`extension/`](./extension) | browser extension for supported web players |
+| [`config/`](./config) | bundled defaults and example config |
+| [`tests/`](./tests) | integration and metadata tests |
+| [`packaging/`](./packaging) | packaging scripts and distro assets |
 
-Full list in [`config.default.toml`](./config/config.default.toml).
-
-**Unconfigured players are ignored by default.** To enable one, set `ignore = false` in a matching `[player.*]` or `[web_player.*]` section. Or set `ignore_unmatched = false` on `[player.default]` to allow everything.
-
-- **Local** (18): VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer, Supersonic, Feishin, kew, Quod Libet, Euphonica
-- **Streaming apps**: YouTube Music; Spotify (disabled by default)
-- **Web players**: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music; YouTube (ignored by default)
-
-MPD frontends can also expose MPD presence. Disable the MPD entry to avoid both showing.
-
-Want a player name, icon, or web-player preset added? [Open an issue](https://github.com/lazykern/mprisence/issues/new) with the player name, MPRIS identity, and website URL.
-
-## CLI commands
+### Useful commands
 
 ```bash
-# Help
-mprisence --help
-
-# Run foreground
+# run foreground
 mprisence
 
-# List detected MPRIS players
+# list players
 mprisence players list
-
-# Show detailed player metadata and matched config
 mprisence players list --detailed
 
-# Show resolved configuration
+# show resolved config
 mprisence config
 
-# Show version
-mprisence version
+# validate version string logic
+mprisence version validate 1.7.0-beta.3
 
-# Verbose logs
+# verbose logs
 RUST_LOG=debug mprisence
 RUST_LOG=trace mprisence
 ```
 
 ## Troubleshooting
 
-### Discord activity does not show
+### Discord activity not showing
 
 Check:
 
-1. Discord desktop client is running.
-2. Discord setting is enabled: **Settings → Activity Privacy → Display current activity as a status message**.
-3. `mprisence` is running:
-
-   ```bash
-   systemctl --user status mprisence
-   ```
-
-4. Your player is detected:
-
-   ```bash
-   mprisence players list
-   ```
-
-5. Logs show no errors:
-
-   ```bash
-   journalctl --user -u mprisence -f
-   ```
-
-If you use Vesktop Flatpak, set up the Discord IPC symlink from the Vesktop Flatpak guide: [Native applications](https://github.com/flathub/dev.vencord.Vesktop?tab=readme-ov-file#native-applications).
-
-### Player appears in `players list`, but Discord does not update
-
-The player may be ignored by config.
-
-Run:
+1. Discord desktop client running
+2. Activity-sharing setting enabled
+3. `mprisence` process or service running
+4. player visible in `mprisence players list`
+5. logs show no errors
 
 ```bash
+systemctl --user status mprisence
 mprisence players list --detailed
-mprisence config
+journalctl --user -u mprisence -f
 ```
 
-Then add or override a `[player.*]` entry.
+### Player detected, but presence still hidden
 
-### Browser tab does not show
+Player may be ignored by config or blocked as streaming source.
 
-Check which path you use:
+```bash
+mprisence config
+mprisence players list --detailed
+```
 
-- Browser MPRIS: browser must expose media as an MPRIS player with URL metadata.
-- Extension bridge: extension must be loaded, native manifest installed, and supported site open.
+Add matching `[player.*]` override or adjust `[web_player.*]` entry.
+
+### Browser tab missing or wrong
+
+- Browser MPRIS path: browser may not expose enough metadata
+- Bridge path: extension may not be loaded, native host may not be installed, or tab may need refresh after extension reload
 
 Useful checks:
 
 ```bash
 playerctl -l
 playerctl -l | grep mprisence_web
-./target/release/mprisence-web-bridge doctor
+./target/release/mprisence web doctor
 tail -f /tmp/bridge-stderr.log
 ```
 
 ### Cover art missing
 
-Check:
-
-1. Run with debug logs:
-
-   ```bash
-   RUST_LOG=debug mprisence
-   ```
-
-2. Confirm provider config.
-3. Confirm MusicBrainz can match title, artist, and album.
-4. Confirm ImgBB API key if using ImgBB.
-5. Clear stale cache:
-
-   ```bash
-   rm -rf ~/.cache/mprisence/cover_art
-   ```
-
-Cover art order:
-
-1. cache
-2. direct URL from metadata
-3. local files
-4. configured providers
-
-### Config changes do not apply
-
-Most changes hot-reload. If unsure, restart:
-
 ```bash
-systemctl --user restart mprisence
+RUST_LOG=debug mprisence
+rm -rf ~/.cache/mprisence/cover_art
 ```
 
-Validate TOML syntax with a TOML validator or `toml-lint`.
+Then verify provider config and metadata quality.
 
-To test defaults, temporarily move your config:
+### Flatpak Discord clients
 
-```bash
-mv ~/.config/mprisence/config.toml ~/.config/mprisence/config.toml.bak
-mprisence
-```
+If you use Vesktop Flatpak, native IPC may need extra setup. See Vesktop guide for native applications:
+<https://github.com/flathub/dev.vencord.Vesktop?tab=readme-ov-file#native-applications>
 
-## Contributing
+If problem persists, open an issue with:
 
-Issues and pull requests are welcome.
-
-For bridge details, see [`mprisence-web-bridge/README.md`](./mprisence-web-bridge/README.md).
-
-## License
-
-MIT. See [`LICENSE`](./LICENSE).
+- player name and `mprisence players list --detailed` output
+- relevant config snippet
+- logs from `journalctl --user -u mprisence -f`
+- bridge logs if browser path involved
