@@ -1,8 +1,6 @@
 <!-- prettier-ignore -->
 <div align="center">
 
-<img src="assets/icon.png" alt="mprisence logo" width="96" />
-
 # mprisence
 
 **Discord Rich Presence for Linux media players, with optional web-player bridge**
@@ -229,6 +227,9 @@ Bundled site support includes:
 
 > [!IMPORTANT]
 > No packaged bridge release yet. Web bridge now lives inside `mprisence` under [`src/web_bridge/`](./src/web_bridge), so there is no separate standalone bridge crate or directory to build.
+
+> [!IMPORTANT]
+> No packaged bridge release yet. Web bridge now lives inside `mprisence` under [`src/web_bridge/`](./src/web_bridge).
 
 Build `mprisence` from repo root:
 
