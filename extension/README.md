@@ -1,6 +1,6 @@
 # mprisence Web Extension
 
-Browser extension half of `mprisence` web bridge.
+Browser extension for `mprisence` web bridge mode.
 
 The extension reads media metadata from supported websites, sends updates to the background script, and the background script forwards them to native host `mprisence.web.bridge`.
 
@@ -101,7 +101,7 @@ interface Provider {
 
 ## Messages
 
-Protocol types live in `src/types.ts` and must match Rust types in `../src/protocol.rs`.
+Protocol types live in `src/types.ts` and must match Rust types in `../src/web_bridge/protocol.rs`.
 
 Extension sends:
 

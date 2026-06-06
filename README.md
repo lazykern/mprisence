@@ -228,9 +228,9 @@ Bundled site support includes:
 - plus bundled web-player presets for Deezer, Qobuz, Amazon Music, Yandex Music, and more
 
 > [!IMPORTANT]
-> No packaged bridge release yet. Build native host and extension from source.
+> No packaged bridge release yet. Web bridge now lives inside `mprisence` under [`src/web_bridge/`](./src/web_bridge), so there is no separate standalone bridge crate or directory to build.
 
-Build native host from repo root:
+Build `mprisence` from repo root:
 
 ```bash
 cargo build --release -p mprisence
