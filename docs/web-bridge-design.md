@@ -1,404 +1,466 @@
-# mprisence Web Bridge — Design
+# mprisence Web Bridge
 
-## Overview
+Implementation notes for the browser extension and native bridge.
 
-Browser MPRIS export is unreliable — often missing album art, exposing generic URLs (miniplayer returns `https://music.youtube.com/`), or providing no metadata at all. The web bridge solves this by injecting a browser extension that extracts high-quality metadata directly from the page DOM and sends it to a native host that publishes a clean virtual MPRIS player. mprisence consumes it like any other MPRIS source.
+The bridge exists because native browser MPRIS is often incomplete. Common failures: missing cover art, generic URLs such as `https://music.youtube.com/`, weak controls, or no metadata. The extension reads site metadata from the page, sends it to a native messaging host, and the host publishes MPRIS players that the normal mprisence daemon consumes.
 
-## Architecture
+## Current status
 
-```
-┌─────────────────────────────────────────────────┐
-│ Browser (Firefox / Chromium)                     │
-│                                                  │
-│  ┌──────────────────────────────────────────┐   │
-│  │ Extension                                 │   │
-│  │                                           │   │
-│  │  content.ts (page world)                  │   │
-│  │    └─ provider: YouTubeMusicProvider       │   │
-│  │       └─ extracts metadata, art, playback  │   │
-│  │                                           │   │
-│  │  background.ts (service worker)           │   │
-│  │    └─ native messaging port               │   │
-│  │       └─ forwards updates → bridge        │   │
-│  │       └─ receives commands ← bridge       │   │
-│  └──────────────────────────────────────────┘   │
-│                                                  │
-│  ←── native messaging (stdin/stdout) ──────────→ │
-└──────────────────────────────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────┐
-│ mprisence-web-bridge (per-browser process)        │
-│                                                    │
-│  native_messaging.rs  ←  JSON from extension      │
-│       │                                            │
-│  active_source.rs  →  arbitrates between tabs     │
-│       │                                            │
-│  mpris.rs  →  publishes org.mpris.MediaPlayer2.*  │
-│                                                    │
-│  ←── D-Bus session bus ──────────────────────────→ │
-└──────────────────────────────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────┐
-│ mprisence                                         │
-│  unchanged — consumes MPRIS as always              │
-│  player config: [player.mprisence_web_firefox]    │
-│  website override: same as other browser players  │
-└──────────────────────────────────────────────────┘
-```
+Implemented:
 
-## Workspace Layout
+- native messaging host: `mprisence-web-bridge/`
+- browser extension: `extension/`
+- Firefox and Chromium manifests
+- one MPRIS player per browser source/tab
+- site providers for YouTube Music, YouTube, SoundCloud, Bandcamp, TIDAL, Apple Music, plus generic media
+- MPRIS controls back to the page: play, pause, play-pause, next, previous, seek, set-position
+- native messaging install, uninstall, and doctor commands
+- bridge-player config routing through `[player.mprisence_web]` and `[web_player.*]`
 
-```
-mprisence/
-├── Cargo.toml                  # workspace root [workspace] + existing mprisence crate
-├── src/                        # existing mprisence source (unchanged)
-├── mprisence-web-bridge/       # new bridge crate
-│   ├── Cargo.toml
-│   └── src/
-│       ├── main.rs             # entry: CLI (install/uninstall/doctor/run)
-│       ├── native_messaging.rs # stdin/stdout JSON reader/writer
-│       ├── mpris.rs            # D-Bus MPRIS player interface
-│       ├── active_source.rs    # source arbitration logic
-│       └── protocol.rs         # shared message types
-├── extension/                  # WebExtension
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── build.mjs               # esbuild script
-│   ├── manifest.firefox.json
-│   ├── manifest.chromium.json
-│   └── src/
-│       ├── background.ts
-│       ├── content.ts
-│       ├── types.ts
-│       ├── providers/
-│       │   ├── base.ts
-│       │   ├── generic-media.ts
-│       │   └── youtube-music.ts
-│       └── utils/
-│           ├── native-messaging.ts
-│           └── browser-detect.ts
-└── docs/
-    └── web-bridge-design.md    # this file
+## Runtime architecture
+
+```text
+Browser
+  extension/background.ts
+    connectNative("mprisence.web.bridge")
+    forwards page updates to native host
+    forwards MPRIS commands back to the right tab
+
+  extension/content.ts
+    runs in isolated world
+    listens for media events, DOM mutations, and keepalive ticks
+    runs provider extraction
+    sends update/remove messages to background
+
+  extension/page-world.ts
+    runs in MAIN world from the manifest
+    reads page-only media state where needed
+    dispatches CustomEvent("mprisence-media-state")
+
+Native host
+  mprisence-web-bridge/src/main.rs
+    reads native messaging frames from stdin
+    writes bridge messages to stdout
+    creates/removes MPRIS players
+
+  active_source.rs
+    stores one SourceState per browser source
+    prunes stale sources after 90 seconds
+
+  mpris.rs
+    publishes one MPRIS player per source
+    maps updates to org.mpris.MediaPlayer2 metadata/properties
+    forwards MPRIS method calls to the extension
+
+mprisence daemon
+  consumes bridge MPRIS players like normal players
+  resolves all bridge players through config key mprisence_web
+  applies [web_player.*] overrides from xesam:url or title suffix
 ```
 
-## Protocol
+## Source model
 
-### Extension → Bridge
+The bridge does not pick one active browser tab. Each live browser source gets its own MPRIS player.
 
-```typescript
-// Connection init
-interface Hello {
-  type: "hello";
-  browser: "firefox" | "chromium";
-  extension_version: string;
+Source ID format:
+
+```text
+<browser>:tab:<tab_id>:<frame_id>:frame
+```
+
+Example:
+
+```text
+firefox:tab:42:0:frame
+```
+
+Content scripts cannot reliably know their own tab ID, so they may send tab ID `0`. `background.ts` rewrites source IDs using `sender.tab.id` when available and keeps a reverse map from tab ID to source ID for command routing.
+
+A source is pruned if it sends no update for 90 seconds. The extension sends a forced keepalive every 30 seconds. Browsers can throttle background tabs to about once per minute, so the timeout must stay above that.
+
+## MPRIS player naming
+
+Each source publishes a D-Bus player under the shared `mprisence_web` namespace:
+
+```text
+org.mpris.MediaPlayer2.mprisence_web.<site>.<hash>
+```
+
+Examples:
+
+```text
+org.mpris.MediaPlayer2.mprisence_web.youtube_music.p00ef924695567065
+org.mpris.MediaPlayer2.mprisence_web.soundcloud.p9f3a4d6c8e1b2a00
+```
+
+The suffix is generated in `mprisence-web-bridge/src/mpris.rs`:
+
+```text
+mprisence_web.<site>.<hash(source_id)>
+```
+
+The `mpris_server::Player::builder()` call receives only the suffix. The library prepends `org.mpris.MediaPlayer2.`.
+
+## mprisence config resolution
+
+All bridge players resolve to the stable player config key:
+
+```toml
+[player.mprisence_web]
+```
+
+That key is internal routing behavior, not a required default config block. The daemon rewrites bridge player identity and bus name to `mprisence_web` before config lookup.
+
+Then mprisence applies `[web_player.*]` using the bridge-provided URL:
+
+1. `canonical_url`, if present
+2. page `url`, if not `blob:`
+3. `origin`
+
+Matched web-player config fully replaces the generic browser/player config. This lets one bridge bus namespace support different Discord app IDs and icons per site.
+
+Important default behavior:
+
+- bundled web-player entries enable known sites such as YouTube Music, SoundCloud, Apple Music, Bandcamp, and TIDAL
+- YouTube video pages are bundled but ignored by default
+- unmatched HTTP/HTTPS URLs are ignored by `[web_player.default]`
+- native browser MPRIS can be suppressed when a bridge player exposes the same browser and URL
+
+The bridge adds a custom metadata key:
+
+```text
+mprisence:browser = "firefox" | "chromium" | "brave" | "vivaldi" | "edge"
+```
+
+mprisence uses it to suppress duplicate native browser MPRIS players when the bridge is active for the same content.
+
+## Protocol v1
+
+Wire format uses standard native messaging framing:
+
+```text
+4-byte unsigned little-endian length
+UTF-8 JSON payload
+```
+
+Host name:
+
+```text
+mprisence.web.bridge
+```
+
+Protocol source of truth:
+
+- Rust: `mprisence-web-bridge/src/protocol.rs`
+- TypeScript: `extension/src/types.ts`
+
+### Extension to bridge
+
+```ts
+type ExtMessage =
+  | {
+      type: "hello";
+      browser: "firefox" | "chromium" | "brave" | "vivaldi" | "edge";
+      extension_version: string;
+      protocol: number;
+      git_sha?: string;
+      extension_fingerprint?: string;
+    }
+  | {
+      type: "update";
+      source_id: string;
+      url: string;
+      origin: string;
+      site: string;
+      playback: PlaybackState;
+      metadata: MediaMetadata;
+      capabilities: Capabilities;
+      canonical_url?: string;
+    }
+  | {
+      type: "remove";
+      source_id: string;
+    };
+```
+
+```ts
+interface PlaybackState {
+  status: "playing" | "paused" | "stopped";
+  position_ms: number;
+  duration_ms: number;
 }
 
-// Full source state update (sent on any change)
-interface Update {
-  type: "update";
-  source_id: string;              // "firefox:tab:123"
-  url: string;                    // page URL
-  origin: string;                 // "https://music.youtube.com"
-  site: string;                   // "youtube_music" | "generic" | ...
-  playback: {
-    status: "playing" | "paused" | "stopped";
-    position_ms: number;
-    duration_ms: number;
-    rate: number;                 // playback rate (1.0 = normal)
-  };
-  metadata: {
-    title?: string;
-    artist?: string[];            // first = primary
-    album?: string;
-    album_artist?: string[];
-    art_url?: string;             // resolved HTTPS URL or data:base64
-    track_id?: string;            // provider-specific stable ID
-  };
-  capabilities: {
-    play_pause: boolean;
-    next: boolean;
-    previous: boolean;
-    seek: boolean;
-    set_position: boolean;
-    raise: boolean;               // focus tab
-  };
-  confidence: "provider" | "dom" | "fallback";  // metadata quality
+interface MediaMetadata {
+  title?: string;
+  artist: string[];
+  album?: string;
+  album_artist: string[];
+  art_url?: string;
+  track_id?: string;
 }
 
-// Source removed (tab closed)
-interface Remove {
-  type: "remove";
-  source_id: string;
+interface Capabilities {
+  play_pause: boolean;
+  next: boolean;
+  previous: boolean;
+  seek: boolean;
+  set_position: boolean;
 }
 ```
 
-### Bridge → Extension
+### Bridge to extension
 
-```typescript
-// Command from bridge to extension (user clicked MPRIS control)
-interface Command {
-  type: "command";
-  source_id: string;
-  command: "play_pause" | "next" | "previous" | "seek" | "set_position" | "raise";
-  position_ms?: number;         // for seek/set_position
-}
-
-// Bridge hello (sent after receiving extension hello)
-interface BridgeHello {
-  type: "hello";
-  bridge_version: string;
-  protocol: 1;
-}
-
-// Heartbeat probe
-interface Heartbeat {
-  type: "heartbeat";
-}
+```ts
+type BridgeMessage =
+  | {
+      type: "hello";
+      bridge_version: string;
+      protocol: number;
+      git_sha?: string;
+    }
+  | {
+      type: "command";
+      source_id: string;
+      command:
+        | "play_pause"
+        | "play"
+        | "pause"
+        | "next"
+        | "previous"
+        | "seek"
+        | "set_position";
+      position_ms?: number;
+    }
+  | { type: "heartbeat" };
 ```
 
-### Wire Format
+Notes:
 
-Native messaging wraps each message as a 4-byte length prefix (uint32 LE) followed by UTF-8 JSON. Standard native messaging framing for both Firefox and Chromium.
+- `seek` is relative in MPRIS, but the extension protocol only carries absolute `position_ms`. Current bridge does not send relative seek offsets as `position_ms`.
+- `set_position` sends absolute `position_ms`.
+- `heartbeat` is accepted by the extension, but current bridge liveness mainly depends on reconnect and source keepalives.
 
-## Bridge Design
+## MPRIS mapping
 
-### State
-
-```rust
-struct Bridge {
-    sources: HashMap<String, SourceState>,
-    active_source_id: Option<String>,
-    mpris_player: MprisPlayer,
-    heartbeat_deadline: Instant,
-}
-
-struct SourceState {
-    source_id: String,
-    url: String,
-    origin: String,
-    site: String,
-    playback: PlaybackState,
-    metadata: MediaMetadata,
-    capabilities: Capabilities,
-    confidence: ConfidenceLevel,
-    last_seen: Instant,
-}
-```
-
-### Active Source Selection
-
-Priority (highest wins):
-1. Playing source with recent heartbeat (< 5s)
-2. Source whose position is actively advancing
-3. Most recently user-controlled source (tab focus or command)
-4. Most recently audible tab (last update received)
-5. Paused source if no playing source exists
-6. No source → publish Stopped
-
-Staleness:
-- No update for 5s → treat as stale, re-evaluate selection
-- No update for 10s → remove source entirely
-- All sources removed → publish Stopped or unpublish
-
-### MPRIS Mapping
-
-| MPRIS Property | Source Field |
-|---|---|
+| MPRIS field | Bridge source |
+| --- | --- |
 | `PlaybackStatus` | `playback.status` |
-| `Position` | `playback.position_ms * 1000` (microseconds) |
-| `mpris:length` | `playback.duration_ms * 1000` |
-| `mpris:trackid` | hash of `track_id` or `source_id + metadata.title + metadata.artist` |
-| `mpris:artUrl` | `metadata.art_url` (passed through; mprisence fetches it) |
+| `Position` | `playback.position_ms * 1000` |
+| `mpris:length` | `playback.duration_ms * 1000`, only when finite and under 24h |
+| `mpris:trackid` | `metadata.track_id`, else hash of canonical URL, page URL, or source/title |
+| `mpris:artUrl` | `metadata.art_url`, only if `http://` or `https://` |
 | `xesam:title` | `metadata.title` |
 | `xesam:artist` | `metadata.artist` |
 | `xesam:album` | `metadata.album` |
 | `xesam:albumArtist` | `metadata.album_artist` |
-| `xesam:url` | `url` (page URL) |
-| `xesam:sourceUrl` | `origin` |
-| `Identity` | formatted from `site`, e.g. "YouTube Music" |
-| `DesktopEntry` | (empty — browser already owns this) |
-| `CanRaise` | `capabilities.raise` |
-| `CanGoNext` | `capabilities.next` |
-| `CanGoPrevious` | `capabilities.previous` |
-| `CanSeek` | `capabilities.seek` |
-| `CanPlay` | `capabilities.play_pause` (if paused) |
-| `CanPause` | `capabilities.play_pause` (if playing) |
+| `xesam:url` | `canonical_url`, else page URL, else origin |
+| `mprisence:browser` | browser extracted from `source_id` |
+| `Identity` | formatted site name, e.g. `YouTube Music` |
+| capabilities | `capabilities.*` |
 
-### MPRIS Bus Names
+Position is set every publish. Other MPRIS properties are diffed and only emitted when changed.
 
-Per-browser instance to avoid collisions:
+The bridge clamps position to duration. YouTube Music can briefly report old `<video>.currentTime` for a new track while the progress bar already reports the new duration. Without clamping, Discord can show nonsense elapsed time.
 
-| Browser | MPRIS Bus Name |
-|---|---|
-| Firefox | `org.mpris.MediaPlayer2.mprisence_web_firefox` |
-| Chromium | `org.mpris.MediaPlayer2.mprisence_web_chromium` |
-| Brave | `org.mpris.MediaPlayer2.mprisence_web_brave` |
+## Extension provider pipeline
 
-Override via `--mpris-name` flag.
+Provider registry lives in `extension/src/content.ts`:
 
-## Extension Design
+1. `YouTubeMusicProvider`
+2. `YouTubeProvider`
+3. `SoundCloudProvider`
+4. `BandcampProvider`
+5. `TidalProvider`
+6. `AppleMusicProvider`
+7. `GenericMediaProvider`
 
-### Build System
+Each provider implements the interface from `extension/src/providers/base.ts`:
 
-- **esbuild** for TypeScript compilation
-- Build script (`build.mjs`) reads `manifest.{browser}.json`, generates output in `dist/{browser}/`
-- One npm script: `build:firefox`, `build:chromium`, or `build:all`
-
-### Manifest Strategy
-
-Shared fields in a base config. Per-browser variants override:
-- `browser_specific_settings` / `minimum_chrome_version`
-- `background` (service_worker for Chromium, scripts/type:module for Firefox)
-- Permissions (host_permissions vs permissions)
-
-### Provider Interface
-
-```typescript
+```ts
 interface Provider {
-  /** Check if this provider handles the given URL */
+  siteKey: string;
   matches(url: URL): boolean;
-
-  /** Extract metadata from page */
-  getMetadata(): Metadata | null;
-
-  /** Get current playback state */
-  getPlayback(): PlaybackState | null;
-
-  /** Get current album art URL (prefer HTTPS, resolve blobs) */
-  getArtUrl(): string | null;
-
-  /** Execute a media control command */
-  command(cmd: Command): Promise<void>;
+  extract(): ProviderResult | null;
+  command(command: string, positionMs?: number): Promise<void>;
 }
 ```
 
-### Content Script Architecture
+Updates come from three paths:
 
-```
-content.ts (main world via injection)
-  └─ provider dispatcher
-       ├─ YouTubeMusicProvider  (matches music.youtube.com)
-       ├─ GenericMediaProvider  (matches any page with <audio>/<video>)
-       └─ ... (future providers)
+- media element events: `play`, `pause`, `ended`, `seeked`, `loadedmetadata`, `durationchange`, etc.
+- throttled `timeupdate`, about once per second
+- debounced `MutationObserver`, mainly for SPAs that change track UI without media events
 
-Provider sends updates via CustomEvent to content script wrapper
-Content script wrapper forwards to background via chrome.runtime.sendMessage
-Background forwards to native host via connectNative port
-```
+Page-world events provide extra metadata when isolated-world DOM access is not enough. YouTube Music can also send art-only updates from page-world. The content script merges art-only updates into the last provider metadata to avoid blanking title/artist.
 
-CSP-safe approach (static script + CustomEvent, not dynamic eval):
-- Content script injects a static `<script>` element into page world
-- Page-world script uses DOM + MediaSession API directly
-- Sends data back to content script via `window.postMessage` or CustomEvent
-- Content script relay → background → bridge
+Dedup rules in `sendUpdate()` avoid sending unchanged state. Forced keepalives bypass dedup only to refresh `last_seen` in the bridge.
 
-### Passive Page-Side Detection
+URL stability matters. If an update lacks a page URL and the track identity did not change, the content script reuses the last known page URL. This avoids URL flapping between canonical track URLs and `window.location.href` with playlist parameters.
 
-The page-world script uses `MutationObserver` + `timeupdate` event on media elements + `navigator.mediaSession` metadata changes. It does NOT poll aggressively. For YouTube Music specifically, it observes DOM changes in the player bar area.
+## Build and install
 
-## Data Flow: Track Change
+Build native bridge:
 
-```
-1. User clicks next track on YouTube Music
-2. Page-world script detects DOM change (new title element)
-3. Page-world script reads title, artist, album, art URL from DOM
-4. Page-world posts data to content script via CustomEvent
-5. Content script forwards to background script
-6. Background script sends { type: "update", ... } JSON to bridge
-7. Bridge receives update, stores in source registry
-8. Bridge re-evaluates active source (this source is playing → winner)
-9. Bridge updates MPRIS properties on D-Bus
-10. mprisence detects mpris:trackid change via D-Bus PropertiesChanged
-11. mprisence fetches art_url, builds Discord presence
+```bash
+cargo build --release -p mprisence-web-bridge
 ```
 
-## Development Phases
+Install native messaging manifests:
 
-### Phase 0: Workspace + Design (this doc)
-- [x] Write design doc
-- [ ] Set up Cargo workspace
-- [ ] Create bridge crate scaffold
+```bash
+./target/release/mprisence-web-bridge install
+```
 
-### Phase 1: Bridge MVP (fake source → MPRIS)
-- [ ] Bridge reads JSON from stdin (native messaging framing)
-- [ ] Bridge publishes static MPRIS player
-- [ ] `playerctl metadata` sees the fake player
-- [ ] mprisence detects it
+Limit install to one browser family:
 
-### Phase 2: Extension MVP (generic media)
-- [ ] Extension build system (esbuild, manifests)
-- [ ] Background script connects via native messaging
-- [ ] Content script detects `<audio>/<video>` elements
-- [ ] Generic media provider sends updates
-- [ ] End-to-end: browser → extension → bridge → MPRIS
+```bash
+./target/release/mprisence-web-bridge install --browser firefox
+./target/release/mprisence-web-bridge install --browser chromium
+```
 
-### Phase 3: YouTube Music Provider
-- [ ] Page-world script for YTM
-- [ ] Extract title, artist, album, album art (resolve to HTTPS)
-- [ ] Handle miniplayer/navigation
-- [ ] Album art works in Discord
+Check install:
 
-### Phase 4: Active Source + Cleanup
-- [ ] Multiple tabs tracked internally
-- [ ] Active source selection logic
-- [ ] Heartbeat timeout / stale removal
-- [ ] Tab close → source_removed → MPRIS Stopped
+```bash
+./target/release/mprisence-web-bridge doctor
+```
 
-### Phase 5: Installer + Doctor
-- [ ] `mprisence-web-bridge install` — detect browsers, write manifests
-- [ ] `mprisence-web-bridge uninstall` — remove manifests
-- [ ] `mprisence-web-bridge doctor` — validate setup
-- [ ] Support Firefox + Chromium + Brave
+Remove manifests:
 
-### Phase 6: mprisence Integration
-- [ ] Default `[player.mprisence_web_*]` config entries
-- [ ] `ignore_when = "mprisence_web_active"` for raw browser MPRIS
-- [ ] Website overrides still work (same pattern as existing)
+```bash
+./target/release/mprisence-web-bridge uninstall
+```
 
-### Phase 7: Polish
-- [ ] Per-tab mode (optional)
-- [ ] Extension popup UI (status display)
-- [ ] Error handling + logging
+Build extension:
 
-## Rationale
+```bash
+cd extension
+npm install
+npm run build:firefox
+npm run build:chromium
+```
 
-### Why native messaging, not WebSocket/HTTP
-- Browser-approved local IPC
-- No port discovery, no auth, no sandbox escape risk
-- Browser manages process lifecycle
-- Works in both Firefox and Chromium identically (wire protocol)
+Store builds:
 
-### Why one bridge per browser, not one daemon
-- Browser manages the native host lifecycle
-- No stale daemon if browser closes
-- Simpler: no lock files, socket paths, primary election
-- Later optimization: broker mode if multi-browser users complain
+```bash
+npm run build:firefox:store
+npm run build:chromium:store
+npm run build:store
+```
 
-### Why per-browser bus names, not shared
-- Two browsers = two MPRIS players = mprisence handles both
-- Avoids bus name conflicts
-- User can configure per-browser in mprisence config
-- mprisence already handles multiple players well
+Firefox temporary load:
 
-### Why resolve blob: URLs in content script, not bridge
-- Content script has access to fetch API in page context
-- Bridge has no rendering context — can't resolve blob URLs
-- Content script fetches blob → gets ArrayBuffer → converts to base64
-- Passes as `data:image/...;base64,...` in `art_url`
-- mprisence already handles data: URLs (it HTTP-fetches art_url; data: works in browsers but mprisence's reqwest won't fetch it)
-- **Better**: content script extracts real HTTPS URL from page/SDK when possible. Only use blob→base64 as fallback.
+```text
+about:debugging#/runtime/this-firefox
+Load Temporary Add-on
+extension/dist/firefox/manifest.json
+```
 
-### Why static page-world injection, not runtime eval
-- CSP on music.youtube.com and other sites blocks inline scripts
-- Static `<script>` element injected at document_start runs before CSP applies (for code that doesn't need DOM) or injected after DOM ready with a nonce-less approach using message passing
-- CustomEvent messages cross the world boundary safely
-- Plasma Browser Integration uses this pattern for the same reasons
+Chromium temporary load:
 
-## Future Considerations
+```text
+chrome://extensions
+Developer mode
+Load unpacked
+extension/dist/chromium/
+```
 
-- **Broker mode**: Single daemon, multiple browser shims → one MPRIS player
-- **Per-tab mode**: One MPRIS player per tab (for advanced users)
-- **Custom providers**: User-provided page scripts
-- **Non-browser media**: Electron apps, webview-based players
+## Native messaging manifests
+
+Firefox path:
+
+```text
+~/.mozilla/native-messaging-hosts/mprisence.web.bridge.json
+```
+
+Chromium and Chrome paths:
+
+```text
+~/.config/chromium/NativeMessagingHosts/mprisence.web.bridge.json
+~/.config/google-chrome/NativeMessagingHosts/mprisence.web.bridge.json
+```
+
+Installer also scans Chromium/Chrome profile-root variants under `~/.config`.
+
+Native host requirements:
+
+- Firefox manifest uses `allowed_extensions` with `mprisence-bridge@lazykern.github.io`
+- Chromium manifest uses `allowed_origins` with the extension ID from `CHROME_EXTENSION_ID`
+- Firefox and Chromium pass extra CLI args to native hosts. Clap must allow trailing args or the bridge exits before logging useful output.
+
+## Debugging
+
+Bridge log:
+
+```bash
+tail -f /tmp/bridge-stderr.log
+```
+
+List bridge players:
+
+```bash
+playerctl -l | grep mprisence_web
+```
+
+Inspect one player:
+
+```bash
+playerctl -p mprisence_web.youtube_music.p00ef924695567065 metadata
+playerctl -p mprisence_web.youtube_music.p00ef924695567065 status
+```
+
+Test controls:
+
+```bash
+playerctl -p mprisence_web.youtube_music.p00ef924695567065 play-pause
+playerctl -p mprisence_web.youtube_music.p00ef924695567065 next
+playerctl -p mprisence_web.youtube_music.p00ef924695567065 previous
+```
+
+Inspect how mprisence resolves the player:
+
+```bash
+mprisence players list --detailed
+mprisence config
+```
+
+Useful bridge log patterns:
+
+```bash
+grep 'Extension connected' /tmp/bridge-stderr.log | tail
+grep 'Created MPRIS player' /tmp/bridge-stderr.log | tail
+grep 'MPRIS player .* emitted' /tmp/bridge-stderr.log | tail
+grep 'clamping position' /tmp/bridge-stderr.log | tail
+```
+
+Browser-side logs:
+
+- background logs: extension inspector
+- content logs: page devtools for the target site
+- extension reload kills content scripts, so refresh target pages after reload
+
+## Known limitations
+
+- Extension is currently temporary-load/dev oriented unless packaged through store build scripts.
+- Chromium native messaging allowed origin depends on the fixed extension key/ID.
+- Relative MPRIS seek is not represented as a relative offset in the extension protocol.
+- Bridge art URLs must be HTTP/HTTPS. Data and blob URLs are not published as `mpris:artUrl`.
+- Content scripts cannot directly know their tab ID; background rewrites source IDs from sender metadata.
+- Browser throttling affects background tabs, so keepalive and stale timeout values must stay conservative.
+
+## Source map
+
+| Area | Files |
+| --- | --- |
+| bridge CLI and event loop | `mprisence-web-bridge/src/main.rs` |
+| native messaging framing | `mprisence-web-bridge/src/native_messaging.rs` |
+| protocol types | `mprisence-web-bridge/src/protocol.rs`, `extension/src/types.ts` |
+| source registry | `mprisence-web-bridge/src/active_source.rs` |
+| MPRIS publishing | `mprisence-web-bridge/src/mpris.rs` |
+| extension background | `extension/src/background.ts` |
+| extension content pipeline | `extension/src/content.ts` |
+| page-world script | `extension/src/page-world.ts` |
+| providers | `extension/src/providers/` |
+| browser detection/source IDs | `extension/src/utils/browser-detect.ts` |
+| extension native port | `extension/src/utils/native-messaging.ts` |
+| mprisence bridge config routing | `src/config/mod.rs`, `src/player/mod.rs` |
+| web-player defaults | `config/config.default.toml` |
