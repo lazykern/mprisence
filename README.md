@@ -11,14 +11,19 @@ mprisence reads MPRIS metadata from your player, renders it with your config, an
 
 _(Appearance depends on your config and media player.)_
 
-## Pick your setup
+## Choose your setup
 
-| You use | Start here | Need config? | Need extension bridge? |
-| --- | --- | --- | --- |
-| VLC, MPV, Rhythmbox, Audacious, etc. | [Quick start](#quick-start) | Usually no | No |
-| Browser exposes media over MPRIS | [Web players](#web-players) | Sometimes | No |
-| YouTube Music, SoundCloud, Apple Music, etc. need better metadata, cover art, or controls | [Extension bridge setup](#extension-bridge-setup) | Sometimes | Yes |
-| Unsupported local or web player | [Common recipes](#common-recipes) | Yes | Maybe |
+1. **Using VLC, MPV, Rhythmbox, Audacious, or another local player?**
+   Start with [Quick start](#quick-start). You usually do not need config.
+
+2. **Using browser media that already appears in `playerctl -l`?**
+   Start with [Web players](#web-players). You may need config if the site is not bundled.
+
+3. **Using YouTube Music, SoundCloud, Apple Music, or another site with poor browser metadata?**
+   Use [Extension bridge setup](#extension-bridge-setup) for better metadata, cover art, and controls.
+
+4. **Player appears in mprisence, but Discord does not update?**
+   See [Common recipes](#common-recipes).
 
 ## What you get
 
@@ -459,7 +464,7 @@ Web players:
 
 MPD frontends can also expose MPD rich presence. Disable the MPD entry if you do not want both frontend and MPD activity.
 
-Need another player name or icon recognized? Open an issue.
+Want a player name, icon, or web-player preset added? Open an issue with the player name, MPRIS identity, and website URL if relevant.
 
 ## CLI commands
 
