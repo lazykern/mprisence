@@ -682,7 +682,6 @@ mod tests {
 match_pattern = "music.youtube.com"
 app_id = "USER_APP"
 icon = "user-icon"
-allow_streaming = true
 "#,
         )
         .expect("failed to write config");

@@ -1772,8 +1772,10 @@ impl WebPlayerConfig {
     /// Project the web_player's resolved fields onto a fresh `PlayerConfig`.
     /// This is the authoritative-replace operation: every policy field
     /// either takes the web_player's explicit value or falls back to the
-    /// mprisence default. The browser's `[player.*]` config does NOT
-    /// contribute, which is the whole point of the web_player override.
+    /// mprisence default. Matched web players implicitly allow streaming
+    /// unless `allow_streaming = false` is set explicitly. The browser's
+    /// `[player.*]` config does NOT contribute, which is the whole point
+    /// of the web_player override.
     pub fn into_player_config(self) -> PlayerConfig {
         let mut p = PlayerConfig::default();
         if let Some(name) = self.name {
@@ -1789,9 +1791,7 @@ impl WebPlayerConfig {
         if let Some(show_icon) = self.show_icon {
             p.show_icon = show_icon;
         }
-        if let Some(allow_streaming) = self.allow_streaming {
-            p.allow_streaming = allow_streaming;
-        }
+        p.allow_streaming = self.allow_streaming.unwrap_or(true);
         if let Some(sdt) = self.status_display_type {
             p.status_display_type = sdt;
         }
@@ -1825,7 +1825,6 @@ mod web_player_tests {
         WebPlayerConfigLayer {
             match_pattern: Some(match_pattern.to_string()),
             app_id: app_id.map(|s| s.to_string()),
-            allow_streaming: Some(true),
             ..Default::default()
         }
     }
@@ -1837,7 +1836,6 @@ mod web_player_tests {
             name: Some("YouTube Music".into()),
             app_id: Some("WEB_PLAYER".into()),
             icon: Some("yt-icon".into()),
-            allow_streaming: Some(true),
             ..Default::default()
         };
         let resolved = layer.apply_into_web_player(WebPlayerConfig::default());
@@ -1852,6 +1850,19 @@ mod web_player_tests {
         assert!(!player.ignore);
         // show_icon wasn't set -> falls back to mprisence default (false).
         assert!(!player.show_icon);
+    }
+
+    #[test]
+    fn website_into_player_config_can_explicitly_disable_streaming() {
+        let layer = WebPlayerConfigLayer {
+            match_pattern: Some("music.youtube.com".to_string()),
+            allow_streaming: Some(false),
+            ..Default::default()
+        };
+        let resolved = layer.apply_into_web_player(WebPlayerConfig::default());
+        let player = resolved.into_player_config();
+
+        assert!(!player.allow_streaming);
     }
 
     fn build_cfg(setup: impl FnOnce(&mut Config)) -> Config {
@@ -1888,7 +1899,6 @@ mod web_player_tests {
                 WebPlayerConfigLayer {
                     match_patterns: Some(vec!["soundcloud.com".into(), "snd.sc".into()]),
                     app_id: Some("SC".into()),
-                    allow_streaming: Some(true),
                     ..Default::default()
                 },
             );
@@ -2069,7 +2079,6 @@ mod web_player_tests {
                     match_patterns: Some(vec!["youtube.com".into(), "youtu.be".into()]),
                     app_id: Some("YT_BUNDLED".into()),
                     ignore: Some(true),
-                    allow_streaming: Some(true),
                     ..Default::default()
                 },
             );
@@ -2097,7 +2106,7 @@ mod web_player_tests {
         );
         assert!(
             resolved.allow_streaming,
-            "bundled allow_streaming should still apply"
+            "matched web_player should still allow streaming by default"
         );
     }
 

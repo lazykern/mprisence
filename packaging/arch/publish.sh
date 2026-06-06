@@ -13,18 +13,11 @@ show_help() {
     echo "Usage: $0 [OPTIONS]"
     echo "Options:"
     echo "  -h, --help     Show this help message"
-    echo "  --release      Publish only the release package (default if no option specified)"
-    echo "  --git          Publish only the git package"
-    echo "  --both         Publish both release and git packages"
+    echo "  --release      Publish the release package (default)"
 }
 
 # Parse command line arguments
-PUBLISH_RELEASE=false
-PUBLISH_GIT=false
-
-if [ $# -eq 0 ]; then
-    PUBLISH_RELEASE=true
-else
+if [ $# -gt 0 ]; then
     for arg in "$@"; do
         case $arg in
             -h|--help)
@@ -32,14 +25,6 @@ else
                 exit 0
                 ;;
             --release)
-                PUBLISH_RELEASE=true
-                ;;
-            --git)
-                PUBLISH_GIT=true
-                ;;
-            --both)
-                PUBLISH_RELEASE=true
-                PUBLISH_GIT=true
                 ;;
             *)
                 echo -e "${RED}Error: Unknown option: $arg${NC}"
@@ -83,92 +68,44 @@ VERSION=$(grep '^version = ' Cargo.toml | cut -d '"' -f 2)
 
 print "Publishing version ${VERSION}"
 
-# Check if this is a pre-release version
+# Release package should only publish stable versions
 if [[ "$VERSION" == *"-"* ]]; then
-    if [ "$PUBLISH_RELEASE" = true ] && [ "$PUBLISH_GIT" = false ]; then
-        echo -e "${RED}Error: Cannot publish pre-release version ${VERSION} to release package.${NC}"
-        echo -e "${RED}Pre-release versions should only be published to the -git package.${NC}"
-        echo -e "${YELLOW}Use --git to publish to the -git package instead.${NC}"
-        exit 1
-    elif [ "$PUBLISH_RELEASE" = true ] && [ "$PUBLISH_GIT" = true ]; then
-        warn "Pre-release version ${VERSION} will only be published to the -git package"
-        PUBLISH_RELEASE=false
-    fi
+    echo -e "${RED}Error: Cannot publish pre-release version ${VERSION} to release package.${NC}"
+    exit 1
 fi
 
 # Sync version across package files
-print "Syncing version ${VERSION} to PKGBUILD files..."
+print "Syncing version ${VERSION} to PKGBUILD..."
 sed -i "s/^pkgver=.*/pkgver=${VERSION}/" packaging/arch/release/PKGBUILD
-sed -i "s/^pkgver=.*/pkgver=${VERSION}/" packaging/arch/git/PKGBUILD
 
-# Paths to the AUR package repos
+# Path to the AUR package repo
 RELEASE_REPO="aur-mprisence"
-GIT_REPO="aur-mprisence-git"
 
-# Handle release package
-if [ "$PUBLISH_RELEASE" = true ]; then
-    print "Generating .SRCINFO for release package..."
-    generate_srcinfo "packaging/arch/release"
+print "Generating .SRCINFO for release package..."
+generate_srcinfo "packaging/arch/release"
 
-    if [ ! -d "$RELEASE_REPO" ]; then
-        print "Cloning release AUR repository..."
-        git clone ssh://aur@aur.archlinux.org/mprisence.git "$RELEASE_REPO"
-    fi
-
-    print "Updating release package..."
-    cp packaging/arch/release/PKGBUILD "$RELEASE_REPO/PKGBUILD"
-    cp packaging/arch/release/.SRCINFO "$RELEASE_REPO/.SRCINFO"
-    cp packaging/arch/release/mprisence.install "$RELEASE_REPO/mprisence.install"
-    cp packaging/arch/mprisence.service "$RELEASE_REPO/mprisence.service"
-
-    print "Publishing release package..."
-    (
-        cd "$RELEASE_REPO"
-        git add PKGBUILD .SRCINFO mprisence.install mprisence.service
-        if git diff --cached --quiet; then
-            warn "Release package already up to date; skipping commit and push"
-        else
-            git commit -m "Update to version $VERSION"
-            git push
-            print "Successfully published release package version $VERSION"
-        fi
-    )
+if [ ! -d "$RELEASE_REPO" ]; then
+    print "Cloning release AUR repository..."
+    git clone ssh://aur@aur.archlinux.org/mprisence.git "$RELEASE_REPO"
 fi
 
-# Handle git package
-if [ "$PUBLISH_GIT" = true ]; then
-    print "Generating .SRCINFO for git package..."
-    generate_srcinfo "packaging/arch/git"
+print "Updating release package..."
+cp packaging/arch/release/PKGBUILD "$RELEASE_REPO/PKGBUILD"
+cp packaging/arch/release/.SRCINFO "$RELEASE_REPO/.SRCINFO"
+cp packaging/arch/release/mprisence.install "$RELEASE_REPO/mprisence.install"
+cp packaging/arch/mprisence.service "$RELEASE_REPO/mprisence.service"
 
-    if [ ! -d "$GIT_REPO" ]; then
-        print "Cloning git AUR repository..."
-        git clone ssh://aur@aur.archlinux.org/mprisence-git.git "$GIT_REPO"
+print "Publishing release package..."
+(
+    cd "$RELEASE_REPO"
+    git add PKGBUILD .SRCINFO mprisence.install mprisence.service
+    if git diff --cached --quiet; then
+        warn "Release package already up to date; skipping commit and push"
+    else
+        git commit -m "Update to version $VERSION"
+        git push
+        print "Successfully published release package version $VERSION"
     fi
+)
 
-    print "Updating git package..."
-    cp packaging/arch/git/PKGBUILD "$GIT_REPO/PKGBUILD"
-    cp packaging/arch/git/.SRCINFO "$GIT_REPO/.SRCINFO"
-    cp packaging/arch/git/mprisence-git.install "$GIT_REPO/mprisence-git.install"
-    cp packaging/arch/mprisence.service "$GIT_REPO/mprisence.service"
-
-    print "Publishing git package..."
-    (
-        cd "$GIT_REPO"
-        git add PKGBUILD .SRCINFO mprisence-git.install mprisence.service
-        if git diff --cached --quiet; then
-            warn "Git package already up to date; skipping commit and push"
-        else
-            git commit -m "Update to version $VERSION"
-            git push
-            print "Successfully published git package version $VERSION"
-        fi
-    )
-fi
-
-if [ "$PUBLISH_RELEASE" = true ] || [ "$PUBLISH_GIT" = true ]; then
-    print "Publishing completed successfully!"
-else
-    warn "No package type specified for publishing"
-    show_help
-    exit 1
-fi 
+print "Publishing completed successfully!"

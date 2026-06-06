@@ -250,10 +250,10 @@ status_display_type = "details"
 # ----------------------
 # Browsers (Firefox, Zen, Chrome, etc.) can publish the playing tab's URL via
 # `xesam:url`. When the URL host matches a `[web_player.*]` entry, mprisence
-# applies that site's app_id, icon, name, ignore, allow_streaming, and activity
-# type instead of treating the source as a generic browser. So you do not need
-# to also enable the browser entry; adding or overriding a `[web_player.*]`
-# entry is enough.
+# applies that site's app_id, icon, name, ignore, and activity type instead of
+# treating the source as a generic browser. Matched web_player entries allow
+# streaming by default, so you do not need to also enable the browser entry;
+# adding or overriding a `[web_player.*]` entry is enough.
 #
 # Pattern syntax (same as [player.*] keys):
 #   bare        -> exact host match, with substring fallback against the host
@@ -287,7 +287,6 @@ status_display_type = "details"
 # name = "Last.fm"
 # app_id = "YOUR_DISCORD_APP_ID"
 # icon = "https://example.com/last-fm.png"
-# allow_streaming = true
 # ignore = false
 
 # Bundled `[web_player.*]` keys + patterns (override any of these by writing

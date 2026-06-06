@@ -54,9 +54,6 @@ Feel free to create a new issue if you want your player name+icon to be recogniz
 # Install the stable version
 yay -S mprisence
 
-# Or, install the latest development version
-yay -S mprisence-git
-
 # Or without building from source
 yay -S mprisence-bin
 ```

@@ -221,11 +221,12 @@ allow_streaming = true
 # Match runs against the URL host (e.g. `music.youtube.com`).
 # When matched, the web_player entry is the *authoritative* config for the
 # player — it fully replaces the browser's [player.*] config (ignore,
-# allow_streaming, app_id, icon, name, activity type). The browser does
-# not need to be enabled or unhidden separately. User entries are merged
-# per-key with bundled entries (user fields win, unset fields fall back
-# to bundled — including match patterns) so flipping `ignore` on a
-# bundled site only takes one TOML line in the user config.
+# app_id, icon, name, activity type). Matched web_player entries allow
+# streaming by default unless `allow_streaming = false` is set explicitly.
+# The browser does not need to be enabled or unhidden separately. User
+# entries are merged per-key with bundled entries (user fields win, unset
+# fields fall back to bundled — including match patterns) so flipping
+# `ignore` on a bundled site only takes one TOML line in the user config.
 # ------------------------------------------------------------------
 
 [web_player.default]
@@ -236,7 +237,6 @@ name = "YouTube Music"
 title_suffix = " | YouTube Music"
 app_id = "1125082278339559505" # shared with [player."*youtube_music*"]
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/youtube-music.png"
-allow_streaming = true
 ignore = false
 
 [web_player.soundcloud]
@@ -244,7 +244,6 @@ match_patterns = ["soundcloud.com", "snd.sc"]
 name = "SoundCloud"
 app_id = "1505610509406437446"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/soundcloud.png"
-allow_streaming = true
 ignore = false
 
 [web_player.qobuz]
@@ -252,7 +251,6 @@ match_patterns = ["qobuz.com", "play.qobuz.com", "open.qobuz.com"]
 name = "Qobuz"
 app_id = "1247655024637513778"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/qobuz.png"
-allow_streaming = true
 ignore = false
 
 [web_player.apple_music]
@@ -260,7 +258,6 @@ match_pattern = "music.apple.com"
 name = "Apple Music"
 app_id = "1505611096273457192"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/apple-music.png"
-allow_streaming = true
 ignore = false
 
 [web_player.bandcamp]
@@ -268,7 +265,6 @@ match_pattern = "bandcamp.com"
 name = "Bandcamp"
 app_id = "1505611276917669908"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/bandcamp.png"
-allow_streaming = true
 ignore = false
 
 [web_player.tidal]
@@ -276,7 +272,6 @@ match_patterns = ["tidal.com", "listen.tidal.com", "listen.stage.tidal.com"]
 name = "Tidal"
 app_id = "1505610940488486912"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/tidal.png"
-allow_streaming = true
 ignore = false
 
 [web_player.amazon_music]
@@ -309,7 +304,6 @@ match_patterns = [
 name = "Amazon Music"
 app_id = "1247654006587789363"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/amazon-music.png"
-allow_streaming = true
 ignore = false
 
 [web_player.deezer]
@@ -317,7 +311,6 @@ match_pattern = "deezer.com"
 name = "Deezer"
 app_id = "1247654082215284847"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/deezer.png"
-allow_streaming = true
 ignore = false
 
 [web_player.yandex_music]
@@ -325,7 +318,6 @@ match_patterns = ["music.yandex.com", "music.yandex.ru"]
 name = "Yandex Music"
 app_id = "1295649755535511592"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/yandex-music.png"
-allow_streaming = true
 ignore = false
 
 [web_player.youtube]
@@ -334,6 +326,5 @@ name = "YouTube"
 title_suffix = " - YouTube"
 app_id = "1301894190904639559"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/youtube.png"
-allow_streaming = true
 ignore = true
 
