@@ -1,13 +1,14 @@
 # mprisence Web Bridge
 
-Browser metadata bundle for mprisence.
+Use this when browser MPRIS is not enough.
 
-This directory contains both halves of the bridge:
+No packaged release yet. Build native host and extension yourself for now.
 
-- `src/`: Rust native messaging host. It receives browser updates and publishes MPRIS players.
-- `extension/`: browser extension. It reads media metadata from web players and sends it to the host.
+This directory contains:
+- `src/`: native host
+- `extension/`: browser extension
 
-Use this bridge only when browser MPRIS is not enough. Native browser MPRIS may miss cover art, expose generic URLs, or merge every tab into one player.
+Native browser MPRIS may miss cover art, expose generic URLs, or merge every tab into one player.
 
 ## How it works
 

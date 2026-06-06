@@ -346,7 +346,9 @@ Most bundled web players are enabled. Unmatched HTTP/HTTPS browser URLs are igno
 
 ## Extension bridge setup
 
-**Install the extension bridge only if browser MPRIS is not enough.**
+**No packaged bridge release yet. Build bridge and extension yourself for now.**
+
+Install it only if browser MPRIS is not enough.
 
 You need:
 
