@@ -368,10 +368,10 @@ cargo build --release -p mprisence-web-bridge
 ./target/release/mprisence-web-bridge doctor
 
 # Build browser extension
-cd extension
+cd mprisence-web-bridge/extension
 npm install
 npm run build:firefox     # or: npm run build:chromium
-cd ..
+cd ../..
 ```
 
 Load extension:
@@ -380,14 +380,14 @@ Load extension:
 
 1. Open `about:debugging#/runtime/this-firefox`
 2. Click **Load Temporary Add-on**
-3. Select `extension/dist/firefox/manifest.json`
+3. Select `mprisence-web-bridge/extension/dist/firefox/manifest.json`
 
 ### Chromium, Chrome, Edge, Brave
 
 1. Open `chrome://extensions`
 2. Enable **Developer mode**
 3. Click **Load unpacked**
-4. Select `extension/dist/chromium/`
+4. Select `mprisence-web-bridge/extension/dist/chromium/`
 
 Verify bridge player:
 
@@ -596,7 +596,7 @@ mprisence
 
 Issues and pull requests are welcome.
 
-For bridge internals, see [`docs/web-bridge-design.md`](./docs/web-bridge-design.md).
+For bridge details, see [`mprisence-web-bridge/README.md`](./mprisence-web-bridge/README.md).
 
 ## License
 

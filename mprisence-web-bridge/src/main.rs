@@ -18,7 +18,7 @@ use tokio::time::{interval, Duration};
 const EXTENSION_ID: &str = "mprisence-bridge@lazykern.github.io";
 /// Chrome extension ID — from chrome://extensions when loaded unpacked
 const CHROME_EXTENSION_ID: &str = "pphdmbejbipjlocngoefnmjoijcbdejf";
-/// Native messaging host name — must match extension/src/utils/native-messaging.ts
+/// Native messaging host name. Must match extension/src/utils/native-messaging.ts.
 const HOST_NAME: &str = "mprisence.web.bridge";
 
 /// Firefox/Chromium native messaging protocol passes extra positional args:

@@ -13,11 +13,11 @@ flamegraph*
 *.pkg.tar.zst
 *.tar.gz
 
-/extension/chrome-key.pem
-/extension/dist/*.zip
+/mprisence-web-bridge/extension/chrome-key.pem
+/mprisence-web-bridge/extension/dist/*.zip
 /release-artifacts/
 
-/extension/node_modules/
+/mprisence-web-bridge/extension/node_modules/
 
 # Benchmark raw run data (keep only bench/RESULTS.md)
 /bench/*/
