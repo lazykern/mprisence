@@ -421,7 +421,6 @@ Full list in [`config.default.toml`](./config/config.default.toml).
 
 - **Local** (18): VLC, MPV, Audacious, Elisa, Lollypop, Rhythmbox, CMUS, MPD, Musikcube, Clementine, Strawberry, Amberol, SMPlayer, Supersonic, Feishin, kew, Quod Libet, Euphonica
 - **Streaming apps**: YouTube Music; Spotify (disabled by default)
-- **Browsers** (disabled by default): Firefox, Zen, Chrome, Edge, Brave
 - **Web players**: YouTube Music, SoundCloud, Apple Music, Bandcamp, TIDAL, Deezer, Qobuz, Amazon Music, Yandex Music; YouTube (ignored by default)
 
 MPD frontends can also expose MPD presence. Disable the MPD entry to avoid both showing.
