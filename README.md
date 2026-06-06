@@ -1,6 +1,8 @@
 <!-- prettier-ignore -->
 <div align="center">
 
+<img src="assets/icon.png" alt="mprisence logo" width="96" />
+
 # mprisence
 
 **Discord Rich Presence for Linux media players, with optional web-player bridge**
