@@ -1,7 +1,7 @@
 // ─── Build script for mprisence-browser-extension ─────────────────
 // Usage: node build.mjs <browser> [--watch] [--store]
 //   browser: "firefox" | "chromium"
-//   --store   strip dev-only fields (key) for store submission
+//   --store   store packaging (keeps manifest key on chromium)
 
 import * as esbuild from "esbuild";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "fs";
@@ -86,15 +86,8 @@ async function build() {
     await ctx.rebuild();
     await ctx.dispose();
 
-    // Strip dev-only fields for store builds
-    if (isStore) {
-      const storeKeys = ["key"];
-      for (const k of storeKeys) {
-        if (k in merged) {
-          delete merged[k];
-          console.log(`  stripped "${k}" from manifest`);
-        }
-      }
+    if (isStore && target === "chromium" && "key" in merged) {
+      console.log('  keeping "key" for stable Chrome extension ID');
     }
 
     // Write manifest

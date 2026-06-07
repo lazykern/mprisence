@@ -34,6 +34,15 @@ dist/firefox/
 dist/chromium/
 ```
 
+## Chrome extension ID
+
+The Chromium manifest `key` field pins extension ID `pphdmbejbipjlocngoefnmjoijcbdejf`.
+This must match `CHROME_EXTENSION_ID` in `src/web_bridge/mod.rs`.
+Store uploads must include `key` — do not strip it.
+
+If the ID ever changes, update the Rust constant and release a new `mprisence` build.
+Users must re-run `mprisence web install`.
+
 ## Temporary load
 
 Firefox:
