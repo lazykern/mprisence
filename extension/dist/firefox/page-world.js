@@ -2,6 +2,18 @@
 (function() {
   if (window.__mprisence_page_world) return;
   window.__mprisence_page_world = true;
+  const SUPPORTED_ORIGINS = [
+    "https://music.youtube.com",
+    "https://www.youtube.com",
+    "https://soundcloud.com",
+    "https://bandcamp.com",
+    "https://tidal.com",
+    "https://music.apple.com"
+  ];
+  const host = window.location.hostname;
+  const origin = window.location.origin;
+  const supported = SUPPORTED_ORIGINS.includes(origin) || host.endsWith(".soundcloud.com") || host.endsWith(".bandcamp.com") || host.endsWith(".tidal.com");
+  if (!supported) return;
   function debounce(fn, ms) {
     let timer = null;
     return ((...args) => {
@@ -214,4 +226,3 @@
   }
   checkYtmVideoId();
 })();
-//# sourceMappingURL=page-world.js.map

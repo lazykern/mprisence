@@ -13,82 +13,6 @@ function makeSourceId(browser2, tabId2, frameId) {
   return `${browser2}:tab:${tabId2 ?? 0}:${frameId ?? 0}`;
 }
 
-// src/providers/base.ts
-var GenericMediaProvider = class {
-  matches(_url) {
-    return true;
-  }
-  extract() {
-    const video = document.querySelector("video");
-    const audio = document.querySelector("audio");
-    const media = video ?? audio;
-    if (!media) return null;
-    const dur = media.duration;
-    if (!dur || !isFinite(dur)) return null;
-    const meta = {
-      title: document.title || void 0,
-      artist: []
-    };
-    const playback = {
-      status: media.paused ? "paused" : media.ended ? "stopped" : "playing",
-      position_ms: Math.floor(media.currentTime * 1e3),
-      duration_ms: Math.floor(dur * 1e3)
-    };
-    const caps = {
-      play_pause: true,
-      next: false,
-      previous: false,
-      seek: true,
-      set_position: true
-    };
-    if ("mediaSession" in navigator) {
-      const ms = navigator.mediaSession;
-      if (ms?.metadata) {
-        const md = ms.metadata;
-        if (md.title) meta.title = md.title;
-        if (md.artist) meta.artist = [md.artist];
-        if (md.album) meta.album = md.album;
-        if (md.artwork?.length > 0) {
-          const best = md.artwork.reduce(
-            (a, b) => (a.sizes ?? 0) > (b.sizes ?? 0) ? a : b
-          );
-          meta.art_url = best.src || void 0;
-        }
-      }
-    }
-    return {
-      metadata: meta,
-      playback,
-      capabilities: caps
-    };
-  }
-  async command(cmd, positionMs) {
-    const video = document.querySelector("video");
-    const audio = document.querySelector("audio");
-    const media = video ?? audio;
-    if (!media) return;
-    switch (cmd) {
-      case "play_pause":
-        if (media.paused) await media.play().catch(() => void 0);
-        else media.pause();
-        break;
-      case "play":
-        if (media.paused) await media.play().catch(() => void 0);
-        break;
-      case "pause":
-        if (!media.paused) media.pause();
-        break;
-      case "set_position":
-        if (typeof positionMs === "number" && isFinite(positionMs)) {
-          media.currentTime = Math.max(0, positionMs / 1e3);
-        }
-        break;
-      case "seek":
-        break;
-    }
-  }
-};
-
 // src/providers/youtube-music.ts
 var YouTubeMusicProvider = class {
   siteKey = "youtube_music";
@@ -1098,8 +1022,7 @@ var providers = [
   new SoundCloudProvider(),
   new BandcampProvider(),
   new TidalProvider(),
-  new AppleMusicProvider(),
-  new GenericMediaProvider()
+  new AppleMusicProvider()
 ];
 var lastSourceId = "";
 var lastTitle = "";
@@ -1322,14 +1245,19 @@ try {
 } catch (err) {
   markExtensionContextDead(err);
 }
-startObserving();
-triggerUpdate();
-window.addEventListener("beforeunload", () => {
-  if (keepaliveInterval) clearInterval(keepaliveInterval);
-  const msg = {
-    type: "remove",
-    source_id: `${sourceIdBase}:frame`
-  };
-  safeSendMessage(msg);
-});
-//# sourceMappingURL=content.js.map
+function isSupportedPage() {
+  const url = new URL(window.location.href);
+  return providers.some((p) => p.matches(url));
+}
+if (isSupportedPage()) {
+  startObserving();
+  triggerUpdate();
+  window.addEventListener("beforeunload", () => {
+    if (keepaliveInterval) clearInterval(keepaliveInterval);
+    const msg = {
+      type: "remove",
+      source_id: `${sourceIdBase}:frame`
+    };
+    safeSendMessage(msg);
+  });
+}
