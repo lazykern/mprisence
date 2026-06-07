@@ -185,6 +185,16 @@ Example: show track details instead of player name in Discord status:
 status_display_type = "details"
 ```
 
+### Status display types
+
+`status_display_type` controls which text Discord shows in your status:
+
+| Mode | Preview |
+|------|---------|
+| `name` — player/app name | ![status_name](assets/status_name.png) |
+| `state` — `template.state` render (default: artists) | ![status_state](assets/status_state.png) |
+| `details` — `template.details` render (default: title) | ![status_details](assets/status_details.png) |
+
 Example: enable YouTube video pages:
 
 ```toml
