@@ -86,8 +86,9 @@ async function build() {
     await ctx.rebuild();
     await ctx.dispose();
 
-    if (isStore && target === "chromium" && "key" in merged) {
-      console.log('  keeping "key" for stable Chrome extension ID');
+    if (isStore && target === "chromium") {
+      delete merged.key;
+      console.log('  stripped "key" for Chrome Web Store');
     }
 
     // Write manifest

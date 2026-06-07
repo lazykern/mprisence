@@ -22,6 +22,5 @@ fn main() {
     let sha = if dirty { format!("{sha}-dirty") } else { sha };
 
     println!("cargo:rustc-env=GIT_SHA={sha}");
-    println!("cargo:warning=git SHA: {sha}");
     println!("cargo:rerun-if-changed=.git/HEAD");
 }

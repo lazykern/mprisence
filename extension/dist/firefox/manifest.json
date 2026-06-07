@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "mprisence bridge",
   "version": "1.0.1",
-  "description": "Sends browser media metadata to the mprisence native bridge",
+  "description": "Provides rich web media player metadata from your browser to MPRIS",
   "homepage_url": "https://github.com/lazykern/mprisence",
   "browser_specific_settings": {
     "gecko": {
