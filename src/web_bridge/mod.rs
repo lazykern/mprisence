@@ -16,12 +16,8 @@ use tokio::io::BufReader;
 use tokio::sync::mpsc;
 use tokio::time::{interval, Duration};
 
-/// Firefox extension ID — must match extension/manifest.firefox.json
-pub const EXTENSION_ID: &str = "mprisence-bridge@lazykern.github.io";
-/// Derived from extension/manifest.chromium.json `key` field.
-/// Must be present in store uploads. Run `mprisence web install` after any ID change.
+pub const EXTENSION_ID: &str = "mprisence-bridge@lazykern.foo";
 pub const CHROME_EXTENSION_ID: &str = "pphdmbejbipjlocngoefnmjoijcbdejf";
-/// Native messaging host name. Must match extension/src/utils/native-messaging.ts.
 pub const HOST_NAME: &str = "mprisence.web.bridge";
 const HOST_MANIFEST_FILENAME: &str = "mprisence.web.bridge.json";
 const BRIDGE_LOG_PATH: &str = "/tmp/bridge-stderr.log";
