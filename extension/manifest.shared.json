@@ -1,0 +1,29 @@
+{
+  "content_script_matches": [
+    "*://music.youtube.com/*",
+    "*://www.youtube.com/*",
+    "*://soundcloud.com/*",
+    "*://*.soundcloud.com/*",
+    "*://bandcamp.com/*",
+    "*://*.bandcamp.com/*",
+    "*://tidal.com/*",
+    "*://*.tidal.com/*",
+    "*://music.apple.com/*"
+  ],
+  "host_permissions": [
+    "*://music.youtube.com/*",
+    "*://www.youtube.com/*",
+    "*://soundcloud.com/*",
+    "*://*.soundcloud.com/*",
+    "*://bandcamp.com/*",
+    "*://*.bandcamp.com/*",
+    "*://tidal.com/*",
+    "*://*.tidal.com/*",
+    "*://music.apple.com/*"
+  ],
+  "icons": {
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png"
+  }
+}

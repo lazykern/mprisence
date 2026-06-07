@@ -25,9 +25,29 @@ console.log(`Building for ${target}${isStore ? " (store)" : ""}...`);
 const outdir = join(__dirname, "dist", target);
 mkdirSync(outdir, { recursive: true });
 
-// ── Read manifest, substitute placeholders ──
+// ── Read manifest, merge shared fields ──
 const manifestRaw = readFileSync(join(__dirname, `manifest.${target}.json`), "utf-8");
 const manifest = JSON.parse(manifestRaw);
+const shared = JSON.parse(readFileSync(join(__dirname, "manifest.shared.json"), "utf-8"));
+
+const merged = {
+  ...manifest,
+  icons: shared.icons,
+  host_permissions: shared.host_permissions,
+  content_scripts: [
+    {
+      matches: shared.content_script_matches,
+      js: ["content.js"],
+      run_at: "document_idle",
+    },
+    {
+      matches: shared.content_script_matches,
+      js: ["page-world.js"],
+      run_at: "document_idle",
+      world: "MAIN",
+    },
+  ],
+};
 
 // ── Get git SHA ──
 let gitSha = "unknown";
@@ -70,15 +90,15 @@ async function build() {
     if (isStore) {
       const storeKeys = ["key"];
       for (const k of storeKeys) {
-        if (k in manifest) {
-          delete manifest[k];
+        if (k in merged) {
+          delete merged[k];
           console.log(`  stripped "${k}" from manifest`);
         }
       }
     }
 
     // Write manifest
-    writeFileSync(join(outdir, "manifest.json"), JSON.stringify(manifest, null, 2));
+    writeFileSync(join(outdir, "manifest.json"), JSON.stringify(merged, null, 2));
 
     // Copy icons
     const iconDir = join(outdir, "icons");

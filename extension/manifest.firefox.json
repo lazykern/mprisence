@@ -3,43 +3,19 @@
   "name": "mprisence bridge",
   "version": "0.1.0",
   "description": "Sends browser media metadata to the mprisence native bridge",
-  "icons": {
-    "48": "icons/icon-48.png",
-    "96": "icons/icon-96.png"
-  },
+  "homepage_url": "https://github.com/lazykern/mprisence",
   "browser_specific_settings": {
     "gecko": {
       "id": "mprisence-bridge@lazykern.github.io",
-      "strict_min_version": "128.0"
+      "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
     }
   },
   "background": {
     "scripts": ["background.js"],
     "type": "module"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": ["<all_urls>"],
-      "js": ["page-world.js"],
-      "run_at": "document_idle",
-      "world": "MAIN"
-    }
-  ],
-  "permissions": [
-    "nativeMessaging"
-  ],
-  "host_permissions": [
-    "*://music.youtube.com/*",
-    "*://www.youtube.com/*",
-    "*://open.spotify.com/*",
-    "*://soundcloud.com/*",
-    "*://bandcamp.com/*",
-    "*://tidal.com/*",
-    "*://music.apple.com/*"
-  ]
+  "permissions": ["nativeMessaging", "tabs"]
 }
