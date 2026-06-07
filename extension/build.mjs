@@ -1,7 +1,7 @@
 // ─── Build script for mprisence-browser-extension ─────────────────
 // Usage: node build.mjs <browser> [--watch] [--store]
 //   browser: "firefox" | "chromium"
-//   --store   store packaging (keeps manifest key on chromium)
+//   --store   store packaging (no sourcemaps; zips dist/*-store.zip)
 
 import * as esbuild from "esbuild";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "fs";
@@ -70,7 +70,7 @@ async function build() {
     entryPoints,
     outdir,
     bundle: true,
-    sourcemap: true,
+    sourcemap: !isStore,
     target: "es2022",
     format: "esm",
     platform: "browser",
@@ -105,6 +105,14 @@ async function build() {
     // Use SVG as fallback icon
     if (existsSync(join(__dirname, "icons", "icon.svg"))) {
       copyFileSync(join(__dirname, "icons", "icon.svg"), join(iconDir, "icon.svg"));
+    }
+
+    if (isStore) {
+      const { execSync } = await import("child_process");
+      const zipName = target === "firefox" ? "mprisence-firefox-store.zip" : "mprisence-chrome-store.zip";
+      const zipPath = join(__dirname, "dist", zipName);
+      execSync(`cd "${outdir}" && zip -r "${zipPath}" . -x "*.map"`, { stdio: "inherit" });
+      console.log(`  packaged: ${zipPath}`);
     }
 
     console.log(`Built: ${outdir}/`);

@@ -11,6 +11,7 @@
     "build:chromium:store": "node build.mjs chromium --store",
     "build:firefox:store": "node build.mjs firefox --store",
     "build:store": "node build.mjs firefox --store && node build.mjs chromium --store",
+    "package:store": "npm run build:store",
     "watch:firefox": "node build.mjs firefox --watch",
     "watch:chromium": "node build.mjs chromium --watch"
   },
