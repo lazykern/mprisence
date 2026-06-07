@@ -48,7 +48,7 @@ Content scripts run only on these domains:
 
 https://lazykern.github.io/mprisence/
 
-This URL is expected to serve the privacy policy in `docs/index.html` via GitHub Pages on the `main` branch (`/docs` folder). Enable Pages in repository settings before submission and confirm the URL loads in a browser.
+This URL serves the privacy policy from `docs/index.html` via GitHub Pages. Confirm it loads in a browser before submitting the store form.
 
 ## Reviewer notes
 
@@ -77,6 +77,7 @@ This extension requires a companion native application (**mprisence**) installed
 
 - `nativeMessaging` — required to talk to the local `mprisence` bridge host.
 - `tabs` — required to route host playback commands to the correct tab and clean up when tabs close.
+- `host_permissions` (nine music-site patterns) — required so content scripts may inject on supported streaming domains and read page-local media metadata. No network requests are made by the extension; permissions scope DOM access only.
 
 **Content script scope:** Scripts inject **only** on listed music domains (YouTube Music, YouTube, SoundCloud, Bandcamp, TIDAL, Apple Music)—not on `<all_urls>` or unrelated sites.
 

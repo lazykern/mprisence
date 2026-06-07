@@ -93,7 +93,8 @@ Provider registry lives in `src/content.ts`:
 - Bandcamp
 - TIDAL
 - Apple Music
-- Generic media element fallback
+
+Generic HTML5 media fallback is deferred for store v1 (see `docs/store-listing.md`).
 
 Provider files live in `src/providers/`.
 

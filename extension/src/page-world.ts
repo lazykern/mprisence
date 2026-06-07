@@ -5,7 +5,7 @@
  *
  * Communicates back to content.ts via CustomEvent.
  *
- * Injected as a static <script src="page-world.js"> element from content.ts.
+ * Injected as a manifest-declared MAIN-world content script.
  */
 
 (function () {
