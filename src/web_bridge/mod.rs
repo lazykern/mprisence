@@ -18,7 +18,8 @@ use tokio::time::{interval, Duration};
 
 /// Firefox extension ID — must match extension/manifest.firefox.json
 pub const EXTENSION_ID: &str = "mprisence-bridge@lazykern.github.io";
-/// Chrome extension ID — from chrome://extensions when loaded unpacked
+/// Derived from extension/manifest.chromium.json `key` field.
+/// Must be present in store uploads. Run `mprisence web install` after any ID change.
 pub const CHROME_EXTENSION_ID: &str = "pphdmbejbipjlocngoefnmjoijcbdejf";
 /// Native messaging host name. Must match extension/src/utils/native-messaging.ts.
 pub const HOST_NAME: &str = "mprisence.web.bridge";
