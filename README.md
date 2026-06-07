@@ -125,6 +125,15 @@ mprisence players list --detailed
 
 If you see your player listed, Discord shows your activity within seconds.
 
+Example:
+```
+$ mprisence players list --detailed
+Name       Identity               Bus Name                                    Source
+────       ────────               ────────                                    ──────
+VLC        vlc_media_player       org.mpris.MediaPlayer2.vlc                  D-Bus
+Strawberry strawberry           org.mpris.MediaPlayer2.strawberry          D-Bus
+```
+
 ### 4. Enable as a service (optional)
 
 ```bash
@@ -202,10 +211,14 @@ Web-player config options (`[web_player.*]`) are documented in the [Web players]
 
 ## Web players
 
-mprisence supports two paths for browser media:
+mprisence supports two paths for browser media. Try Browser MPRIS first; switch to the bridge if metadata or controls are lacking.
 
-- **Browser MPRIS** — browser exposes active tab as MPRIS player. Works when metadata is sufficient.
-- **Bridge + extension** — richer metadata, cover art, controls. Requires extra setup.
+| | Browser MPRIS | Bridge + extension |
+|---|---|---|
+| Setup | None | Native host + extension |
+| Metadata | Title, maybe artist, URL | Title, artist, album, cover, canonical URL |
+| Controls | Play/pause | Full (prev, next, seek) |
+| Works with | Any browser with MPRIS support | Bundled sites + presets |
 
 ### Browser MPRIS
 
@@ -218,10 +231,23 @@ playerctl -l
 mprisence players list --detailed
 ```
 
-Enable specific sites via config:
+Enable specific sites via config.
+
+Bundled site (patterns inherited from bundled entry — un-ignore to activate):
 
 ```toml
 [web_player.youtube]
+ignore = false
+```
+
+Custom site (not in bundle — provide match_pattern and app_id):
+
+```toml
+[web_player.my_site]
+match_pattern = "mysite.com"
+name = "My Site"
+app_id = "YOUR_DISCORD_APP_ID"
+icon = "https://mysite.com/icon.png"
 ignore = false
 ```
 
