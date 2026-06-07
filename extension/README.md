@@ -157,3 +157,11 @@ Check bridge player:
 ```bash
 playerctl -l | grep mprisence_web
 ```
+
+## Store submission
+
+Store listing copy, reviewer notes, screenshot checklist, and privacy policy URL:
+
+[docs/store-listing.md](../docs/store-listing.md)
+
+Build submission zips with `npm run build:store` (see **Store builds** above). Upload `dist/mprisence-firefox-store.zip` to AMO and `dist/mprisence-chrome-store.zip` to CWS. Keep the Chromium manifest `key` field in store builds so the extension ID stays aligned with `CHROME_EXTENSION_ID` in `src/web_bridge/mod.rs`.

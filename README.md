@@ -274,6 +274,7 @@ tail -f /tmp/bridge-stderr.log
 More detail:
 
 - [`extension/README.md`](./extension/README.md)
+- Store submission guide: [docs/store-listing.md](./docs/store-listing.md)
 
 ## Development
 
