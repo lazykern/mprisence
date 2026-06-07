@@ -1,6 +1,6 @@
 {
   "name": "mprisence-bridge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Browser extension for mprisence — sends media metadata from websites to native host mode",
   "private": true,
   "type": "module",
