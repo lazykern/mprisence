@@ -18,6 +18,7 @@ var YouTubeMusicProvider = class {
   siteKey = "youtube_music";
   origin = "https://music.youtube.com";
   videoIdRegex = /\/vi\/([a-zA-Z0-9_-]+)\//;
+  stablePlayback = null;
   matches(url) {
     return url.origin === this.origin;
   }
@@ -72,8 +73,13 @@ var YouTubeMusicProvider = class {
     if (video && (trackPositionSec === void 0 || trackDurationSec === void 0) && video.duration > 600) {
       return null;
     }
-    const currentSec = trackPositionSec ?? (video?.currentTime || 0);
-    const totalSec = trackDurationSec ?? (video?.duration || 0);
+    let currentSec = trackPositionSec ?? (video?.currentTime || 0);
+    let totalSec = trackDurationSec ?? (video?.duration || 0);
+    ({ positionSec: currentSec, durationSec: totalSec } = this.stabilizePlayback(
+      trackId,
+      currentSec,
+      totalSec
+    ));
     if (video && (totalSec === 0 || !isFinite(totalSec))) {
       return null;
     }
@@ -135,6 +141,33 @@ var YouTubeMusicProvider = class {
   }
   qs(selector) {
     return document.querySelector(selector);
+  }
+  stabilizePlayback(trackId, positionSec, durationSec) {
+    if (!trackId || durationSec <= 0 || !isFinite(durationSec)) {
+      return { positionSec, durationSec };
+    }
+    const prev = this.stablePlayback;
+    if (!prev || prev.trackId !== trackId) {
+      this.stablePlayback = { trackId, positionSec, durationSec };
+      return { positionSec, durationSec };
+    }
+    let pos = positionSec;
+    let dur = durationSec;
+    const durDiff = Math.abs(dur - prev.durationSec);
+    if (prev.durationSec > 0 && durDiff > 10 && durDiff / prev.durationSec > 0.15) {
+      dur = prev.durationSec;
+    }
+    if (prev.positionSec > 5 && pos + 3 < prev.positionSec) {
+      pos = prev.positionSec;
+    }
+    if (prev.positionSec > 30 && pos === 0) {
+      pos = prev.positionSec;
+    }
+    if (dur > 0 && pos > dur) {
+      pos = Math.min(prev.positionSec, dur);
+    }
+    this.stablePlayback = { trackId, positionSec: pos, durationSec: dur };
+    return { positionSec: pos, durationSec: dur };
   }
 };
 
@@ -1080,6 +1113,13 @@ window.addEventListener("mprisence-media-state", ((event) => {
         art_url: pwArtUrl
       };
     }
+    if (lastDurationMs > 0 && (result.playback.duration_ms === 0 || isArtOnly && result.playback.position_ms === 0)) {
+      result.playback = {
+        status: lastState || result.playback.status,
+        position_ms: lastPositionSec >= 0 ? lastPositionSec * 1e3 : result.playback.position_ms,
+        duration_ms: lastDurationMs
+      };
+    }
     const isNewTrack = lastPageWorldMeta !== null && (pwTitle !== lastPageWorldMeta.title || pwArtist !== lastPageWorldMeta.artist);
     if (!isNewTrack) {
       if (lastPageWorldMeta && !result.metadata.track_id) {
@@ -1261,3 +1301,4 @@ if (isSupportedPage()) {
     safeSendMessage(msg);
   });
 }
+//# sourceMappingURL=content.js.map

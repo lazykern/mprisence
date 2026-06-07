@@ -30,6 +30,11 @@ export class YouTubeMusicProvider implements Provider {
   readonly siteKey = "youtube_music";
   private readonly origin = "https://music.youtube.com";
   private readonly videoIdRegex = /\/vi\/([a-zA-Z0-9_-]+)\//;
+  private stablePlayback: {
+    trackId: string;
+    positionSec: number;
+    durationSec: number;
+  } | null = null;
 
   matches(url: URL): boolean {
     return url.origin === this.origin;
@@ -127,8 +132,13 @@ export class YouTubeMusicProvider implements Provider {
       return null;
     }
 
-    const currentSec = trackPositionSec ?? (video?.currentTime || 0);
-    const totalSec = trackDurationSec ?? (video?.duration || 0);
+    let currentSec = trackPositionSec ?? (video?.currentTime || 0);
+    let totalSec = trackDurationSec ?? (video?.duration || 0);
+    ({ positionSec: currentSec, durationSec: totalSec } = this.stabilizePlayback(
+      trackId,
+      currentSec,
+      totalSec,
+    ));
 
     // If video exists but duration is invalid (NaN/0/Infinity), skip -
     // metadata hasn't loaded yet. We'll retry on next poll.
@@ -209,5 +219,40 @@ export class YouTubeMusicProvider implements Provider {
     return document.querySelector<T>(selector);
   }
 
+  private stabilizePlayback(
+    trackId: string | undefined,
+    positionSec: number,
+    durationSec: number,
+  ): { positionSec: number; durationSec: number } {
+    if (!trackId || durationSec <= 0 || !isFinite(durationSec)) {
+      return { positionSec, durationSec };
+    }
 
+    const prev = this.stablePlayback;
+    if (!prev || prev.trackId !== trackId) {
+      this.stablePlayback = { trackId, positionSec, durationSec };
+      return { positionSec, durationSec };
+    }
+
+    let pos = positionSec;
+    let dur = durationSec;
+
+    const durDiff = Math.abs(dur - prev.durationSec);
+    if (prev.durationSec > 0 && durDiff > 10 && durDiff / prev.durationSec > 0.15) {
+      dur = prev.durationSec;
+    }
+
+    if (prev.positionSec > 5 && pos + 3 < prev.positionSec) {
+      pos = prev.positionSec;
+    }
+    if (prev.positionSec > 30 && pos === 0) {
+      pos = prev.positionSec;
+    }
+    if (dur > 0 && pos > dur) {
+      pos = Math.min(prev.positionSec, dur);
+    }
+
+    this.stablePlayback = { trackId, positionSec: pos, durationSec: dur };
+    return { positionSec: pos, durationSec: dur };
+  }
 }

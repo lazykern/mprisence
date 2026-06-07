@@ -200,12 +200,54 @@ fn same_url_or_origin(a: &str, b: &str) -> bool {
     if a == b {
         return true;
     }
+    if let (Some(id_a), Some(id_b)) = (youtube_video_id(a), youtube_video_id(b)) {
+        if id_a == id_b {
+            return true;
+        }
+    }
     match (origin_of(a), origin_of(b)) {
         (Some(origin_a), Some(origin_b)) => {
             origin_a == origin_b && (is_origin_only(a) || is_origin_only(b))
         }
         _ => false,
     }
+}
+
+fn youtube_video_id(url_str: &str) -> Option<String> {
+    let url = Url::parse(url_str).ok()?;
+    let host = url.host_str()?;
+
+    if host.eq_ignore_ascii_case("youtu.be") {
+        let id = url.path().trim_start_matches('/');
+        if !id.is_empty() && !id.contains('/') {
+            return Some(id.to_string());
+        }
+        return None;
+    }
+
+    let is_youtube_host = host.eq_ignore_ascii_case("youtube.com")
+        || host.ends_with(".youtube.com");
+    if !is_youtube_host {
+        return None;
+    }
+
+    for (key, value) in url.query_pairs() {
+        if key == "v" && !value.is_empty() {
+            return Some(value.into_owned());
+        }
+    }
+
+    let path = url.path();
+    for prefix in ["/shorts/", "/embed/", "/v/"] {
+        if let Some(id) = path.strip_prefix(prefix) {
+            let id = id.split('/').next().unwrap_or("");
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+    }
+
+    None
 }
 
 /// Extracts the `mprisence:browser` value from a bridge player's metadata.
@@ -1049,6 +1091,26 @@ mod bridge_tests {
             "plasma-browser-integration",
             Some("https://x"),
             &[]
+        ));
+
+        let bridged_ytm = [(
+            "firefox".to_string(),
+            "https://music.youtube.com/watch?v=AifN-LMXZrM".to_string(),
+        )];
+        assert!(should_suppress_native(
+            "firefox.instance_1_26375",
+            Some("https://music.youtube.com/watch?v=AifN-LMXZrM&list=RDAMVMjNQXAC9IVRw"),
+            &bridged_ytm
+        ));
+        assert!(should_suppress_native(
+            "firefox.instance_1_26375",
+            Some("https://www.youtube.com/watch?v=AifN-LMXZrM&list=foo"),
+            &bridged_ytm
+        ));
+        assert!(!should_suppress_native(
+            "firefox.instance_1_26375",
+            Some("https://music.youtube.com/watch?v=OtherVideoId"),
+            &bridged_ytm
         ));
     }
 }

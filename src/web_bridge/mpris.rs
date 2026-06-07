@@ -35,6 +35,7 @@ struct PublishedSnapshot {
     status: Option<Status>,
     meta: MetaSnapshot,
     caps: CapsSnapshot,
+    last_position_us: i64,
 }
 
 /// Which MPRIS property groups changed between two snapshots.
@@ -358,6 +359,13 @@ impl MprisPublisher {
     /// changes only for the groups that actually changed since the last call.
     pub async fn publish(&self, source: Option<&SourceState>) {
         let player = &self.player;
+        let stabilized = source.cloned().map(|mut s| {
+            let prev = self.last_snapshot.lock().unwrap().clone();
+            let track_id = make_track_id(&s, &s.metadata);
+            stabilize_playback(&prev, &mut s.playback, &track_id);
+            s
+        });
+        let source = stabilized.as_ref().or(source);
         let next = build_snapshot(source);
 
         let decision = {
@@ -423,11 +431,47 @@ impl MprisPublisher {
             );
         }
 
-        *self.last_snapshot.lock().unwrap() = next;
+        let mut published = next;
+        published.last_position_us = position_us;
+        *self.last_snapshot.lock().unwrap() = published;
     }
 
     pub fn bus_name(&self) -> &str {
         &self.bus_name
+    }
+}
+
+/// Reject transient YTM progress-bar glitches and page-world art dispatches
+/// that zero out position/duration while the track identity is unchanged.
+fn stabilize_playback(
+    prev: &PublishedSnapshot,
+    playback: &mut super::protocol::PlaybackState,
+    track_id: &str,
+) {
+    if prev.meta.track_id.is_empty() || prev.meta.track_id != track_id {
+        return;
+    }
+
+    let prev_dur_ms = (prev.meta.length_us / 1000).max(0) as u64;
+    let prev_pos_ms = (prev.last_position_us / 1000).max(0) as u64;
+
+    if prev_dur_ms > 0 && playback.duration_ms == 0 {
+        playback.duration_ms = prev_dur_ms;
+    } else if prev_dur_ms > 0 && playback.duration_ms > 0 {
+        let diff = prev_dur_ms.abs_diff(playback.duration_ms);
+        if diff > 10_000 && (diff as f64 / prev_dur_ms as f64) > 0.15 {
+            playback.duration_ms = prev_dur_ms;
+        }
+    }
+
+    if prev_pos_ms > 5_000 && playback.position_ms + 3_000 < prev_pos_ms {
+        playback.position_ms = prev_pos_ms;
+    } else if prev_pos_ms > 30_000 && playback.position_ms == 0 {
+        playback.position_ms = prev_pos_ms;
+    }
+
+    if playback.duration_ms > 0 {
+        playback.position_ms = playback.position_ms.min(playback.duration_ms);
     }
 }
 
@@ -505,6 +549,7 @@ fn build_snapshot(source: Option<&SourceState>) -> PublishedSnapshot {
             can_previous: s.capabilities.previous,
             can_seek: s.capabilities.seek || s.capabilities.set_position,
         },
+        ..Default::default()
     }
 }
 
@@ -645,6 +690,7 @@ mod tests {
                 can_previous: false,
                 can_seek: false,
             },
+            ..Default::default()
         }
     }
 
@@ -708,5 +754,34 @@ mod tests {
                 ..Default::default()
             }
         );
+    }
+
+    #[test]
+    fn stabilize_playback_rejects_transient_ytm_glitch() {
+        use super::super::protocol::{PlaybackState, Status};
+
+        let prev = PublishedSnapshot {
+            meta: MetaSnapshot {
+                track_id: "/mprisence/track/ytm_pbDY7Bsbxwk".into(),
+                length_us: 598_000_000,
+                ..Default::default()
+            },
+            last_position_us: 156_000_000,
+            ..Default::default()
+        };
+        let mut playback = PlaybackState {
+            status: Status::Playing,
+            position_ms: 0,
+            duration_ms: 100_000,
+        };
+
+        stabilize_playback(
+            &prev,
+            &mut playback,
+            "/mprisence/track/ytm_pbDY7Bsbxwk",
+        );
+
+        assert_eq!(playback.duration_ms, 598_000);
+        assert_eq!(playback.position_ms, 156_000);
     }
 }

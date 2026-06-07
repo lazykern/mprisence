@@ -120,6 +120,23 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
       };
     }
 
+    // Page-world art/InnerTube dispatches carry position/duration 0.
+    // Preserve the last provider playback so Discord timestamps don't reset.
+    if (
+      lastDurationMs > 0 &&
+      (result.playback.duration_ms === 0 ||
+        (isArtOnly && result.playback.position_ms === 0))
+    ) {
+      result.playback = {
+        status: (lastState as PlaybackState["status"]) || result.playback.status,
+        position_ms:
+          lastPositionSec >= 0
+            ? lastPositionSec * 1000
+            : result.playback.position_ms,
+        duration_ms: lastDurationMs,
+      };
+    }
+
     // Merge stable fields from the last isolated-world update so the
     // bridge sees a consistent track_id & canonical_url.
     // These only exist in the isolated-world path (provider extract).
