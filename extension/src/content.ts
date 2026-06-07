@@ -15,7 +15,6 @@
 import { detectBrowser, makeSourceId } from "./utils/browser-detect";
 import type { ExtMessage, Capabilities, PlaybackState, MediaMetadata } from "./types";
 import type { ProviderResult } from "./providers/base";
-import { GenericMediaProvider } from "./providers/base";
 import { YouTubeMusicProvider } from "./providers/youtube-music";
 import { YouTubeProvider } from "./providers/youtube";
 import { SoundCloudProvider } from "./providers/soundcloud";
@@ -32,7 +31,6 @@ const providers = [
   new BandcampProvider(),
   new TidalProvider(),
   new AppleMusicProvider(),
-  new GenericMediaProvider(),
 ];
 
 // ─── State tracking ──────────────────────────────────────────────
@@ -388,15 +386,20 @@ try {
 
 // ─── Init ────────────────────────────────────────────────────────
 
-startObserving();
-triggerUpdate(); // initial state
+function isSupportedPage(): boolean {
+  const url = new URL(window.location.href);
+  return providers.some((p) => p.matches(url));
+}
 
-// Clean up on page unload.
-window.addEventListener("beforeunload", () => {
-  if (keepaliveInterval) clearInterval(keepaliveInterval);
-  const msg: ExtMessage = {
-    type: "remove",
-    source_id: `${sourceIdBase}:frame`,
-  };
-  safeSendMessage(msg);
-});
+if (isSupportedPage()) {
+  startObserving();
+  triggerUpdate();
+  window.addEventListener("beforeunload", () => {
+    if (keepaliveInterval) clearInterval(keepaliveInterval);
+    const msg: ExtMessage = {
+      type: "remove",
+      source_id: `${sourceIdBase}:frame`,
+    };
+    safeSendMessage(msg);
+  });
+}
