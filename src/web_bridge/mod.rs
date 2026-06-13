@@ -361,13 +361,17 @@ pub async fn uninstall(browsers: Vec<String>) {
     }
 }
 
-pub async fn doctor() {
-    println!("🧑‍⚕️ mprisence web doctor\n");
+/// Check native-host manifests. Returns number of issues found.
+pub fn check_native_host_manifests() -> usize {
+    let mut issues = 0;
 
     let binary = std::env::current_exe().ok();
     match &binary {
         Some(p) => println!("✓ Binary: {}", p.display()),
-        None => println!("✗ Binary: could not resolve"),
+        None => {
+            issues += 1;
+            println!("✗ Binary: could not resolve");
+        }
     }
 
     let mut targets = vec![("Firefox".to_string(), manifest_dir_firefox())];
@@ -390,24 +394,30 @@ pub async fn doctor() {
                                 manifest_path.display()
                             );
                         } else {
+                            issues += 1;
                             println!(
                                 "⚠ {browser} manifest: {} (binary missing/stale)",
                                 manifest_path.display()
                             );
                         }
                     } else {
+                        issues += 1;
                         println!(
                             "⚠ {browser} manifest: {} (invalid JSON)",
                             manifest_path.display()
                         );
                     }
                 }
-                Err(e) => println!(
-                    "✗ {browser} manifest: {} (read error: {e})",
-                    manifest_path.display()
-                ),
+                Err(e) => {
+                    issues += 1;
+                    println!(
+                        "✗ {browser} manifest: {} (read error: {e})",
+                        manifest_path.display()
+                    );
+                }
             }
         } else {
+            issues += 1;
             println!(
                 "✗ {browser} manifest: not found at {}",
                 manifest_path.display()
@@ -415,8 +425,18 @@ pub async fn doctor() {
         }
     }
 
-    let dbus_ok = std::env::var("DBUS_SESSION_BUS_ADDRESS").is_ok();
-    if dbus_ok {
+    issues
+}
+
+pub fn check_dbus_session() -> bool {
+    std::env::var("DBUS_SESSION_BUS_ADDRESS").is_ok()
+}
+
+pub async fn doctor() {
+    println!("🧑‍⚕️ mprisence web doctor\n");
+
+    check_native_host_manifests();
+    if check_dbus_session() {
         println!("✓ D-Bus session bus: available");
     } else {
         println!("✗ D-Bus session bus: DBUS_SESSION_BUS_ADDRESS not set");

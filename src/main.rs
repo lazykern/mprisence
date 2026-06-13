@@ -29,6 +29,7 @@ mod cli;
 mod config;
 mod cover;
 mod discord;
+mod doctor;
 mod error;
 mod metadata;
 mod player;

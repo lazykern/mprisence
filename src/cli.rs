@@ -1,8 +1,5 @@
 use crate::{
-    config::{
-        get_config,
-        schema::{ActivityType, PlayerConfig, StatusDisplayType, WebPlayerConfig},
-    },
+    config::{self, get_config, ConfigManager},
     error::Error,
     player::{
         canonical_player_bus_name, is_playerctld_no_active_error, select_winner_idx,
@@ -10,6 +7,7 @@ use crate::{
     },
     utils::{format_playback_status_icon, normalize_player_identity},
 };
+use crate::config::schema::{ActivityType, PlayerConfig, StatusDisplayType, WebPlayerConfig};
 use clap::{Parser, Subcommand};
 use mpris::{PlaybackStatus, PlayerFinder};
 use std::{
@@ -34,7 +32,17 @@ pub enum Command {
         #[command(subcommand)]
         command: PlayersCommand,
     },
-    Config,
+    /// Show or manage configuration
+    Config {
+        #[command(subcommand)]
+        command: Option<ConfigCommand>,
+    },
+    /// Check configuration, Discord, D-Bus, and web bridge setup
+    Doctor {
+        /// Attempt automatic fixes (e.g. install web bridge manifests)
+        #[arg(long)]
+        fix: bool,
+    },
     Web {
         #[command(subcommand)]
         command: WebCommand,
@@ -43,6 +51,18 @@ pub enum Command {
         #[command(subcommand)]
         command: Option<VersionCommand>,
     },
+}
+
+#[derive(Subcommand)]
+pub enum ConfigCommand {
+    /// Show effective merged configuration (default)
+    Show,
+    /// Print config file path
+    Path,
+    /// Open config file in $EDITOR
+    Edit,
+    /// Validate config file (exit 1 on error)
+    Check,
 }
 
 #[derive(Subcommand)]
@@ -80,7 +100,13 @@ pub enum VersionCommand {
 
 impl Command {
     pub fn requires_config(&self) -> bool {
-        matches!(self, Command::Players { .. } | Command::Config)
+        match self {
+            Command::Players { .. } => true,
+            Command::Config { command } => {
+                matches!(command, None | Some(ConfigCommand::Show))
+            }
+            _ => false,
+        }
     }
 
     pub async fn execute(self) -> Result<(), Error> {
@@ -324,164 +350,34 @@ impl Command {
                     }
                 }
             },
-            Command::Config => {
-                let config = get_config();
-                let config_path = config.config_path();
-
-                println!("\n{} )", config_path.display());
-                println!("{}", create_divider());
-
-                println!("\nGeneral");
-                print_key_value("interval", format!("{} ms", config.interval()));
-                print_key_value("config_path", config_path.display());
-                print_key_value("allowed_players", format_vector(&config.allowed_players()));
-
-                let activity_config = config.activity_type_config();
-                println!("\nActivity");
-                print_key_value(
-                    "default_type",
-                    format_activity_type(Some(activity_config.default)),
-                );
-                print_key_value(
-                    "use_content_type",
-                    format_bool(activity_config.use_content_type),
-                );
-
-                let time_config = config.time_config();
-                println!("\nTime Display");
-                print_key_value("show_time", format_bool(time_config.show));
-                print_key_value("as_elapsed", format_bool(time_config.as_elapsed));
-
-                let cover_config = config.cover_config();
-                println!("\nCover Art");
-                print_key_value("providers", format_vector(&cover_config.provider.provider));
-                print_key_value(
-                    "imgbb_expiration",
-                    format!("{} s", cover_config.provider.imgbb.expiration),
-                );
-                let key_state = if cover_config.provider.imgbb.api_key.is_some() {
-                    "set"
-                } else {
-                    "not set"
-                };
-                print_key_value("imgbb_api_key", key_state);
-                print_key_value("mb_min_score", cover_config.provider.musicbrainz.min_score);
-                print_key_value("local_search_depth", cover_config.local_search_depth);
-                print_key_value("file_names", format_vector(&cover_config.file_names));
-
-                let template_config = config.template_config();
-                println!("\nTemplates");
-                print_key_value("details", template_config.details.as_ref());
-                print_key_value("state", template_config.state.as_ref());
-                print_key_value("large_text", template_config.large_text.as_ref());
-                print_key_value("small_text", template_config.small_text.as_ref());
-
-                let mut player_configs: Vec<(String, PlayerConfig)> =
-                    config.player_configs().into_iter().collect();
-                player_configs.sort_by(|a, b| compare_player_keys(a.0.as_str(), b.0.as_str()));
-
-                println!("\nOverrides Detail");
-                println!("{}", create_divider());
-                if player_configs.is_empty() {
-                    println!("  (none)");
-                } else {
-                    for (index, (identity, cfg)) in player_configs.iter().enumerate() {
-                        let display = player_config_display_name(identity);
-                        println!("{} {}", player_config_icon(cfg.ignore), display);
-                        if let Some(name) = cfg.name.as_deref() {
-                            print_nested_key_value("name", name, 4);
-                        }
-                        print_nested_key_value("app_id", &cfg.app_id, 4);
-                        print_nested_key_value(
-                            "allow_streaming",
-                            format_bool(cfg.allow_streaming),
-                            4,
-                        );
-                        print_nested_key_value(
-                            "status_display_type",
-                            format_status_display_type(cfg.status_display_type),
-                            4,
-                        );
-                        print_nested_key_value("show_icon", format_bool(cfg.show_icon), 4);
-                        print_nested_key_value("ignore", format_bool(cfg.ignore), 4);
-                        print_nested_key_value("icon", &cfg.icon, 4);
-                        if let Some(activity_type) = cfg.override_activity_type {
-                            print_nested_key_value(
-                                "activity_type",
-                                format_activity_type(Some(activity_type)),
-                                4,
-                            );
-                        }
-
-                        if index + 1 < player_configs.len() {
-                            println!();
-                        }
-                    }
+            Command::Config { command } => match command {
+                None | Some(ConfigCommand::Show) => {
+                    let config = get_config();
+                    print_config_show(&config);
                 }
-
-                let mut web_player_configs: Vec<(String, WebPlayerConfig)> =
-                    config.web_player_configs().into_iter().collect();
-                web_player_configs.sort_by(|a, b| a.0.cmp(&b.0));
-
-                println!("\nWeb Players");
-                println!("{}", create_divider());
-                if web_player_configs.is_empty() {
-                    println!("  (none)");
-                } else {
-                    for (index, (key, cfg)) in web_player_configs.iter().enumerate() {
-                        println!("{} {}", player_config_icon(cfg.ignore), key);
-                        if cfg.match_patterns.len() == 1 {
-                            print_nested_key_value("match_pattern", &cfg.match_patterns[0], 4);
-                        } else if !cfg.match_patterns.is_empty() {
-                            print_nested_key_value(
-                                "match_patterns",
-                                cfg.match_patterns.join(", "),
-                                4,
-                            );
-                        }
-                        if let Some(name) = cfg.name.as_deref() {
-                            print_nested_key_value("name", name, 4);
-                        }
-                        if let Some(app_id) = cfg.app_id.as_deref() {
-                            print_nested_key_value("app_id", app_id, 4);
+                Some(ConfigCommand::Path) => {
+                    let path = config::config_path()?;
+                    println!("{}", path.display());
+                }
+                Some(ConfigCommand::Edit) => open_config_in_editor()?,
+                Some(ConfigCommand::Check) => match config::validate_config_file(None) {
+                    Ok(path) => {
+                        if path.exists() {
+                            println!("Config OK ({})", path.display());
                         } else {
-                            print_nested_key_value("app_id", "(inherits from player)", 4);
-                        }
-                        if let Some(icon) = cfg.icon.as_deref() {
-                            print_nested_key_value("icon", icon, 4);
-                        }
-                        if let Some(allow_streaming) = cfg.allow_streaming {
-                            print_nested_key_value(
-                                "allow_streaming",
-                                format_bool(allow_streaming),
-                                4,
+                            println!(
+                                "Config OK (bundled defaults, no user file at {})",
+                                path.display()
                             );
-                        }
-                        if let Some(show_icon) = cfg.show_icon {
-                            print_nested_key_value("show_icon", format_bool(show_icon), 4);
-                        }
-                        print_nested_key_value("ignore", format_bool(cfg.ignore), 4);
-                        if let Some(sdt) = cfg.status_display_type {
-                            print_nested_key_value(
-                                "status_display_type",
-                                format_status_display_type(sdt),
-                                4,
-                            );
-                        }
-                        if let Some(activity_type) = cfg.override_activity_type {
-                            print_nested_key_value(
-                                "activity_type",
-                                format_activity_type(Some(activity_type)),
-                                4,
-                            );
-                        }
-
-                        if index + 1 < web_player_configs.len() {
-                            println!();
                         }
                     }
-                }
-            }
+                    Err(err) => {
+                        eprintln!("Config error: {err}");
+                        std::process::exit(1);
+                    }
+                },
+            },
+            Command::Doctor { fix } => crate::doctor::run(fix).await?,
             Command::Web { command } => match command {
                 WebCommand::Install { browser } => crate::web_bridge::install(browser).await,
                 WebCommand::Uninstall { browser } => crate::web_bridge::uninstall(browser).await,
@@ -737,4 +633,186 @@ fn player_config_display_name(identity: &str) -> String {
     } else {
         normalize_player_identity(identity)
     }
+}
+
+fn print_config_show(config: &ConfigManager) {
+    let config_path = config.config_path();
+
+    println!("\n{}", config_path.display());
+    println!("{}", create_divider());
+
+    println!("\nGeneral");
+    print_key_value("interval", format!("{} ms", config.interval()));
+    print_key_value("event_driven", format_bool(config.event_driven()));
+    print_key_value(
+        "fallback_poll_interval",
+        format!("{} ms", config.fallback_poll_interval()),
+    );
+    print_key_value("config_path", config_path.display());
+    print_key_value("allowed_players", format_vector(&config.allowed_players()));
+
+    let activity_config = config.activity_type_config();
+    println!("\nActivity");
+    print_key_value(
+        "default_type",
+        format_activity_type(Some(activity_config.default)),
+    );
+    print_key_value(
+        "use_content_type",
+        format_bool(activity_config.use_content_type),
+    );
+
+    let time_config = config.time_config();
+    println!("\nTime Display");
+    print_key_value("show_time", format_bool(time_config.show));
+    print_key_value("as_elapsed", format_bool(time_config.as_elapsed));
+
+    let cover_config = config.cover_config();
+    println!("\nCover Art");
+    print_key_value("providers", format_vector(&cover_config.provider.provider));
+    print_key_value(
+        "imgbb_expiration",
+        format!("{} s", cover_config.provider.imgbb.expiration),
+    );
+    let key_state = if cover_config.provider.imgbb.api_key.is_some() {
+        "set"
+    } else {
+        "not set"
+    };
+    print_key_value("imgbb_api_key", key_state);
+    print_key_value("mb_min_score", cover_config.provider.musicbrainz.min_score);
+    print_key_value("local_search_depth", cover_config.local_search_depth);
+    print_key_value("file_names", format_vector(&cover_config.file_names));
+
+    let template_config = config.template_config();
+    println!("\nTemplates");
+    print_key_value("details", template_config.details.as_ref());
+    print_key_value("state", template_config.state.as_ref());
+    print_key_value("large_text", template_config.large_text.as_ref());
+    print_key_value("small_text", template_config.small_text.as_ref());
+
+    let mut player_configs: Vec<(String, PlayerConfig)> =
+        config.player_configs().into_iter().collect();
+    player_configs.sort_by(|a, b| compare_player_keys(a.0.as_str(), b.0.as_str()));
+
+    println!("\nOverrides Detail");
+    println!("{}", create_divider());
+    if player_configs.is_empty() {
+        println!("  (none)");
+    } else {
+        for (index, (identity, cfg)) in player_configs.iter().enumerate() {
+            let display = player_config_display_name(identity);
+            println!("{} {}", player_config_icon(cfg.ignore), display);
+            if let Some(name) = cfg.name.as_deref() {
+                print_nested_key_value("name", name, 4);
+            }
+            print_nested_key_value("app_id", &cfg.app_id, 4);
+            print_nested_key_value("allow_streaming", format_bool(cfg.allow_streaming), 4);
+            print_nested_key_value(
+                "status_display_type",
+                format_status_display_type(cfg.status_display_type),
+                4,
+            );
+            print_nested_key_value("show_icon", format_bool(cfg.show_icon), 4);
+            print_nested_key_value("ignore", format_bool(cfg.ignore), 4);
+            print_nested_key_value("icon", &cfg.icon, 4);
+            if let Some(activity_type) = cfg.override_activity_type {
+                print_nested_key_value(
+                    "activity_type",
+                    format_activity_type(Some(activity_type)),
+                    4,
+                );
+            }
+
+            if index + 1 < player_configs.len() {
+                println!();
+            }
+        }
+    }
+
+    let mut web_player_configs: Vec<(String, WebPlayerConfig)> =
+        config.web_player_configs().into_iter().collect();
+    web_player_configs.sort_by(|a, b| a.0.cmp(&b.0));
+
+    println!("\nWeb Players");
+    println!("{}", create_divider());
+    if web_player_configs.is_empty() {
+        println!("  (none)");
+    } else {
+        for (index, (key, cfg)) in web_player_configs.iter().enumerate() {
+            println!("{} {}", player_config_icon(cfg.ignore), key);
+            if cfg.match_patterns.len() == 1 {
+                print_nested_key_value("match_pattern", &cfg.match_patterns[0], 4);
+            } else if !cfg.match_patterns.is_empty() {
+                print_nested_key_value("match_patterns", cfg.match_patterns.join(", "), 4);
+            }
+            if let Some(name) = cfg.name.as_deref() {
+                print_nested_key_value("name", name, 4);
+            }
+            if let Some(app_id) = cfg.app_id.as_deref() {
+                print_nested_key_value("app_id", app_id, 4);
+            } else {
+                print_nested_key_value("app_id", "(inherits from player)", 4);
+            }
+            if let Some(icon) = cfg.icon.as_deref() {
+                print_nested_key_value("icon", icon, 4);
+            }
+            if let Some(allow_streaming) = cfg.allow_streaming {
+                print_nested_key_value("allow_streaming", format_bool(allow_streaming), 4);
+            }
+            if let Some(show_icon) = cfg.show_icon {
+                print_nested_key_value("show_icon", format_bool(show_icon), 4);
+            }
+            print_nested_key_value("ignore", format_bool(cfg.ignore), 4);
+            if let Some(sdt) = cfg.status_display_type {
+                print_nested_key_value(
+                    "status_display_type",
+                    format_status_display_type(sdt),
+                    4,
+                );
+            }
+            if let Some(activity_type) = cfg.override_activity_type {
+                print_nested_key_value(
+                    "activity_type",
+                    format_activity_type(Some(activity_type)),
+                    4,
+                );
+            }
+
+            if index + 1 < web_player_configs.len() {
+                println!();
+            }
+        }
+    }
+}
+
+fn open_config_in_editor() -> Result<(), Error> {
+    let path = config::config_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if !path.exists() {
+        std::fs::write(&path, "# mprisence user config\n")?;
+    }
+
+    let editor = env::var("EDITOR")
+        .or_else(|_| env::var("VISUAL"))
+        .unwrap_or_else(|_| "vi".to_string());
+    let mut parts = editor.split_whitespace();
+    let program = parts.next().unwrap_or("vi");
+    let args: Vec<&str> = parts.collect();
+
+    let status = std::process::Command::new(program)
+        .args(&args)
+        .arg(&path)
+        .status()?;
+
+    if !status.success() {
+        return Err(Error::IO(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("editor exited with {status}"),
+        )));
+    }
+
+    Ok(())
 }

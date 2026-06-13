@@ -417,6 +417,22 @@ fn wait_for_config_ready(path: &Path) {
     );
 }
 
+/// Default user config path (`~/.config/mprisence/config.toml`).
+pub fn config_path() -> Result<PathBuf, ConfigError> {
+    get_config_path()
+}
+
+/// Load and validate config at `path` (or default path when `None`).
+/// Runs the same merge + pattern precompile path as the daemon.
+pub fn validate_config_file(path: Option<&Path>) -> Result<PathBuf, ConfigError> {
+    let config_path = match path {
+        Some(path) => path.to_path_buf(),
+        None => get_config_path()?,
+    };
+    load_config_from_file(&config_path)?;
+    Ok(config_path)
+}
+
 fn get_config_path() -> Result<PathBuf, ConfigError> {
     let config_dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -697,5 +713,28 @@ icon = "user-icon"
         assert!(resolved.allow_streaming);
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn validate_config_file_rejects_invalid_toml() {
+        let temp_dir = temp_config_dir();
+        let config_path = temp_dir.join("config.toml");
+
+        fs::write(&config_path, "interval = \"not-a-number\"\n").expect("failed to write config");
+
+        let err = validate_config_file(Some(&config_path)).expect_err("should reject invalid config");
+        assert!(err.to_string().contains("Figment") || err.to_string().contains("deserialize"));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn config_path_points_under_mprisence_dir() {
+        let path = config_path().expect("config path should resolve");
+        assert!(
+            path.ends_with("mprisence/config.toml"),
+            "unexpected config path: {}",
+            path.display()
+        );
     }
 }
