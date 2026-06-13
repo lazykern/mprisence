@@ -433,6 +433,16 @@ pub fn validate_config_file(path: Option<&Path>) -> Result<PathBuf, ConfigError>
     Ok(config_path)
 }
 
+/// Load merged config without initializing the global `ConfigManager`.
+pub fn load_merged_config(path: Option<&Path>) -> Result<(PathBuf, Config), ConfigError> {
+    let config_path = match path {
+        Some(path) => path.to_path_buf(),
+        None => get_config_path()?,
+    };
+    let config = load_config_from_file(&config_path)?;
+    Ok((config_path, config))
+}
+
 fn get_config_path() -> Result<PathBuf, ConfigError> {
     let config_dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -736,5 +746,32 @@ icon = "user-icon"
             "unexpected config path: {}",
             path.display()
         );
+    }
+
+    #[test]
+    fn user_ignore_overrides_bundled_for_amberol_shape() {
+        let temp_dir = temp_config_dir();
+        let config_path = temp_dir.join("config.toml");
+        fs::write(
+            &config_path,
+            r#"[player.amberol]
+allow_streaming = false
+app_id = "1125077658192056431"
+ignore = true
+show_icon = true
+status_display_type = "state"
+"#,
+        )
+        .expect("write");
+
+        let config = load_config_from_file(&config_path).expect("load");
+        let user_ignore = config.user_player.get("amberol").and_then(|l| l.ignore);
+        assert_eq!(user_ignore, Some(true), "user layer ignore");
+        let effective = config.effective_player_configs();
+        let amberol = effective.get("amberol").expect("amberol");
+        assert!(amberol.ignore, "effective ignore should be true");
+        assert_eq!(amberol.allow_streaming, false);
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

@@ -38,126 +38,148 @@ litter_hours = 24
 # Priority: user entries override bundled ones. Fields left unset in a higher-priority entry fall back to lower matches, then [player.default], then built-in defaults. If identity and bus-name differ, an exact user bus-name entry wins.
 # [player.default].ignore_unmatched controls unknown players. Matched [player.*] entries start enabled unless some matched layer sets ignore = true.
 # Bundled app ID would show "mprisence", so "name" maps to "state".
-default = { ignore_unmatched = true, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false, status_display_type = "name" }
+default = { ignore_unmatched = true, name = "MPRISence", app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false, status_display_type = "name" }
 
 [player.audacious]
 ignore = false
+name = "Audacious"
 app_id = "1125084572166656031"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Audacious-2.4-logo.svg/1200px-Audacious-2.4-logo.svg.png"
 
 [player.elisa]
 ignore = false
+name = "Elisa"
 app_id = "1125089232776601761"
 icon = "https://store-images.s-microsoft.com/image/apps.47778.14129707655588863.dafceb08-f3ca-4e43-974e-9776c934976c.b69f75ea-0df1-4e00-9289-d11d9ac5a0f0"
 
 [player.lollypop]
 ignore = false
+name = "Lollypop"
 app_id = "1124183825489068103"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Lollypop_icon_2019.svg/640px-Lollypop_icon_2019.svg.png"
 allow_streaming = true
 
 [player.rhythmbox]
 ignore = false
+name = "Rhythmbox"
 app_id = "1124770552754733056"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/Rhythmbox_logo_3.4.4.svg/1200px-Rhythmbox_logo_3.4.4.svg.png"
 allow_streaming = true
 
 [player.cmus]
 ignore = false
+name = "cmus"
 app_id = "1124777797722853476"
 
 [player.vlc_media_player]
 ignore = false
+name = "VLC"
 app_id = "1124968989538402334"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/VLC_Icon.svg/1200px-VLC_Icon.svg.png"
 allow_streaming = true
 
 [player.mpv]
 ignore = false
+name = "mpv"
 app_id = "1125075797942734928"
 icon = "https://upload.wikimedia.org/wikipedia/commons/7/73/Mpv_logo_%28official%29.png"
 allow_streaming = true
 
 [player.mpd]
 ignore = false
+name = "MPD"
 app_id = "1126153268486213672"
 icon = "https://www.musicpd.org/logo.png"
 allow_streaming = true
 
 [player.musikcube]
 ignore = false
+name = "musikcube"
 app_id = "1127548029294084147"
 icon = "https://dashboard.snapcraft.io/site_media/appmedia/2020/04/ic_launcher_square.png"
 allow_streaming = true
 
 [player.clementine]
 ignore = false
+name = "Clementine"
 app_id = "1125075725473562735"
 icon = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRYiUYLmMQwsDaNqu6eg5I4aB1vyy_uptN34eouN7XxA5eFZTAV8RISZHCsn_M6-iQc-Pw&usqp=CAU"
 allow_streaming = true
 
 [player.strawberry]
 ignore = false
+name = "Strawberry"
 app_id = "1126197744512536647"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Strawberry-icon-1000px.png/800px-Strawberry-icon-1000px.png"
 allow_streaming = true
 
 [player.amberol]
 ignore = false
+name = "Amberol"
 app_id = "1125077658192056431"
 icon = "https://dashboard.snapcraft.io/site_media/appmedia/2022/09/io.bassi.Amberol.svg.png"
 
 [player.smplayer]
 ignore = false
+name = "SMPlayer"
 app_id = "1125077752756834314"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/SMPlayer_icon.svg/1200px-SMPlayer_icon.svg.png"
 
 [player.fooyin]
 ignore = false
+name = "fooyin"
 app_id = "1396689706246209606"
 icon = "https://dl.flathub.org/media/org/fooyin/fooyin/ef334d703743511632d5c616bea80c43/icons/128x128@2/org.fooyin.fooyin.png"
 
 [player.supersonic]
 ignore = false
+name = "Supersonic"
 app_id = "1404479711106568202"
 icon = "https://github.com/dweymouth/supersonic/blob/main/res/appicon-256.png?raw=true"
 allow_streaming = true
 
 [player.feishin]
 ignore = false
+name = "Feishin"
 app_id = "1404479248428826645"
 icon = "https://github.com/jeffvli/feishin/blob/development/assets/icons/256x256.png?raw=true"
 allow_streaming = true
 
 [player."io.m51.Gelly"]
 ignore = false
+name = "Gelly"
 app_id = "1485187543506096158"
 icon = "https://raw.githubusercontent.com/Fingel/gelly/main/resources/io.m51.Gelly.svg"
 allow_streaming = true
 
 [player.kew]
 ignore = false
+name = "Kew"
 app_id = "1408882241198620782"
 show_icon = false
 
 [player.gapless]
 ignore = false
+name = "Gapless"
 app_id = "1425518060688769146"
 icon = "https://res.cloudinary.com/canonical/image/fetch/f_auto,q_auto,fl_sanitize,w_256/https%3A%2F%2Fdashboard.snapcraft.io%2Fsite_media%2Fappmedia%2F2023%2F07%2Fapp.svg.png"
 
 [player.harmony_music_notification]
 ignore = false
+name = "Harmony Music"
 app_id = "1425521209633669242"
 icon = "https://raw.githubusercontent.com/anandnet/Harmony-Music/refs/heads/main/assets/icons/icon.png"
 allow_streaming = true
 
 [player.haruna]
 ignore = false
+name = "Haruna"
 app_id = "1476992012132679751"
 icon = "https://apps.kde.org/app-icons/org.kde.haruna.svg"
 
 [player."io.github.htkhiem.Euphonica"]
 ignore = false
+name = "Euphonica"
 app_id = "1435313000612630709"
 icon = "https://raw.githubusercontent.com/htkhiem/euphonica/refs/heads/main/data/icons/euphonica-hicolor.png"
 # icon = "https://i.ibb.co/LDwGSdG1/music-icon-4.png" # Icon by Blackstar1069
@@ -165,12 +187,14 @@ icon = "https://raw.githubusercontent.com/htkhiem/euphonica/refs/heads/main/data
 
 [player.quod_libet]
 ignore = false
+name = "Quod Libet"
 app_id = "1265388809860677632"
 icon = "https://raw.githubusercontent.com/quodlibet/quodlibet/refs/heads/main/quodlibet/images/hicolor/256x256/apps/io.github.quodlibet.QuodLibet.png"
 # icon = "https://i.ibb.co/vvxWfTvd/io-github-quodlibet-Quod-Libet.png" # Icon by Blackstar1069
 
 [player.MusicBee]
 ignore = false
+name = "MusicBee"
 app_id = "904523292491255838"
 # app id from this project: https://github.com/sll552/DiscordBee
 icon = "https://i.ibb.co/BKrwxCG2/musicbee-3.png"
@@ -178,23 +202,27 @@ icon = "https://i.ibb.co/BKrwxCG2/musicbee-3.png"
 
 [player.qmmp]
 ignore = false
+name = "Qmmp"
 app_id = "1442356186052563016"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Qmmp_logo.svg/960px-Qmmp_logo.svg.png"
 
 [player.quester]
 ignore = false
+name = "Quester"
 app_id = "1471745674960830494"
 icon = "https://codeberg.org/anoraktrend/quester/raw/branch/main/resources/Quester512.png"
 allow_streaming = true
 
 [player.ampcast]
 ignore = false
+name = "Ampcast"
 app_id = "1480174380997808301"
 icon = "https://raw.githubusercontent.com/rekkyrosso/ampcast/refs/heads/main/app/assets/icons/ampcast.png"
 allow_streaming = true
 
 [player.Media_Player_Classic_Qute_Theater]
 ignore = false
+name = "MPC-Qt"
 app_id = "1480176739014672517"
 icon = "https://raw.githubusercontent.com/tag27/icon-res/refs/heads/main/res/mpc_qt.png"
 # resized icon from the original: https://github.com/mpc-qt/mpc-qt/blob/master/res/images/icon/mpc-qt.svg
@@ -202,9 +230,11 @@ allow_streaming = true
 
 [player.spotify]
 ignore = true
+name = "Spotify"
 
 [player."*youtube_music*"]
 ignore = false
+name = "YouTube Music"
 app_id = "1125082278339559505"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/768px-Youtube_Music_icon.svg.png"
 allow_streaming = true

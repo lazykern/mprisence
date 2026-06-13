@@ -164,6 +164,31 @@ journalctl --user -u mprisence -f
 
 Config path: `~/.config/mprisence/config.toml`
 
+### Interactive setup
+
+Use the terminal UI to toggle players, web sites, discovery, display, cover art, and defaults:
+
+```bash
+mprisence setup
+```
+
+Jump to a section directly:
+
+```bash
+mprisence setup players
+mprisence setup web
+mprisence setup bridge
+```
+
+Requires an interactive terminal. For scripts or SSH without TTY, use `mprisence config edit` instead.
+
+Validate after changes:
+
+```bash
+mprisence config check
+mprisence doctor
+```
+
 Start from example config:
 
 ```bash

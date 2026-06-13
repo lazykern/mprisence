@@ -22,6 +22,7 @@ cargo build --release  # binary at target/release/mprisence
 
 ### Added
 
+- **Interactive setup**: `mprisence setup` TUI for players, web sites, discovery, display, cover art, defaults, and web bridge install (replaces `mprisence config wizard`)
 - `[web_player.default]` config section with `ignore_unmatched` setting (was hardcoded `true`)
 
 ### Changed
@@ -56,7 +57,7 @@ cargo build --release  # binary at target/release/mprisence
 - **Apple Music provider**: listen to Apple Music in browser and get Discord presence with album art
 - **Bandcamp provider**: track detection for Bandcamp album/artist pages and inline player
 - **Tidal provider**: Tidal web player integration
-- **Config wizard**: interactive CLI setup (`mprisence config wizard`)
+- **Config wizard**: interactive CLI setup (`mprisence config wizard`) — superseded by `mprisence setup`
 - **Website overrides**: rich icon + app ID per website (YTM, Apple Music, SoundCloud, etc.) without browser MPRIS needing to be active
 - **Cover art improvements**: InnerTube API for square cover art thumbnails, bar-free YTM thumbnails, anti-flapping logic for art_url
 - **Extension fingerprint**: stable source ID per extension instance so bridge can track tabs across reloads

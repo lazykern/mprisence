@@ -43,6 +43,12 @@ pub enum Command {
         #[arg(long)]
         fix: bool,
     },
+    /// Interactive settings for mprisence configuration
+    Setup {
+        /// Jump to a settings topic (players, web, discovery, display, cover, defaults, bridge)
+        #[arg(value_name = "SECTION")]
+        section: Option<String>,
+    },
     Web {
         #[command(subcommand)]
         command: WebCommand,
@@ -378,6 +384,21 @@ impl Command {
                 },
             },
             Command::Doctor { fix } => crate::doctor::run(fix).await?,
+            Command::Setup { section } => {
+                let topic = if let Some(name) = section {
+                    Some(crate::setup::hub_topic_from_cli(&name).ok_or_else(|| {
+                        Error::Cli(clap::Error::raw(
+                            clap::error::ErrorKind::InvalidValue,
+                            format!(
+                                "unknown setup section '{name}'; try: players, web, discovery, display, cover, defaults, bridge"
+                            ),
+                        ))
+                    })?)
+                } else {
+                    None
+                };
+                crate::setup::run(topic)?;
+            }
             Command::Web { command } => match command {
                 WebCommand::Install { browser } => crate::web_bridge::install(browser).await,
                 WebCommand::Uninstall { browser } => crate::web_bridge::uninstall(browser).await,

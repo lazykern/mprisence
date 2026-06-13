@@ -599,6 +599,35 @@ impl Config {
         result
     }
 
+    /// Whether unknown players are hidden by default (`[player.default].ignore_unmatched`).
+    pub fn ignore_unmatched_players(&self) -> bool {
+        self.resolve_default_player_base().1
+    }
+
+    /// Whether unmatched http/https URLs are hidden (`[web_player.default].ignore_unmatched`).
+    pub fn ignore_unmatched_web_players(&self) -> bool {
+        self.resolve_default_web_player_base().1
+    }
+
+    /// Merged effective `[player.default]` settings (bundled + user layers).
+    pub fn default_player_config(&self) -> PlayerConfig {
+        self.resolve_default_player_base().0
+    }
+
+    /// Merged effective `[web_player.default]` settings (bundled + user layers).
+    pub fn default_web_player_config(&self) -> WebPlayerConfig {
+        let (layer, _) = self.resolve_default_web_player_base();
+        layer.apply_into_web_player(WebPlayerConfig::default())
+    }
+
+    pub fn has_user_default_player_override(&self) -> bool {
+        self.user_player.contains_key("default")
+    }
+
+    pub fn has_user_default_web_override(&self) -> bool {
+        self.user_web_player.contains_key("default")
+    }
+
     fn resolve_player_config(&self, matches: Vec<PlayerConfigLayer>) -> PlayerConfig {
         let (mut resolved, ignore_unmatched) = self.resolve_default_player_base();
 

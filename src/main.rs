@@ -31,6 +31,7 @@ mod cover;
 mod discord;
 mod doctor;
 mod error;
+mod setup;
 mod metadata;
 mod player;
 mod presence;

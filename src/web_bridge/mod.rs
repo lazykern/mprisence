@@ -363,14 +363,46 @@ pub async fn uninstall(browsers: Vec<String>) {
 
 /// Check native-host manifests. Returns number of issues found.
 pub fn check_native_host_manifests() -> usize {
+    let (issues, lines) = inspect_native_host_manifests();
+    for line in lines {
+        println!("{line}");
+    }
+    issues
+}
+
+/// Count manifest issues without printing (for setup hub status).
+pub fn native_host_issue_count() -> usize {
+    inspect_native_host_manifests().0
+}
+
+/// Web bridge health report lines for CLI and setup TUI.
+pub fn doctor_lines() -> Vec<String> {
+    let mut lines = vec![
+        "🧑‍⚕️ mprisence web doctor".to_string(),
+        String::new(),
+    ];
+    let (_, manifest_lines) = inspect_native_host_manifests();
+    lines.extend(manifest_lines);
+    if check_dbus_session() {
+        lines.push("✓ D-Bus session bus: available".to_string());
+    } else {
+        lines.push("✗ D-Bus session bus: DBUS_SESSION_BUS_ADDRESS not set".to_string());
+    }
+    lines
+}
+
+fn inspect_native_host_manifests() -> (usize, Vec<String>) {
     let mut issues = 0;
+    let mut lines = Vec::new();
 
     let binary = std::env::current_exe().ok();
     match &binary {
-        Some(p) => println!("✓ Binary: {}", p.display()),
+        Some(p) => {
+            lines.push(format!("✓ Binary: {}", p.display()));
+        }
         None => {
             issues += 1;
-            println!("✗ Binary: could not resolve");
+            lines.push("✗ Binary: could not resolve".to_string());
         }
     }
 
@@ -389,43 +421,43 @@ pub fn check_native_host_manifests() -> usize {
                             .map(|p| Path::new(p).exists())
                             .unwrap_or(false);
                         if path_ok {
-                            println!(
+                            lines.push(format!(
                                 "✓ {browser} manifest: {} (binary OK)",
                                 manifest_path.display()
-                            );
+                            ));
                         } else {
                             issues += 1;
-                            println!(
+                            lines.push(format!(
                                 "⚠ {browser} manifest: {} (binary missing/stale)",
                                 manifest_path.display()
-                            );
+                            ));
                         }
                     } else {
                         issues += 1;
-                        println!(
+                        lines.push(format!(
                             "⚠ {browser} manifest: {} (invalid JSON)",
                             manifest_path.display()
-                        );
+                        ));
                     }
                 }
                 Err(e) => {
                     issues += 1;
-                    println!(
+                    lines.push(format!(
                         "✗ {browser} manifest: {} (read error: {e})",
                         manifest_path.display()
-                    );
+                    ));
                 }
             }
         } else {
             issues += 1;
-            println!(
+            lines.push(format!(
                 "✗ {browser} manifest: not found at {}",
                 manifest_path.display()
-            );
+            ));
         }
     }
 
-    issues
+    (issues, lines)
 }
 
 pub fn check_dbus_session() -> bool {
@@ -433,13 +465,8 @@ pub fn check_dbus_session() -> bool {
 }
 
 pub async fn doctor() {
-    println!("🧑‍⚕️ mprisence web doctor\n");
-
-    check_native_host_manifests();
-    if check_dbus_session() {
-        println!("✓ D-Bus session bus: available");
-    } else {
-        println!("✗ D-Bus session bus: DBUS_SESSION_BUS_ADDRESS not set");
+    for line in doctor_lines() {
+        println!("{line}");
     }
 }
 
