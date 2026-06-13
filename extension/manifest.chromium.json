@@ -1,14 +1,14 @@
 {
   "manifest_version": 3,
   "name": "mprisence bridge",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Provides rich web media player metadata from your browser to MPRIS",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA35g/QzjtKAumBQVPcHp2vw9FGiaBl4tDJb9fTO+pWx4zqKTnj/aIhf9Bqdw9QSXUM4EBTB+zdJHPOdnEUkf+fEpTTinuJ8sGKIozn5GaxkF0HczALU891WtqEBQGKoVodP+EObve/mXjojCIcCo0fGTIMlihI1xn+0q0l0oKWeNUhLH/ZNcXeAC1rb8hM/YoQKoY/+p53jo50XKWnLKrpM8fp7FSVoAYJgR6VpNIrfQnRdjATPCDOxe+U09fVipF4u3p2V3+Q4dNci8UvsL2BaTasMnC/EcfkDXTMvaMx/HOvDspVAIOhJOlvcEP6uaPXuetA8ztQgTefIdxa2E9aQIDAQAB",
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": ["nativeMessaging", "tabs"],
+  "permissions": ["nativeMessaging"],
   "minimum_chrome_version": "111",
   "action": {
     "default_title": "mprisence bridge",

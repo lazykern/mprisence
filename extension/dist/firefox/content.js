@@ -1301,4 +1301,3 @@ if (isSupportedPage()) {
     safeSendMessage(msg);
   });
 }
-//# sourceMappingURL=content.js.map

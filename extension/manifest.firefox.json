@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "mprisence bridge",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Provides rich web media player metadata from your browser to MPRIS",
   "homepage_url": "https://github.com/lazykern/mprisence",
   "browser_specific_settings": {
@@ -17,7 +17,7 @@
     "scripts": ["background.js"],
     "type": "module"
   },
-  "permissions": ["nativeMessaging", "tabs"],
+  "permissions": ["nativeMessaging"],
   "action": {
     "default_title": "mprisence bridge",
     "default_icon": {

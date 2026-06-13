@@ -1,15 +1,14 @@
 {
   "manifest_version": 3,
   "name": "mprisence bridge",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Provides rich web media player metadata from your browser to MPRIS",
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "permissions": [
-    "nativeMessaging",
-    "tabs"
+    "nativeMessaging"
   ],
   "minimum_chrome_version": "111",
   "action": {
