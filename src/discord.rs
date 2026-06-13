@@ -1,9 +1,6 @@
 use log::{debug, trace};
-use std::io::ErrorKind;
 use std::path::PathBuf;
 
-use interprocess::local_socket::{prelude::*, GenericFilePath, Stream};
-use std::collections::HashMap;
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -31,60 +28,26 @@ pub fn is_discord_running() -> bool {
                     .join(format!("discord-ipc-{}", i))
             }));
 
-        let mut successful_path: Option<PathBuf> = None;
-        let mut error_counts: HashMap<ErrorKind, usize> = HashMap::new();
-
         for socket_path in potential_paths {
-            let name = match socket_path.clone().to_fs_name::<GenericFilePath>() {
-                Ok(n) => n,
-                Err(e) => {
-                    trace!(
-                        "Failed to create IPC socket name from path {:?}: {}",
-                        socket_path,
-                        e
-                    );
-                    continue;
-                }
-            };
-
-            match Stream::connect(name) {
-                Ok(conn) => {
-                    drop(conn);
-                    successful_path = Some(socket_path);
-                    DISCORD_CONNECTION_ERROR_LOGGED.store(false, Ordering::Relaxed);
-                    break;
-                }
-                Err(e) => {
-                    *error_counts.entry(e.kind()).or_insert(0) += 1;
-                }
+            if socket_path.exists() {
+                trace!("IPC socket found at {:?}", socket_path);
+                DISCORD_CONNECTION_ERROR_LOGGED.store(false, Ordering::Relaxed);
+                return true;
             }
         }
 
-        if let Some(path) = successful_path {
-            trace!("Successfully connected via {:?}.", path);
-            true
-        } else {
-            debug!("Could not connect to Discord IPC socket. Assuming not running.");
-            if !error_counts.is_empty() {
-                let error_summary = error_counts
-                    .iter()
-                    .map(|(kind, count)| format!("{:?}: {}", kind, count))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                debug!("Connection errors encountered: [{}]", error_summary);
-            }
+        debug!("No Discord IPC socket found. Assuming not running.");
 
-            if !DISCORD_CONNECTION_ERROR_LOGGED.load(Ordering::Relaxed)
-                && DISCORD_CONNECTION_ERROR_LOGGED
-                    .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-                    .is_ok()
-            {
-                log::info!(
-                    "Could not connect to Discord IPC socket. Presence updates will be disabled until connection succeeds."
-                );
-            }
-            false
+        if !DISCORD_CONNECTION_ERROR_LOGGED.load(Ordering::Relaxed)
+            && DISCORD_CONNECTION_ERROR_LOGGED
+                .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+        {
+            log::info!(
+                "Could not find Discord IPC socket. Presence updates will be disabled until connection succeeds."
+            );
         }
+        false
     } else if let Some(lock_path) = get_discord_lock_path() {
         match std::fs::symlink_metadata(&lock_path) {
             Ok(_) => {
