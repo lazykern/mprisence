@@ -259,15 +259,23 @@ Bundled site support includes:
 - YouTube Music, YouTube, SoundCloud, Bandcamp, TIDAL, Apple Music
 - Plus presets for Deezer, Qobuz, Amazon Music, Yandex Music, and more
 
-#### Build mprisence with bridge
+#### Install native host
 
 ```bash
-cargo build --release -p mprisence
+cargo build --release -p mprisence   # or install from Releases / AUR / Nix
 ./target/release/mprisence web install
 ./target/release/mprisence web doctor
 ```
 
-#### Build extension
+#### Install extension
+
+- **Firefox:** [mprisence bridge on AMO](https://addons.mozilla.org/en-US/firefox/addon/mprisence-bridge/)
+- **Chrome / Chromium:** [mprisence bridge on Chrome Web Store](https://chromewebstore.google.com/detail/pnkkjbdopihogobhhjbgapbpfccinjjo)
+
+Open a supported site (e.g. music.youtube.com) and play a track. Check with `playerctl -l | grep mprisence_web`.
+
+<details>
+<summary>Development: build and load unpacked</summary>
 
 ```bash
 cd extension
@@ -275,13 +283,12 @@ npm install
 npm run build:firefox   # or: npm run build:chromium
 ```
 
-#### Load in browser
-
 - **Firefox:** `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on** → `extension/dist/firefox/manifest.json`
 - **Chromium:** `chrome://extensions` → Developer mode → **Load unpacked** → `extension/dist/chromium/`
 
-> [!NOTE]
-> Reloading extension kills content scripts on existing tabs. Refresh media tabs after reload.
+Reloading the extension kills content scripts on existing tabs. Refresh media tabs after reload.
+
+</details>
 
 #### Debugging
 

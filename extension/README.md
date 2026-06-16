@@ -4,6 +4,14 @@ Browser extension that sends rich media metadata from supported websites to the 
 
 The extension reads media metadata (title, artist, cover art, position, duration, playback state) from supported websites, aggregates it in the background script, and forwards it to the native host `mprisence.web.bridge`, which publishes each tab as its own MPRIS D-Bus player.
 
+## Install
+
+1. Install [mprisence](https://github.com/lazykern/mprisence) and register the native host: `mprisence web install`
+2. Install the extension:
+   - **Firefox:** [mprisence bridge on AMO](https://addons.mozilla.org/en-US/firefox/addon/mprisence-bridge/)
+   - **Chrome / Chromium:** [mprisence bridge on Chrome Web Store](https://chromewebstore.google.com/detail/pnkkjbdopihogobhhjbgapbpfccinjjo)
+3. Verify (optional): `mprisence web doctor`
+
 ## Build
 
 ```bash
@@ -34,16 +42,14 @@ dist/firefox/
 dist/chromium/
 ```
 
-## Chrome extension ID
+## Chrome extension IDs
 
-The Chromium manifest `key` field pins extension ID `pphdmbejbipjlocngoefnmjoijcbdejf`.
-This must match `CHROME_EXTENSION_ID` in `src/web_bridge/mod.rs`.
-Store uploads must include `key` — do not strip it.
+- **Chrome Web Store:** `pnkkjbdopihogobhhjbgapbpfccinjjo` — matches `CHROME_EXTENSION_ID` in `src/web_bridge/mod.rs`
+- **Dev sideload (keyed build):** `pphdmbejbipjlocngoefnmjoijcbdejf` — pinned by the `key` field in `manifest.chromium.json`
 
-If the ID ever changes, update the Rust constant and release a new `mprisence` build.
-Users must re-run `mprisence web install`.
+Store builds strip `key` so CWS assigns the store ID. `mprisence web install` allows both origins. If either ID changes, update the Rust constants and release a new `mprisence` build; users must re-run `mprisence web install`.
 
-## Temporary load
+## Temporary load (development)
 
 Firefox:
 

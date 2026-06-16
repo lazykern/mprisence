@@ -17,7 +17,13 @@ use tokio::sync::mpsc;
 use tokio::time::{interval, Duration};
 
 pub const EXTENSION_ID: &str = "mprisence-bridge@lazykern.foo";
-pub const CHROME_EXTENSION_ID: &str = "pphdmbejbipjlocngoefnmjoijcbdejf";
+/// Chrome Web Store extension ID (store builds omit manifest `key`).
+pub const CHROME_EXTENSION_ID: &str = "pnkkjbdopihogobhhjbgapbpfccinjjo";
+/// Keyed dev/sideload build ID from `manifest.chromium.json`.
+pub const CHROME_EXTENSION_ID_DEV: &str = "pphdmbejbipjlocngoefnmjoijcbdejf";
+const FIREFOX_STORE_URL: &str = "https://addons.mozilla.org/en-US/firefox/addon/mprisence-bridge/";
+const CHROME_STORE_URL: &str =
+    "https://chromewebstore.google.com/detail/pnkkjbdopihogobhhjbgapbpfccinjjo";
 pub const HOST_NAME: &str = "mprisence.web.bridge";
 const HOST_MANIFEST_FILENAME: &str = "mprisence.web.bridge.json";
 const BRIDGE_LOG_PATH: &str = "/tmp/bridge-stderr.log";
@@ -40,6 +46,7 @@ pub fn looks_like_native_host_invocation(args: &[String]) -> bool {
         && args.iter().any(|arg| {
             arg == EXTENSION_ID
                 || arg == CHROME_EXTENSION_ID
+                || arg == CHROME_EXTENSION_ID_DEV
                 || arg.starts_with("chrome-extension://")
                 || arg.ends_with(HOST_MANIFEST_FILENAME)
                 || arg.contains(&format!("/{HOST_MANIFEST_FILENAME}"))
@@ -243,6 +250,10 @@ pub async fn install(browsers: Vec<String>) {
         install_chromium_manifest(&binary);
     }
     println!("Done. You may need to restart browser.");
+    println!();
+    println!("Install the extension if you haven't:");
+    println!("  Firefox:  {FIREFOX_STORE_URL}");
+    println!("  Chrome:   {CHROME_STORE_URL}");
 }
 
 fn manifest_dir_firefox() -> PathBuf {
@@ -324,7 +335,10 @@ fn install_chromium_manifest(binary: &Path) {
         "description": "mprisence — sends browser media to MPRIS",
         "path": binary.to_str().expect("binary path is not UTF-8"),
         "type": "stdio",
-        "allowed_origins": [format!("chrome-extension://{CHROME_EXTENSION_ID}/")],
+        "allowed_origins": [
+            format!("chrome-extension://{CHROME_EXTENSION_ID}/"),
+            format!("chrome-extension://{CHROME_EXTENSION_ID_DEV}/"),
+        ],
     });
 
     for (browser, dir) in chromium_manifest_targets() {
