@@ -79,7 +79,7 @@ Bundled presets in [`config/config.default.toml`](./config/config.default.toml).
 
 ```bash
 yay -S mprisence
-# or: yay -S mprisence-bin
+# or: yay -S mprisence-bin (maintained by choimadeleine)
 ```
 
 #### Nix / NixOS
