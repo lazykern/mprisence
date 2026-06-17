@@ -12,7 +12,7 @@
 [![Nixpkgs](https://img.shields.io/badge/NixOS-nixpkgs-blue?logo=nixos&style=flat-square)](https://search.nixos.org/packages?query=mprisence)
 [![MIT](https://img.shields.io/badge/license-MIT-4b5563?style=flat-square)](LICENSE)
 
-[Overview](#overview) • [Quick start](#quick-start) • [Configuration](#configuration) • [Web players](#web-players) • [Development](#development) • [Troubleshooting](#troubleshooting)
+[Overview](#overview) • [Supported players](#supported-players) • [Quick start](#quick-start) • [Configuration](#configuration) • [Web players](#web-players) • [Development](#development) • [Troubleshooting](#troubleshooting)
 
 </div>
 
@@ -58,6 +58,14 @@ supported website
 - Cover art from metadata, local files, Catbox/Litterbox, MusicBrainz, or ImgBB
 - Hot reload for most config changes
 - Browser bridge for better metadata, cover art, URLs, and controls on web players
+
+## Supported players
+
+Bundled presets in [`config/config.default.toml`](./config/config.default.toml). No setup needed — start `mprisence` and these appear in Discord automatically.
+
+**Local players (MPRIS):** Audacious, Amberol, Clementine, CMUS, Elisa, Euphonica, Feishin, Fooyin, Gapless, Gelly, Haruna, Harmony Music, Kew, Lollypop, Media Player Classic Qute Theater, MPV, MPD, Musikcube, MusicBee, QMMP, Quod Libet, Quester, Rhythmbox, AmpCast, SMPlayer, Spotify (legacy), Strawberry, Supersonic, VLC.
+
+**Web players (browser bridge):** YouTube Music, YouTube, SoundCloud, Bandcamp, Tidal, Apple Music, Qobuz, Amazon Music, Deezer, Yandex Music. Add your own under `[web_player.*]` with `match_patterns`.
 
 ## Quick start
 
