@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.7.0] - 2026-06-17
+
+**Web player support, now bundled in `mprisence`.**
+
+mprisence can now show your browser tabs in Discord alongside your
+native MPRIS players. Install the browser extension from the Chrome
+Web Store or Firefox AMO, run `mprisence web install` once, and
+you're done.
+
+**Supported sites:** YouTube Music, Apple Music, Bandcamp, Tidal,
+SoundCloud, Qobuz, Amazon Music, Deezer, Yandex Music. YouTube ships
+ignored by default; enable it with `[web_player.youtube] ignore = false`.
+
+**Per-site overrides**
+
+Add `[web_player.<site>]` to set a custom icon or `app_id`:
+
+```toml
+[web_player.youtube_music]
+app_id = "1121632048155742288"
+icon = "https://example.com/icon.png"
+```
+
+**Heads up**
+
+- `discovery_interval` was renamed to `fallback_poll_interval`. Old key
+  still works.
+- Unknown players are hidden by default. Add `[player.<name>] ignore = false`
+  to bring one back.
+
 ## [1.7.0-beta.3] - 2026-06-01 (pre-release)
 
 This is a pre-release. Not published to crates.io.
