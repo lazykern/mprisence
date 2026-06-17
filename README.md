@@ -220,37 +220,6 @@ mprisence supports two paths for browser media. Try Browser MPRIS first; switch 
 | Controls | Play/pause | Full (prev, next, seek) |
 | Works with | Any browser with MPRIS support | Bundled sites + presets |
 
-### Browser MPRIS
-
-Some browsers expose media tabs as MPRIS players with page URL metadata. When quality is adequate, mprisence matches these against `[web_player.*]` presets.
-
-Check what your browser exposes:
-
-```bash
-playerctl -l
-mprisence players list --detailed
-```
-
-Enable specific sites via config.
-
-Bundled site (patterns inherited from bundled entry — un-ignore to activate):
-
-```toml
-[web_player.youtube]
-ignore = false
-```
-
-Custom site (not in bundle — provide match_pattern and app_id):
-
-```toml
-[web_player.my_site]
-match_pattern = "mysite.com"
-name = "My Site"
-app_id = "YOUR_DISCORD_APP_ID"
-icon = "https://mysite.com/icon.png"
-ignore = false
-```
-
 ### Bridge + extension
 
 Use this path for richer title, cover art, canonical URL, duration, and controls.
@@ -298,6 +267,37 @@ tail -f /tmp/bridge-stderr.log
 ```
 
 For full detail: [`extension/README.md`](./extension/README.md)
+
+### Browser MPRIS
+
+Some browsers expose media tabs as MPRIS players with page URL metadata. When quality is adequate, mprisence matches these against `[web_player.*]` presets.
+
+Check what your browser exposes:
+
+```bash
+playerctl -l
+mprisence players list --detailed
+```
+
+Enable specific sites via config.
+
+Bundled site (patterns inherited from bundled entry — un-ignore to activate):
+
+```toml
+[web_player.youtube]
+ignore = false
+```
+
+Custom site (not in bundle — provide match_pattern and app_id):
+
+```toml
+[web_player.my_site]
+match_pattern = "mysite.com"
+name = "My Site"
+app_id = "YOUR_DISCORD_APP_ID"
+icon = "https://mysite.com/icon.png"
+ignore = false
+```
 
 ## Development
 
