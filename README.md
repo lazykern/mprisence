@@ -18,16 +18,13 @@
 
 Reads MPRIS metadata over D-Bus → renders Discord Rich Presence → syncs with current media.
 
-Works with **VLC, MPV, Rhythmbox, Strawberry, CMUS, MPD, and more**. Has a [browser bridge](#web-players) for web players (YouTube Music, SoundCloud, etc.) when browser MPRIS is not enough.
+Works with **VLC, MPV, Rhythmbox, Strawberry, CMUS, MPD, [and more](#supported-players)**. Has a [browser bridge](#web-players) for web players (YouTube Music, SoundCloud, etc.) when browser MPRIS is not enough.
 
 <p align="center">
   <img src="assets/example.gif" alt="mprisence demo: Strawberry playing through Discord" width="548" />
   <br/>
   <em>Local player → Discord status, no config needed</em>
 </p>
-
-> [!IMPORTANT]
-> Discord must allow activity sharing: **Settings → Activity Privacy → Display current activity as a status message**.
 
 ## Overview
 
@@ -142,13 +139,13 @@ VLC        vlc_media_player       org.mpris.MediaPlayer2.vlc                  D-
 Strawberry strawberry           org.mpris.MediaPlayer2.strawberry          D-Bus
 ```
 
-### 4. Enable as a service (optional)
+### 4. Enable as a service (autostart)
 
 ```bash
 systemctl --user enable --now mprisence.service
 ```
 
-If your package did not include a service file:
+If the command above does not work:
 
 ```bash
 mkdir -p ~/.config/systemd/user
