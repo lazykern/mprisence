@@ -140,6 +140,11 @@ ignore = false
 app_id = "1408882241198620782"
 show_icon = false
 
+[player.tomu]
+ignore = false
+app_id = "1503183287235903521"
+icon = "https://upload.wikimedia.org/wikipedia/commons/6/6d/Tomu-chan-iconnn.png"
+
 [player.gapless]
 ignore = false
 app_id = "1425518060688769146"
