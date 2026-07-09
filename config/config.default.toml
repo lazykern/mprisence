@@ -117,6 +117,12 @@ ignore = false
 app_id = "1396689706246209606"
 icon = "https://dl.flathub.org/media/org/fooyin/fooyin/ef334d703743511632d5c616bea80c43/icons/128x128@2/org.fooyin.fooyin.png"
 
+[player.finamp]
+ignore = false
+app_id = "1524636483313729716"
+icon = "https://raw.githubusercontent.com/UnicornsOnLSD/finamp/refs/heads/main/assets/icon/icon_foreground.png"
+allow_streaming = true
+
 [player.supersonic]
 ignore = false
 app_id = "1404479711106568202"
