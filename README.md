@@ -233,18 +233,17 @@ Bundled site support includes:
 - YouTube Music, YouTube, SoundCloud, Bandcamp, TIDAL, Apple Music
 - Plus presets for Deezer, Qobuz, Amazon Music, Yandex Music, and more
 
-#### Install native host
-
-```bash
-cargo build --release -p mprisence   # or install from Releases / AUR / Nix
-./target/release/mprisence web install
-./target/release/mprisence web doctor
-```
-
 #### Install extension
 
 - **Firefox:** [mprisence bridge on AMO](https://addons.mozilla.org/en-US/firefox/addon/mprisence-bridge/)
 - **Chrome / Chromium:** [mprisence bridge on Chrome Web Store](https://chromewebstore.google.com/detail/pnkkjbdopihogobhhjbgapbpfccinjjo)
+
+#### Install native host
+
+```bash
+mprisence web install
+mprisence web doctor
+```
 
 Open a supported site (e.g. music.youtube.com) and play a track. Check with `playerctl -l | grep mprisence_web`.
 
