@@ -119,7 +119,7 @@ icon = "https://dl.flathub.org/media/org/fooyin/fooyin/ef334d703743511632d5c616b
 
 [player.finamp]
 ignore = false
-app_id = "1524636483313729716"
+app_id = "1397542416201945221"
 icon = "https://raw.githubusercontent.com/UnicornsOnLSD/finamp/refs/heads/main/assets/icon/icon_foreground.png"
 allow_streaming = true
 
