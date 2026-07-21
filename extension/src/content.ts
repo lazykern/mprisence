@@ -218,6 +218,18 @@ function safeSendMessage(msg: ExtMessage): void {
 
 // ─── Event-driven observation (Layer 1: isolated world) ──────────
 
+// Firefox runs content scripts in an Xray-walled compartment: the page (and
+// the MAIN-world page-world script) cannot read an object created here without
+// `cloneInto`. `mprisence-command` is our only content→page hand-off, so clone
+// the detail into the page's compartment when the Firefox helper exists; on
+// Chromium `cloneInto` is undefined and the plain object passes fine.
+declare const cloneInto: (<T>(obj: T, target: Window) => T) | undefined;
+function dispatchToPageWorld(detail: { command: string; position_ms?: number }): void {
+  const payload =
+    typeof cloneInto === "function" ? cloneInto(detail, window) : detail;
+  window.dispatchEvent(new CustomEvent("mprisence-command", { detail: payload }));
+}
+
 function extractFromProviders(): ProviderResult | null {
   const url = new URL(window.location.href);
   for (const provider of providers) {
@@ -396,11 +408,7 @@ try {
         // page running the generic collector. Relay the command to the
         // page-world script, which owns the active element and handlers.
         if (!isSupportedPage()) {
-          window.dispatchEvent(
-            new CustomEvent("mprisence-command", {
-              detail: { command: msg.command, position_ms: msg.position_ms },
-            })
-          );
+          dispatchToPageWorld({ command: msg.command, position_ms: msg.position_ms });
           sendResponse({ ok: true });
           return true;
         }

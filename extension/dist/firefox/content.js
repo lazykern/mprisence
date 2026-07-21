@@ -1168,6 +1168,10 @@ function safeSendMessage(msg) {
     markExtensionContextDead(err);
   }
 }
+function dispatchToPageWorld(detail) {
+  const payload = typeof cloneInto === "function" ? cloneInto(detail, window) : detail;
+  window.dispatchEvent(new CustomEvent("mprisence-command", { detail: payload }));
+}
 function extractFromProviders() {
   const url = new URL(window.location.href);
   for (const provider of providers) {
@@ -1278,11 +1282,7 @@ try {
           }
         }
         if (!isSupportedPage()) {
-          window.dispatchEvent(
-            new CustomEvent("mprisence-command", {
-              detail: { command: msg.command, position_ms: msg.position_ms }
-            })
-          );
+          dispatchToPageWorld({ command: msg.command, position_ms: msg.position_ms });
           sendResponse({ ok: true });
           return true;
         }
