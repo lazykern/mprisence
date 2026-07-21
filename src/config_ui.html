@@ -93,9 +93,6 @@
                    padding: .4rem 1rem; font-weight: 600; cursor: pointer; }
   #playersEmpty { color: #8b8fa3; padding: .65rem 0; }
   .warn { color: #ffb454; font-size: .78rem; padding: .2rem 0; }
-  .tags { display: flex; flex-wrap: wrap; gap: .3rem; padding: .1rem 0 .3rem; }
-  .tag { background: #2b2d3a; color: #8b8fa3; border-radius: 4px; padding: .05rem .4rem;
-         font-size: .72rem; font-family: ui-monospace, monospace; }
   .ovpanel { padding: .1rem 0 .5rem 1.2rem; border-left: 2px solid #2b2d3a; margin: 0 0 .4rem; }
   .ovrow { display: flex; align-items: center; justify-content: space-between; gap: .75rem;
            padding: .3rem 0; }
@@ -275,14 +272,18 @@
 
   <section>
     <h2>Players</h2>
-    <div class="hint" style="padding-bottom:.3rem">Switch a player off to hide it from Discord. Tap a name to preview its track above.</div>
+    <div class="hint" style="padding-bottom:.3rem">Switch a player off to hide it from Discord. Tap a running player to preview its track above. "Default (all players)" sets the baseline for every player and whether unconfigured ones show at all.</div>
     <div id="playerRows"></div>
     <div id="playersEmpty" hidden>No media players detected. Start one and it appears here.</div>
+    <div class="addweb">
+      <input type="text" id="playerNewKey" placeholder="key e.g. vlc_media_player or re:.*mpd.*" spellcheck="false">
+      <button id="playerAdd">Add player</button>
+    </div>
   </section>
 
   <section>
     <h2>Web players</h2>
-    <div class="hint" style="padding-bottom:.3rem">Per-site presence for browser media (YouTube, Spotify Web…). Toggle a site off to hide it; expand to set its Discord app, icon, and activity.</div>
+    <div class="hint" style="padding-bottom:.3rem">Per-site presence for browser media (YouTube, Spotify Web…). Toggle a site off to hide it; expand to set its Discord app, icon, URL patterns, and activity. "Unknown / unmatched sites" controls whether browser media from unlisted sites shows at all.</div>
     <div id="webRows"></div>
     <div class="addweb">
       <input type="text" id="webNewKey" placeholder="key e.g. last_fm" spellcheck="false">
@@ -328,6 +329,13 @@ const OVERRIDE_FIELDS = [
   { key: 'status_display_type', label: 'Status shows', type: 'select',
     options: [['name', 'Player name'], ['state', 'Line 2'], ['details', 'Line 1']] },
   { key: 'override_activity_type', label: 'Force activity type', type: 'act' },
+];
+// Web-player-only extra fields, appended to OVERRIDE_FIELDS for site editors.
+const WEB_EXTRA_FIELDS = [
+  { key: 'match_patterns', label: 'URL patterns', type: 'list',
+    hint: 'host, *.wildcard, or re:regex — comma separated' },
+  { key: 'title_suffix', label: 'Title suffix', type: 'text',
+    hint: 'match by title when no URL, e.g. " | YouTube Music"' },
 ];
 const isSet = v => v !== null && v !== undefined;
 let providerOrder = [];      // enabled cover providers, in preference order
@@ -461,10 +469,10 @@ function syncImgbbRow() {
 // effective values shown (concrete for players, possibly null for sites);
 // `overrides` is the user's explicit layer, so unset text fields show the
 // default as a placeholder instead of a real value.
-function overrideEditor(scope, key, values, overrides) {
+function overrideEditor(scope, key, values, overrides, fields = OVERRIDE_FIELDS) {
   const panel = document.createElement('div');
   panel.className = 'ovpanel';
-  for (const f of OVERRIDE_FIELDS) {
+  for (const f of fields) {
     const cur = values[f.key];
     const overridden = isSet(overrides[f.key]);
     const set = v => patch([scope, key, f.key], v);
@@ -472,7 +480,21 @@ function overrideEditor(scope, key, values, overrides) {
     const lbl = document.createElement('span');
     lbl.className = 'lbl';
     lbl.textContent = f.label;
-    if (f.type === 'bool') {
+    if (f.hint) { const h = document.createElement('span'); h.className = 'hint';
+      h.textContent = ' ' + f.hint; lbl.appendChild(h); }
+    if (f.type === 'list') {
+      row.className = 'ovrow stack';
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.spellcheck = false;
+      const ov = overrides[f.key];
+      inp.value = Array.isArray(ov) ? ov.join(', ') : '';
+      if (!Array.isArray(ov) && Array.isArray(cur) && cur.length) inp.placeholder = cur.join(', ');
+      inp.onchange = () => {
+        const arr = inp.value.split(',').map(s => s.trim()).filter(Boolean);
+        set(arr.length ? arr : null);
+      };
+      row.append(lbl, inp);
+    } else if (f.type === 'bool') {
       row.className = 'ovrow';
       const sw = document.createElement('label');
       sw.className = 'switch';
@@ -561,9 +583,10 @@ async function preview() {
 
 // Mirror the backend's pick order so the variable chips show the same track.
 function pickPreview(players) {
-  return players.find(p => p.player_bus_name === previewBus)
-    ?? players.find(p => p.status === 'Playing')
-    ?? players[0];
+  const live = players.filter(p => p.live);
+  return live.find(p => p.player_bus_name === previewBus)
+    ?? live.find(p => p.status === 'Playing')
+    ?? live[0];
 }
 
 let lastPlayers = [];   // newest player list, for the top preview selector
@@ -589,47 +612,93 @@ function populatePvSelect(players) {
   const want = previewBus;
   sel.innerHTML = '<option value="">Auto (playing player)</option>';
   for (const p of players) {
+    if (!p.live) continue;   // config-only rows can't be previewed
     const o = document.createElement('option');
     o.value = p.player_bus_name;
     o.textContent = p.identity + (p.status ? ' (' + p.status + ')' : '');
     sel.appendChild(o);
   }
   // Preserve selection if the player is still present, else fall to Auto.
-  sel.value = players.some(p => p.player_bus_name === want) ? want : '';
+  sel.value = players.some(p => p.live && p.player_bus_name === want) ? want : '';
   if (sel.value !== previewBus) previewBus = sel.value;
 }
 
 function playerRow(p, players) {
   const wrap = document.createElement('div');
   const bus = p ? p.player_bus_name : '';
-  wrap.dataset.bus = bus;
-  if (bus === previewBus) wrap.classList.add('selected');
+  // Only the Auto row and live players participate in preview selection;
+  // config-only rows (default layer, not-running entries) share an empty bus.
+  if (!p || p.live) {
+    wrap.dataset.bus = bus;
+    if (bus === previewBus) wrap.classList.add('selected');
+  }
   const row = document.createElement('div');
   row.className = 'row';
-  const pick = document.createElement('button');
-  pick.className = 'pvpick';
-  pick.textContent = p ? p.identity + (p.status ? ' (' + p.status + ')' : '') : 'Auto (playing player)';
-  pick.onclick = () => setPreview(bus);
-  row.appendChild(pick);
-  if (p) {
-    const panel = overrideEditor('player', p.config_key, p.resolved, p.overrides);
-    panel.hidden = true;
-    const exp = document.createElement('button');
-    exp.className = 'expand'; exp.title = 'Per-player settings';
-    exp.onclick = () => { panel.hidden = !panel.hidden; exp.classList.toggle('open', !panel.hidden); };
-    const sw = document.createElement('label');
-    sw.className = 'switch';
-    const box = document.createElement('input');
-    box.type = 'checkbox';
+
+  // The synthetic "Auto (playing player)" preview row.
+  if (!p) {
+    const pick = document.createElement('button');
+    pick.className = 'pvpick';
+    pick.textContent = 'Auto (playing player)';
+    pick.onclick = () => setPreview('');
+    row.appendChild(pick);
+    wrap.appendChild(row);
+    return wrap;
+  }
+
+  const isDefault = p.config_key === 'default';
+  // Live players are clickable to drive the preview; config-only rows aren't.
+  if (p.live) {
+    const pick = document.createElement('button');
+    pick.className = 'pvpick';
+    pick.textContent = p.identity + (p.status ? ' (' + p.status + ')' : '');
+    pick.onclick = () => setPreview(bus);
+    row.appendChild(pick);
+  } else {
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = p.identity + (isDefault ? '' : ' (not running)');
+    row.appendChild(label);
+  }
+
+  const panel = overrideEditor('player', p.config_key, p.resolved, p.overrides);
+  panel.hidden = true;
+  const exp = document.createElement('button');
+  exp.className = 'expand'; exp.title = 'Per-player settings';
+  exp.onclick = () => { panel.hidden = !panel.hidden; exp.classList.toggle('open', !panel.hidden); };
+
+  // Delete a configured-but-not-running override (never the default layer).
+  if (!isDefault && !p.live) row.appendChild(deleteBtn('player', p.config_key));
+
+  const sw = document.createElement('label');
+  sw.className = 'switch';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  if (isDefault) {
+    // The default layer's meaningful switch is "show unconfigured players".
+    box.checked = !(p.overrides.ignore_unmatched ?? true);
+    box.title = 'Show players with no matching entry';
+    box.onchange = () => patch(['player', 'default', 'ignore_unmatched'], !box.checked);
+  } else {
     box.checked = p.allowed;
     box.onchange = () => patch(['player', p.config_key, 'ignore'], !box.checked);
-    sw.append(box, document.createElement('span'));
-    row.append(exp, sw);
-    wrap.append(row, panel);
-  } else {
-    wrap.appendChild(row);
   }
+  sw.append(box, document.createElement('span'));
+  row.append(exp, sw);
+  wrap.append(row, panel);
   return wrap;
+}
+
+// Trash button that removes an entire [scope.key] table, then refreshes.
+function deleteBtn(scope, key) {
+  const btn = document.createElement('button');
+  btn.className = 'reset'; btn.textContent = '🗑'; btn.title = 'Delete this entry';
+  btn.onclick = async () => {
+    await patch([scope, key], null);
+    if (scope === 'player') { lastPlayersJson = ''; refreshPlayers(); }
+    else refreshWebPlayers();
+  };
+  return btn;
 }
 
 async function refreshWebPlayers() {
@@ -641,36 +710,42 @@ async function refreshWebPlayers() {
 }
 
 function webRow(e) {
+  const isDefault = e.key === 'default';
   const wrap = document.createElement('div');
   const row = document.createElement('div');
   row.className = 'row';
   const title = document.createElement('span');
   title.className = 'label';
-  title.textContent = (e.effective.name || e.key) + (e.bundled ? '' : ' (custom)');
-  const panel = overrideEditor('web_player', e.key, e.effective, e.overrides);
+  title.textContent = isDefault ? 'Unknown / unmatched sites'
+    : (e.effective.name || e.key) + (e.bundled ? '' : ' (custom)');
+
+  // Show the merged patterns as the placeholder for the editable list field.
   const pats = [];
   if (e.effective.match_pattern) pats.push(e.effective.match_pattern);
   if (e.effective.match_patterns) pats.push(...e.effective.match_patterns);
-  if (pats.length) {
-    const tags = document.createElement('div');
-    tags.className = 'tags';
-    for (const p of pats) {
-      const t = document.createElement('span');
-      t.className = 'tag'; t.textContent = p;
-      tags.appendChild(t);
-    }
-    panel.insertBefore(tags, panel.firstChild);
-  }
+  const vals = { ...e.effective, match_patterns: pats };
+  const fields = isDefault ? OVERRIDE_FIELDS : [...OVERRIDE_FIELDS, ...WEB_EXTRA_FIELDS];
+  const panel = overrideEditor('web_player', e.key, vals, e.overrides, fields);
   panel.hidden = true;
+
   const exp = document.createElement('button');
   exp.className = 'expand'; exp.title = 'Per-site settings';
   exp.onclick = () => { panel.hidden = !panel.hidden; exp.classList.toggle('open', !panel.hidden); };
+
+  if (!isDefault && !e.bundled) row.appendChild(deleteBtn('web_player', e.key));
+
   const sw = document.createElement('label');
   sw.className = 'switch';
   const box = document.createElement('input');
   box.type = 'checkbox';
-  box.checked = !e.effective.ignore;   // enabled = not ignored
-  box.onchange = () => patch(['web_player', e.key, 'ignore'], !box.checked);
+  if (isDefault) {
+    box.checked = !(e.effective.ignore_unmatched ?? true);
+    box.title = 'Show browser media from sites with no matching entry';
+    box.onchange = () => patch(['web_player', 'default', 'ignore_unmatched'], !box.checked);
+  } else {
+    box.checked = !e.effective.ignore;   // enabled = not ignored
+    box.onchange = () => patch(['web_player', e.key, 'ignore'], !box.checked);
+  }
   sw.append(box, document.createElement('span'));
   row.append(title, exp, sw);
   wrap.append(row, panel);
@@ -782,9 +857,18 @@ $('webAdd').onclick = async () => {
   const key = $('webNewKey').value.trim();
   const host = $('webNewHost').value.trim();
   if (!key || !host) { toast('Need a key and a host', true); return; }
-  await patch(['web_player', key, 'match_pattern'], host);
+  await patch(['web_player', key, 'match_patterns'], [host]);
   $('webNewKey').value = ''; $('webNewHost').value = '';
   refreshWebPlayers();
+};
+$('playerAdd').onclick = async () => {
+  const key = $('playerNewKey').value.trim();
+  if (!key) { toast('Need a player key', true); return; }
+  // Seed with the (default) enabled state so the entry exists and shows a row
+  // to expand; the user then sets whatever they actually want to override.
+  await patch(['player', key, 'ignore'], false);
+  $('playerNewKey').value = '';
+  lastPlayersJson = ''; refreshPlayers();
 };
 $('rawToml').addEventListener('input', () => rawDirty = true);
 $('rawSave').onclick = saveRaw;

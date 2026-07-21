@@ -131,6 +131,9 @@ struct PlayerEntry {
     player_bus_name: String,
     /// Key for `[player.<config_key>]` overrides in config.toml.
     config_key: String,
+    /// False for the synthetic `default` layer and configured-but-not-running
+    /// entries, so the UI can render them as config-only rows.
+    live: bool,
     allowed: bool,
     status: Option<String>,
     art_url: Option<String>,
@@ -191,6 +194,7 @@ fn collect_players(config_path: &Path) -> Result<Vec<PlayerEntry>, Error> {
             allowed: config.is_player_allowed(&identity, &player_bus_name),
             resolved: config.get_player_config(&identity, &player_bus_name),
             overrides: config.user_player.get(&config_key).cloned().unwrap_or_default(),
+            live: true,
             config_key,
             identity,
             player_bus_name,
@@ -199,7 +203,54 @@ fn collect_players(config_path: &Path) -> Result<Vec<PlayerEntry>, Error> {
             context,
         });
     }
+
+    append_configured_only(&mut entries, &config);
     Ok(entries)
+}
+
+/// Append config-only player rows: the `[player.default]` layer and any
+/// `[player.*]` key (including regex/wildcard patterns) that isn't currently
+/// running. Lets the UI edit every player entry the config allows, not just
+/// whatever happens to be open right now. `default` first, then the rest.
+fn append_configured_only(entries: &mut Vec<PlayerEntry>, config: &config::Config) {
+    let mut offline: Vec<String> = config
+        .user_player
+        .keys()
+        .filter(|k| k.as_str() != "default" && !entries.iter().any(|e| &e.config_key == *k))
+        .cloned()
+        .collect();
+    offline.sort();
+    for key in std::iter::once("default".to_string()).chain(offline) {
+        let is_default = key == "default";
+        entries.push(PlayerEntry {
+            allowed: is_default || config.is_player_allowed(&key, &key),
+            resolved: config.get_player_config(&key, &key),
+            overrides: config.user_player.get(&key).cloned().unwrap_or_default(),
+            live: false,
+            identity: if is_default {
+                "Default (all players)".to_string()
+            } else {
+                key.clone()
+            },
+            player_bus_name: String::new(),
+            status: None,
+            art_url: None,
+            context: empty_context(),
+            config_key: key,
+        });
+    }
+}
+
+/// A blank render context for config-only player rows (no live track).
+fn empty_context() -> RenderContext {
+    RenderContext {
+        player: String::new(),
+        player_bus_name: String::new(),
+        status: None,
+        status_icon: None,
+        volume: None,
+        metadata: MediaMetadata::default(),
+    }
 }
 
 /// One configured web-player site (bundled and/or user-overridden).
@@ -662,6 +713,22 @@ mod tests {
     }
 
     #[test]
+    fn patch_writes_array_value() {
+        // match_patterns and provider order patch arrays; make sure that path
+        // shape round-trips to a TOML array.
+        let path = tmp_config_path("arraypatch.toml");
+        let body = serde_json::json!({
+            "path": ["web_player", "last_fm", "match_patterns"],
+            "value": ["last.fm", "*.last.fm"]
+        })
+        .to_string();
+        let (status, _, _) = route(&Method::Patch, "/api/settings", &body, &path);
+        assert_eq!(status, 204);
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("match_patterns = [\"last.fm\", \"*.last.fm\"]"));
+    }
+
+    #[test]
     fn get_settings_returns_effective_defaults() {
         let (status, ctype, payload) = route(
             &Method::Get,
@@ -727,6 +794,7 @@ mod tests {
             identity: bus.to_string(),
             player_bus_name: bus.to_string(),
             config_key: bus.to_string(),
+            live: true,
             allowed: true,
             status: Some(status.to_string()),
             art_url: None,
@@ -734,6 +802,29 @@ mod tests {
             resolved: PlayerConfig::default(),
             overrides: PlayerConfigLayer::default(),
         }
+    }
+
+    #[test]
+    fn configured_only_adds_default_and_offline_skipping_running() {
+        // A running spotify plus a configured-but-not-running vlc override.
+        // user_player is only populated by the file loader, not parse_config_str.
+        let path = tmp_config_path("configured_only.toml");
+        std::fs::write(
+            &path,
+            "[player.vlc_media_player]\napp_id = \"123\"\n[player.spotify]\nignore = true\n",
+        )
+        .unwrap();
+        let config = config::load_config_from_file(&path).unwrap();
+        let mut entries = vec![fake_entry("spotify", "Playing", Some("x"))];
+        append_configured_only(&mut entries, &config);
+        let keys: Vec<&str> = entries.iter().map(|e| e.config_key.as_str()).collect();
+        // Running spotify stays once (not duplicated), default is added, and the
+        // not-running vlc override shows up as a config-only row.
+        assert_eq!(keys.iter().filter(|k| **k == "spotify").count(), 1);
+        assert!(keys.contains(&"default"));
+        assert!(keys.contains(&"vlc_media_player"));
+        let vlc = entries.iter().find(|e| e.config_key == "vlc_media_player").unwrap();
+        assert!(!vlc.live);
     }
 
     #[test]
