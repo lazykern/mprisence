@@ -7,6 +7,7 @@
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #17181d; color: #e8e8ee; }
   .wrap { max-width: 640px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
   h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
@@ -19,7 +20,7 @@
          padding: .65rem 0; border-top: 1px solid #262835; }
   .row:first-of-type { border-top: 0; }
   .row .label { flex: 1; }
-  .row .hint { display: block; color: #8b8fa3; font-size: .8rem; }
+  .hint { display: block; color: #8b8fa3; font-size: .8rem; }
   .row.stack { flex-direction: column; align-items: stretch; gap: .35rem; }
   input[type=text], input[type=password], input[type=number], select {
     background: #17181d; color: #e8e8ee; border: 1px solid #33354a; border-radius: 6px;
@@ -36,15 +37,25 @@
   .switch input:checked + span::after { transform: translateX(18px); }
   .chips { display: flex; flex-wrap: wrap; gap: .35rem; padding: .3rem 0 .5rem; }
   .chip { background: #2b2d3a; color: #a9c1ff; border: 0; border-radius: 999px;
-          padding: .15rem .6rem; font-size: .75rem; font-family: ui-monospace, monospace;
-          cursor: pointer; }
+          padding: .15rem .6rem; font-size: .75rem; cursor: pointer;
+          max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip .val { color: #8b8fa3; }
   .chip:hover { background: #33364a; }
   .discord { background: #111214; border-radius: 10px; padding: .8rem 1rem; margin: .6rem 0;
              border-left: 4px solid #5865f2; }
   .discord .kind { font-size: .7rem; text-transform: uppercase; color: #8b8fa3;
-                   letter-spacing: .04em; margin-bottom: .3rem; }
+                   letter-spacing: .04em; margin-bottom: .5rem; }
+  .discord .body { display: flex; gap: .8rem; align-items: center; }
+  .discord .art { width: 64px; height: 64px; border-radius: 8px; background: #2b2d3a;
+                  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+                  font-size: 1.6rem; color: #8b8fa3; overflow: hidden; }
+  .discord .art img { width: 100%; height: 100%; object-fit: cover; }
+  .discord .lines { min-width: 0; }
   .discord .l1 { font-weight: 600; }
+  .discord .l1, .discord .l2, .discord .l3 { overflow: hidden; text-overflow: ellipsis;
+                                             white-space: nowrap; }
   .discord .l2, .discord .l3 { color: #b8bccc; font-size: .9rem; }
+  .discord .hl { background: #2b2d4d; border-radius: 3px; }
   .discord .err { color: #ff6b6b; font-size: .85rem; white-space: pre-wrap; }
   .count { color: #8b8fa3; font-size: .72rem; }
   .count.over { color: #ff6b6b; font-weight: 700; }
@@ -73,14 +84,19 @@
     <h2>Now in Discord</h2>
     <div class="discord">
       <div class="kind" id="pvKind">Listening to …</div>
-      <div class="l1" id="pvDetails"></div>
-      <div class="l2" id="pvState"></div>
-      <div class="l3" id="pvLarge"></div>
+      <div class="body">
+        <div class="art" id="pvArt">♪</div>
+        <div class="lines">
+          <div class="l1" id="pvDetails"></div>
+          <div class="l2" id="pvState"></div>
+          <div class="l3" id="pvLarge"></div>
+        </div>
+      </div>
       <div class="err" id="pvError" hidden></div>
     </div>
     <div class="row">
       <span class="label">Preview using
-        <span class="hint">Pick which player's current track drives the preview</span></span>
+        <span class="hint" id="pvSource">Pick which player's current track drives the preview</span></span>
       <select id="player"><option value="">Auto</option></select>
     </div>
   </section>
@@ -137,8 +153,8 @@
     </div>
     <div class="row">
       <span class="label">Update interval
-        <span class="hint">Milliseconds between Discord updates</span></span>
-      <input type="number" id="interval" min="500" step="500">
+        <span class="hint">Seconds between Discord updates</span></span>
+      <input type="number" id="interval" min="0.5" step="0.5">
     </div>
   </section>
 
@@ -156,7 +172,7 @@
       <span class="label">ImgBB<span class="hint">Upload art embedded in local files (needs API key)</span></span>
       <label class="switch"><input type="checkbox" class="provider" value="imgbb"><span></span></label>
     </div>
-    <div class="row">
+    <div class="row" id="imgbbKeyRow" hidden>
       <span class="label">ImgBB API key</span>
       <input type="password" id="imgbbKey" placeholder="not set" autocomplete="off">
     </div>
@@ -164,6 +180,7 @@
 
   <section>
     <h2>Players</h2>
+    <div class="hint" style="padding-bottom:.3rem">Switch a player off to hide it from Discord.</div>
     <div id="playerRows"></div>
     <div id="playersEmpty" hidden>No media players detected. Start one and it appears here.</div>
   </section>
@@ -182,8 +199,12 @@
 const $ = id => document.getElementById(id);
 const TEMPLATE_FIELDS = ['details', 'state', 'large_text', 'small_text'];
 const DISCORD_LIMIT = 128;
-const CHIP_KEYS = ['title', 'artist_display', 'album', 'year', 'duration_display',
-                   'player', 'status', 'status_icon', 'genre_display', 'track_display'];
+const CHIPS = [
+  ['title', 'Title'], ['artist_display', 'Artist'], ['album', 'Album'], ['year', 'Year'],
+  ['duration_display', 'Duration'], ['player', 'Player'], ['status', 'Status'],
+  ['status_icon', 'Status icon'], ['genre_display', 'Genre'], ['track_display', 'Track #'],
+];
+const PREVIEW_LINE = { details: 'pvDetails', state: 'pvState', large_text: 'pvLarge' };
 const ACTIVITY_VERB = { listening: 'Listening to', watching: 'Watching',
                         playing: 'Playing', competing: 'Competing in' };
 let previewTimer = null;
@@ -214,11 +235,16 @@ async function loadSettings() {
   $('useContentType').checked = s.use_content_type;
   $('timeShow').checked = s.time_show;
   $('timeElapsed').checked = s.time_as_elapsed;
-  $('interval').value = s.interval;
+  $('interval').value = s.interval / 1000;
   for (const box of document.querySelectorAll('.provider'))
     box.checked = s.cover_providers.includes(box.value);
   $('imgbbKey').value = s.imgbb_api_key ?? '';
+  syncImgbbRow();
   schedulePreview();
+}
+
+function syncImgbbRow() {
+  $('imgbbKeyRow').hidden = !document.querySelector('.provider[value=imgbb]').checked;
 }
 
 function schedulePreview() {
@@ -232,8 +258,16 @@ async function preview() {
   const p = await (await fetch('/api/preview', { method: 'POST', body: JSON.stringify(body) })).json();
   $('pvError').hidden = p.valid;
   if (!p.valid) { $('pvError').textContent = p.error; return; }
-  $('pvKind').textContent = (ACTIVITY_VERB[$('activityType').value] ?? 'Listening to')
-    + (p.player ? ' — via ' + p.player : '');
+  $('pvKind').textContent = ACTIVITY_VERB[$('activityType').value] ?? 'Listening to';
+  $('pvSource').textContent = 'Previewing ' + (p.player ?? 'sample track');
+  const art = $('pvArt');
+  if (p.art_url) {
+    art.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = p.art_url;
+    img.onerror = () => art.textContent = '♪';
+    art.appendChild(img);
+  } else art.textContent = '♪';
   $('pvDetails').textContent = p.details ?? '';
   $('pvState').textContent = p.state ?? '';
   $('pvLarge').textContent = p.large_text ?? '';
@@ -268,10 +302,6 @@ async function refreshPlayers() {
     const label = document.createElement('span');
     label.className = 'label';
     label.textContent = p.identity;
-    const hint = document.createElement('span');
-    hint.className = 'hint';
-    hint.textContent = 'Show this player in Discord';
-    label.appendChild(hint);
     const sw = document.createElement('label');
     sw.className = 'switch';
     const box = document.createElement('input');
@@ -289,13 +319,18 @@ function renderChips(player) {
   const chips = $('chips');
   chips.innerHTML = '';
   const context = player?.context ?? {};
-  for (const key of CHIP_KEYS) {
+  for (const [key, label] of CHIPS) {
     const value = context[key];
     const button = document.createElement('button');
     button.className = 'chip';
-    button.textContent = '{{' + key + '}}';
-    if (value !== null && value !== undefined && value !== '')
-      button.title = String(value);
+    button.textContent = label;
+    if (value !== null && value !== undefined && value !== '') {
+      const val = document.createElement('span');
+      val.className = 'val';
+      val.textContent = ' · ' + value;
+      button.appendChild(val);
+      button.title = 'Inserts {{' + key + '}}';
+    }
     button.onclick = () => {
       const input = $(lastTemplateFocus);
       input.setRangeText('{{' + key + '}}', input.selectionStart, input.selectionEnd, 'end');
@@ -319,7 +354,13 @@ async function saveRaw() {
 
 for (const f of TEMPLATE_FIELDS) {
   const input = $('t-' + f);
-  input.addEventListener('focus', () => lastTemplateFocus = 't-' + f);
+  input.addEventListener('focus', () => {
+    lastTemplateFocus = 't-' + f;
+    if (PREVIEW_LINE[f]) $(PREVIEW_LINE[f]).classList.add('hl');
+  });
+  input.addEventListener('blur', () => {
+    if (PREVIEW_LINE[f]) $(PREVIEW_LINE[f]).classList.remove('hl');
+  });
   input.addEventListener('input', schedulePreview);
   input.addEventListener('change', () => patch(['template', f], input.value));
 }
@@ -327,10 +368,13 @@ $('activityType').onchange = () => patch(['activity_type', 'default'], $('activi
 $('useContentType').onchange = () => patch(['activity_type', 'use_content_type'], $('useContentType').checked);
 $('timeShow').onchange = () => patch(['time', 'show'], $('timeShow').checked);
 $('timeElapsed').onchange = () => patch(['time', 'as_elapsed'], $('timeElapsed').checked);
-$('interval').onchange = () => patch(['interval'], Number($('interval').value));
+$('interval').onchange = () => patch(['interval'], Math.round(Number($('interval').value) * 1000));
 for (const box of document.querySelectorAll('.provider'))
-  box.onchange = () => patch(['cover', 'provider', 'provider'],
-    [...document.querySelectorAll('.provider')].filter(b => b.checked).map(b => b.value));
+  box.onchange = () => {
+    syncImgbbRow();
+    patch(['cover', 'provider', 'provider'],
+      [...document.querySelectorAll('.provider')].filter(b => b.checked).map(b => b.value));
+  };
 $('imgbbKey').onchange = () => patch(['cover', 'provider', 'imgbb', 'api_key'],
   $('imgbbKey').value || null);
 $('player').onchange = preview;

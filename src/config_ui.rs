@@ -36,6 +36,16 @@ pub fn serve() -> Result<(), Error> {
 
     // ponytail: single-threaded request loop; one local user, trivial data rate.
     for mut request in server.incoming_requests() {
+        // Binary route: cover art proxy (route() only speaks strings).
+        if request.method() == &Method::Get && request.url().starts_with("/api/art?") {
+            let url = request.url().to_string();
+            let _ = match art_bytes(&config_path, &url) {
+                Some(bytes) => request.respond(tiny_http::Response::from_data(bytes)),
+                None => request
+                    .respond(tiny_http::Response::from_data(Vec::new()).with_status_code(404)),
+            };
+            continue;
+        }
         let mut body = String::new();
         let _ = request.as_reader().read_to_string(&mut body);
         let (status, content_type, payload) =
@@ -66,6 +76,40 @@ fn route(
         (Method::Post, "/api/preview") => preview(config_path, body),
         _ => (404, "text/plain", "not found".to_string()),
     }
+}
+
+/// Serve the cover art file a player currently reports as a `file://` URL.
+/// Only paths advertised by a live player are readable — never arbitrary
+/// request-supplied paths.
+fn art_bytes(config_path: &Path, url: &str) -> Option<Vec<u8>> {
+    let bus = url.split_once("player_bus_name=")?.1;
+    let bus = percent_decode(bus.split('&').next().unwrap_or(bus));
+    let entries = collect_players(config_path).ok()?;
+    let art = entries
+        .iter()
+        .find(|e| e.player_bus_name == bus)?
+        .art_url
+        .clone()?;
+    let path = percent_decode(art.strip_prefix("file://")?);
+    std::fs::read(path).ok()
+}
+
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 fn get_config_text(config_path: &Path) -> (u16, &'static str, String) {
@@ -101,6 +145,7 @@ struct PlayerEntry {
     config_key: String,
     allowed: bool,
     status: Option<String>,
+    art_url: Option<String>,
     context: RenderContext,
 }
 
@@ -137,8 +182,12 @@ fn collect_players(config_path: &Path) -> Result<Vec<PlayerEntry>, Error> {
         let status = player
             .get_playback_status()
             .unwrap_or(PlaybackStatus::Stopped);
-        let metadata = player
-            .get_metadata()
+        let mpris_metadata = player.get_metadata().ok();
+        let art_url = mpris_metadata
+            .as_ref()
+            .and_then(|m| m.art_url())
+            .map(String::from);
+        let metadata = mpris_metadata
             .map(|m| MetadataSource::from_mpris_with_override(m, None).to_media_metadata())
             .unwrap_or_default();
         let context = RenderContext::new(&player, status, metadata, None);
@@ -150,6 +199,7 @@ fn collect_players(config_path: &Path) -> Result<Vec<PlayerEntry>, Error> {
             identity,
             player_bus_name,
             status: context.status.clone(),
+            art_url,
             context,
         });
     }
@@ -173,6 +223,7 @@ struct PreviewResponse {
     valid: bool,
     error: Option<String>,
     player: Option<String>,
+    art_url: Option<String>,
     details: Option<String>,
     state: Option<String>,
     large_text: Option<String>,
@@ -209,7 +260,8 @@ fn render_preview(config_path: &Path, request: &PreviewRequest) -> PreviewRespon
             }
         }
     };
-    let (context, player_label) = preview_context(config_path, request.player_bus_name.as_deref());
+    let (context, player_label, art_url) =
+        preview_context(config_path, request.player_bus_name.as_deref());
     let render = |name: &str| {
         Some(
             manager
@@ -221,6 +273,7 @@ fn render_preview(config_path: &Path, request: &PreviewRequest) -> PreviewRespon
         valid: true,
         error: None,
         player: Some(player_label),
+        art_url,
         details: render("details"),
         state: render("state"),
         large_text: render("large_text"),
@@ -229,24 +282,42 @@ fn render_preview(config_path: &Path, request: &PreviewRequest) -> PreviewRespon
 }
 
 /// Pick the requested player, else the first Playing one, else the first
-/// found, else a hardcoded sample so template editing works with no players.
-fn preview_context(config_path: &Path, bus_name: Option<&str>) -> (RenderContext, String) {
+/// found. Falls back to a hardcoded sample when nothing is picked or the
+/// picked player has no current track, so template editing always previews.
+fn preview_context(
+    config_path: &Path,
+    bus_name: Option<&str>,
+) -> (RenderContext, String, Option<String>) {
     if let Ok(entries) = collect_players(config_path) {
-        let chosen = entries
-            .iter()
-            .position(|e| Some(e.player_bus_name.as_str()) == bus_name)
-            .or_else(|| {
-                entries
-                    .iter()
-                    .position(|e| e.status.as_deref() == Some("Playing"))
-            })
-            .or(if entries.is_empty() { None } else { Some(0) });
-        if let Some(index) = chosen {
-            let entry = &entries[index];
-            return (entry.context.clone(), entry.identity.clone());
+        if let Some(entry) = pick_preview_entry(&entries, bus_name) {
+            // file:// art can't load in a browser page; point it at our proxy.
+            let art_url = entry.art_url.as_deref().map(|u| {
+                if u.starts_with("file://") {
+                    format!("/api/art?player_bus_name={}", entry.player_bus_name)
+                } else {
+                    u.to_string()
+                }
+            });
+            return (entry.context.clone(), entry.identity.clone(), art_url);
         }
     }
-    (sample_context(), "Sample".to_string())
+    (sample_context(), "sample track".to_string(), None)
+}
+
+fn pick_preview_entry<'a>(
+    entries: &'a [PlayerEntry],
+    bus_name: Option<&str>,
+) -> Option<&'a PlayerEntry> {
+    entries
+        .iter()
+        .find(|e| Some(e.player_bus_name.as_str()) == bus_name)
+        .or_else(|| {
+            entries
+                .iter()
+                .find(|e| e.status.as_deref() == Some("Playing"))
+        })
+        .or_else(|| entries.first())
+        .filter(|e| e.context.metadata.title.is_some())
 }
 
 fn sample_context() -> RenderContext {
@@ -526,5 +597,38 @@ mod tests {
                 .unwrap();
         let out = manager.render("details", &sample_context()).unwrap();
         assert_eq!(out, "Sample Player - Sample Track");
+    }
+
+    fn fake_entry(bus: &str, status: &str, title: Option<&str>) -> PlayerEntry {
+        let mut context = sample_context();
+        context.status = Some(status.to_string());
+        context.metadata.title = title.map(String::from);
+        PlayerEntry {
+            identity: bus.to_string(),
+            player_bus_name: bus.to_string(),
+            config_key: bus.to_string(),
+            allowed: true,
+            status: Some(status.to_string()),
+            art_url: None,
+            context,
+        }
+    }
+
+    #[test]
+    fn pick_preview_entry_prefers_playing_and_skips_trackless() {
+        let entries = vec![
+            fake_entry("stopped_no_track", "Stopped", None),
+            fake_entry("playing", "Playing", Some("Song")),
+        ];
+        let picked = pick_preview_entry(&entries, None).unwrap();
+        assert_eq!(picked.player_bus_name, "playing");
+
+        // Requested player wins over Playing.
+        let picked = pick_preview_entry(&entries, Some("stopped_no_track"));
+        assert!(picked.is_none(), "trackless pick falls back to sample");
+
+        // No track anywhere: sample fallback.
+        let entries = vec![fake_entry("stopped_no_track", "Stopped", None)];
+        assert!(pick_preview_entry(&entries, None).is_none());
     }
 }
