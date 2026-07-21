@@ -20,10 +20,11 @@ Embedded local web UI, always compiled (no cargo feature gate).
   `127.0.0.1:0` (random free port), prints the URL, opens it with `xdg-open`.
   Localhost only; no auth.
 - UI: one embedded HTML file (`include_str!`), vanilla JS, no build step, no
-  framework. Form fields for common settings + raw TOML pane as the single
-  source of truth. Form edits patch the TOML text client-side; the server only
-  validates and saves whole TOML documents. Unknown/uncommon keys are never
-  touched (schema drift-proof).
+  framework. The raw TOML pane IS the editor (single source of truth); the
+  server only validates and saves whole TOML documents. No client-side TOML
+  patching, no separate form fields — the live preview panel, variable
+  palette, and player list provide the interactive layer. Unknown keys are
+  never touched (schema drift-proof).
 - The running daemon needs no changes and no IPC: the existing `notify` config
   watcher hot-reloads `config.toml` when the UI saves it. The UI server also
   works standalone (daemon not running) — it queries MPRIS directly.
@@ -36,7 +37,7 @@ Embedded local web UI, always compiled (no cargo feature gate).
 | GET | `/api/config` | Raw TOML text of the user's `config.toml` |
 | PUT | `/api/config` | Body = full TOML text. Validate by parsing through the existing figment/schema path; 400 + error message on failure, write file on success |
 | GET | `/api/players` | Current MPRIS players + playback status + render context (see interactivity) |
-| POST | `/api/preview` | Body = `{details, state, large_text, small_text, player_bus_name?}` template strings. Compile + render against the chosen (default: active) player's live metadata. Returns rendered texts or compile/render error |
+| POST | `/api/preview` | Body = `{toml, player_bus_name?}` — the whole candidate TOML from the editor. Parse (defaults merged), compile its templates, render against the chosen (default: active) player's live metadata. Returns rendered texts or parse/compile error. Taking whole TOML kills any client-side TOML patching: the textarea is the single source of truth and preview doubles as live validation |
 
 ## Interactivity (researched capabilities)
 
@@ -91,8 +92,10 @@ the simplest correct option and the data rate is trivial.
 
 - Unit: preview rendering with sample context (reuses existing template test
   patterns); TOML validation round-trip (valid saves, invalid 400s).
-- One integration check: start server on random port, GET `/`, PUT invalid
-  TOML expecting 400, PUT valid TOML expecting file written.
+- Routing tested directly: the request handler is a pure
+  `route(method, url, body, config_path)` function, so GET `/`, 404, PUT
+  invalid TOML (400, file untouched), PUT valid TOML (204, file written) are
+  plain unit tests — no sockets, no flakes.
 
 ## Explicitly out of scope (add when asked)
 
