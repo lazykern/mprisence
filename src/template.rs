@@ -110,8 +110,7 @@ impl TemplateManager {
         Ok(Self { handlebars })
     }
 
-    /// Create a TemplateManager with specified templates for testing
-    #[cfg(test)]
+    /// Create a TemplateManager from raw template strings (tests, config UI preview).
     pub fn new_raw(
         details: &str,
         state: &str,
