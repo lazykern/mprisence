@@ -34,7 +34,10 @@ pub enum Command {
         #[command(subcommand)]
         command: PlayersCommand,
     },
-    Config,
+    Config {
+        #[command(subcommand)]
+        command: Option<ConfigCommand>,
+    },
     Web {
         #[command(subcommand)]
         command: WebCommand,
@@ -43,6 +46,14 @@ pub enum Command {
         #[command(subcommand)]
         command: Option<VersionCommand>,
     },
+}
+
+#[derive(Subcommand)]
+pub enum ConfigCommand {
+    /// Print the resolved configuration (default)
+    Show,
+    /// Open a local web UI for editing the configuration
+    Ui,
 }
 
 #[derive(Subcommand)]
@@ -80,7 +91,7 @@ pub enum VersionCommand {
 
 impl Command {
     pub fn requires_config(&self) -> bool {
-        matches!(self, Command::Players { .. } | Command::Config)
+        matches!(self, Command::Players { .. } | Command::Config { .. })
     }
 
     pub async fn execute(self) -> Result<(), Error> {
@@ -324,164 +335,167 @@ impl Command {
                     }
                 }
             },
-            Command::Config => {
-                let config = get_config();
-                let config_path = config.config_path();
+            Command::Config { command } => match command.unwrap_or(ConfigCommand::Show) {
+                ConfigCommand::Ui => return crate::config_ui::serve(),
+                ConfigCommand::Show => {
+                    let config = get_config();
+                    let config_path = config.config_path();
 
-                println!("\n{} )", config_path.display());
-                println!("{}", create_divider());
+                    println!("\n{} )", config_path.display());
+                    println!("{}", create_divider());
 
-                println!("\nGeneral");
-                print_key_value("interval", format!("{} ms", config.interval()));
-                print_key_value("config_path", config_path.display());
-                print_key_value("allowed_players", format_vector(&config.allowed_players()));
+                    println!("\nGeneral");
+                    print_key_value("interval", format!("{} ms", config.interval()));
+                    print_key_value("config_path", config_path.display());
+                    print_key_value("allowed_players", format_vector(&config.allowed_players()));
 
-                let activity_config = config.activity_type_config();
-                println!("\nActivity");
-                print_key_value(
-                    "default_type",
-                    format_activity_type(Some(activity_config.default)),
-                );
-                print_key_value(
-                    "use_content_type",
-                    format_bool(activity_config.use_content_type),
-                );
+                    let activity_config = config.activity_type_config();
+                    println!("\nActivity");
+                    print_key_value(
+                        "default_type",
+                        format_activity_type(Some(activity_config.default)),
+                    );
+                    print_key_value(
+                        "use_content_type",
+                        format_bool(activity_config.use_content_type),
+                    );
 
-                let time_config = config.time_config();
-                println!("\nTime Display");
-                print_key_value("show_time", format_bool(time_config.show));
-                print_key_value("as_elapsed", format_bool(time_config.as_elapsed));
+                    let time_config = config.time_config();
+                    println!("\nTime Display");
+                    print_key_value("show_time", format_bool(time_config.show));
+                    print_key_value("as_elapsed", format_bool(time_config.as_elapsed));
 
-                let cover_config = config.cover_config();
-                println!("\nCover Art");
-                print_key_value("providers", format_vector(&cover_config.provider.provider));
-                print_key_value(
-                    "imgbb_expiration",
-                    format!("{} s", cover_config.provider.imgbb.expiration),
-                );
-                let key_state = if cover_config.provider.imgbb.api_key.is_some() {
-                    "set"
-                } else {
-                    "not set"
-                };
-                print_key_value("imgbb_api_key", key_state);
-                print_key_value("mb_min_score", cover_config.provider.musicbrainz.min_score);
-                print_key_value("local_search_depth", cover_config.local_search_depth);
-                print_key_value("file_names", format_vector(&cover_config.file_names));
+                    let cover_config = config.cover_config();
+                    println!("\nCover Art");
+                    print_key_value("providers", format_vector(&cover_config.provider.provider));
+                    print_key_value(
+                        "imgbb_expiration",
+                        format!("{} s", cover_config.provider.imgbb.expiration),
+                    );
+                    let key_state = if cover_config.provider.imgbb.api_key.is_some() {
+                        "set"
+                    } else {
+                        "not set"
+                    };
+                    print_key_value("imgbb_api_key", key_state);
+                    print_key_value("mb_min_score", cover_config.provider.musicbrainz.min_score);
+                    print_key_value("local_search_depth", cover_config.local_search_depth);
+                    print_key_value("file_names", format_vector(&cover_config.file_names));
 
-                let template_config = config.template_config();
-                println!("\nTemplates");
-                print_key_value("details", template_config.details.as_ref());
-                print_key_value("state", template_config.state.as_ref());
-                print_key_value("large_text", template_config.large_text.as_ref());
-                print_key_value("small_text", template_config.small_text.as_ref());
+                    let template_config = config.template_config();
+                    println!("\nTemplates");
+                    print_key_value("details", template_config.details.as_ref());
+                    print_key_value("state", template_config.state.as_ref());
+                    print_key_value("large_text", template_config.large_text.as_ref());
+                    print_key_value("small_text", template_config.small_text.as_ref());
 
-                let mut player_configs: Vec<(String, PlayerConfig)> =
-                    config.player_configs().into_iter().collect();
-                player_configs.sort_by(|a, b| compare_player_keys(a.0.as_str(), b.0.as_str()));
+                    let mut player_configs: Vec<(String, PlayerConfig)> =
+                        config.player_configs().into_iter().collect();
+                    player_configs.sort_by(|a, b| compare_player_keys(a.0.as_str(), b.0.as_str()));
 
-                println!("\nOverrides Detail");
-                println!("{}", create_divider());
-                if player_configs.is_empty() {
-                    println!("  (none)");
-                } else {
-                    for (index, (identity, cfg)) in player_configs.iter().enumerate() {
-                        let display = player_config_display_name(identity);
-                        println!("{} {}", player_config_icon(cfg.ignore), display);
-                        if let Some(name) = cfg.name.as_deref() {
-                            print_nested_key_value("name", name, 4);
-                        }
-                        print_nested_key_value("app_id", &cfg.app_id, 4);
-                        print_nested_key_value(
-                            "allow_streaming",
-                            format_bool(cfg.allow_streaming),
-                            4,
-                        );
-                        print_nested_key_value(
-                            "status_display_type",
-                            format_status_display_type(cfg.status_display_type),
-                            4,
-                        );
-                        print_nested_key_value("show_icon", format_bool(cfg.show_icon), 4);
-                        print_nested_key_value("ignore", format_bool(cfg.ignore), 4);
-                        print_nested_key_value("icon", &cfg.icon, 4);
-                        if let Some(activity_type) = cfg.override_activity_type {
-                            print_nested_key_value(
-                                "activity_type",
-                                format_activity_type(Some(activity_type)),
-                                4,
-                            );
-                        }
-
-                        if index + 1 < player_configs.len() {
-                            println!();
-                        }
-                    }
-                }
-
-                let mut web_player_configs: Vec<(String, WebPlayerConfig)> =
-                    config.web_player_configs().into_iter().collect();
-                web_player_configs.sort_by(|a, b| a.0.cmp(&b.0));
-
-                println!("\nWeb Players");
-                println!("{}", create_divider());
-                if web_player_configs.is_empty() {
-                    println!("  (none)");
-                } else {
-                    for (index, (key, cfg)) in web_player_configs.iter().enumerate() {
-                        println!("{} {}", player_config_icon(cfg.ignore), key);
-                        if cfg.match_patterns.len() == 1 {
-                            print_nested_key_value("match_pattern", &cfg.match_patterns[0], 4);
-                        } else if !cfg.match_patterns.is_empty() {
-                            print_nested_key_value(
-                                "match_patterns",
-                                cfg.match_patterns.join(", "),
-                                4,
-                            );
-                        }
-                        if let Some(name) = cfg.name.as_deref() {
-                            print_nested_key_value("name", name, 4);
-                        }
-                        if let Some(app_id) = cfg.app_id.as_deref() {
-                            print_nested_key_value("app_id", app_id, 4);
-                        } else {
-                            print_nested_key_value("app_id", "(inherits from player)", 4);
-                        }
-                        if let Some(icon) = cfg.icon.as_deref() {
-                            print_nested_key_value("icon", icon, 4);
-                        }
-                        if let Some(allow_streaming) = cfg.allow_streaming {
+                    println!("\nOverrides Detail");
+                    println!("{}", create_divider());
+                    if player_configs.is_empty() {
+                        println!("  (none)");
+                    } else {
+                        for (index, (identity, cfg)) in player_configs.iter().enumerate() {
+                            let display = player_config_display_name(identity);
+                            println!("{} {}", player_config_icon(cfg.ignore), display);
+                            if let Some(name) = cfg.name.as_deref() {
+                                print_nested_key_value("name", name, 4);
+                            }
+                            print_nested_key_value("app_id", &cfg.app_id, 4);
                             print_nested_key_value(
                                 "allow_streaming",
-                                format_bool(allow_streaming),
+                                format_bool(cfg.allow_streaming),
                                 4,
                             );
-                        }
-                        if let Some(show_icon) = cfg.show_icon {
-                            print_nested_key_value("show_icon", format_bool(show_icon), 4);
-                        }
-                        print_nested_key_value("ignore", format_bool(cfg.ignore), 4);
-                        if let Some(sdt) = cfg.status_display_type {
                             print_nested_key_value(
                                 "status_display_type",
-                                format_status_display_type(sdt),
+                                format_status_display_type(cfg.status_display_type),
                                 4,
                             );
-                        }
-                        if let Some(activity_type) = cfg.override_activity_type {
-                            print_nested_key_value(
-                                "activity_type",
-                                format_activity_type(Some(activity_type)),
-                                4,
-                            );
-                        }
+                            print_nested_key_value("show_icon", format_bool(cfg.show_icon), 4);
+                            print_nested_key_value("ignore", format_bool(cfg.ignore), 4);
+                            print_nested_key_value("icon", &cfg.icon, 4);
+                            if let Some(activity_type) = cfg.override_activity_type {
+                                print_nested_key_value(
+                                    "activity_type",
+                                    format_activity_type(Some(activity_type)),
+                                    4,
+                                );
+                            }
 
-                        if index + 1 < web_player_configs.len() {
-                            println!();
+                            if index + 1 < player_configs.len() {
+                                println!();
+                            }
+                        }
+                    }
+
+                    let mut web_player_configs: Vec<(String, WebPlayerConfig)> =
+                        config.web_player_configs().into_iter().collect();
+                    web_player_configs.sort_by(|a, b| a.0.cmp(&b.0));
+
+                    println!("\nWeb Players");
+                    println!("{}", create_divider());
+                    if web_player_configs.is_empty() {
+                        println!("  (none)");
+                    } else {
+                        for (index, (key, cfg)) in web_player_configs.iter().enumerate() {
+                            println!("{} {}", player_config_icon(cfg.ignore), key);
+                            if cfg.match_patterns.len() == 1 {
+                                print_nested_key_value("match_pattern", &cfg.match_patterns[0], 4);
+                            } else if !cfg.match_patterns.is_empty() {
+                                print_nested_key_value(
+                                    "match_patterns",
+                                    cfg.match_patterns.join(", "),
+                                    4,
+                                );
+                            }
+                            if let Some(name) = cfg.name.as_deref() {
+                                print_nested_key_value("name", name, 4);
+                            }
+                            if let Some(app_id) = cfg.app_id.as_deref() {
+                                print_nested_key_value("app_id", app_id, 4);
+                            } else {
+                                print_nested_key_value("app_id", "(inherits from player)", 4);
+                            }
+                            if let Some(icon) = cfg.icon.as_deref() {
+                                print_nested_key_value("icon", icon, 4);
+                            }
+                            if let Some(allow_streaming) = cfg.allow_streaming {
+                                print_nested_key_value(
+                                    "allow_streaming",
+                                    format_bool(allow_streaming),
+                                    4,
+                                );
+                            }
+                            if let Some(show_icon) = cfg.show_icon {
+                                print_nested_key_value("show_icon", format_bool(show_icon), 4);
+                            }
+                            print_nested_key_value("ignore", format_bool(cfg.ignore), 4);
+                            if let Some(sdt) = cfg.status_display_type {
+                                print_nested_key_value(
+                                    "status_display_type",
+                                    format_status_display_type(sdt),
+                                    4,
+                                );
+                            }
+                            if let Some(activity_type) = cfg.override_activity_type {
+                                print_nested_key_value(
+                                    "activity_type",
+                                    format_activity_type(Some(activity_type)),
+                                    4,
+                                );
+                            }
+
+                            if index + 1 < web_player_configs.len() {
+                                println!();
+                            }
                         }
                     }
                 }
-            }
+            },
             Command::Web { command } => match command {
                 WebCommand::Install { browser } => crate::web_bridge::install(browser).await,
                 WebCommand::Uninstall { browser } => crate::web_bridge::uninstall(browser).await,

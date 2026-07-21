@@ -17,8 +17,8 @@ const EXAMPLE_CONFIG: &str = include_str!("../config/config.example.toml");
 /// Start the config UI server on a random localhost port and serve forever.
 pub fn serve() -> Result<(), Error> {
     let config_path = config::get_config_path()?;
-    let server = tiny_http::Server::http("127.0.0.1:0")
-        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let server =
+        tiny_http::Server::http("127.0.0.1:0").map_err(|e| std::io::Error::other(e.to_string()))?;
     let addr = server
         .server_addr()
         .to_ip()
@@ -181,16 +181,16 @@ fn render_preview(request: &PreviewRequest) -> PreviewResponse {
         }
     };
     let t = &config.template;
-    let manager =
-        match TemplateManager::new_raw(&t.details, &t.state, &t.large_text, &t.small_text) {
-            Ok(m) => m,
-            Err(e) => {
-                return PreviewResponse {
-                    error: Some(e.to_string()),
-                    ..Default::default()
-                }
+    let manager = match TemplateManager::new_raw(&t.details, &t.state, &t.large_text, &t.small_text)
+    {
+        Ok(m) => m,
+        Err(e) => {
+            return PreviewResponse {
+                error: Some(e.to_string()),
+                ..Default::default()
             }
-        };
+        }
+    };
     let (context, player_label) = preview_context(request.player_bus_name.as_deref());
     let render = |name: &str| {
         Some(
@@ -297,7 +297,12 @@ mod tests {
     #[test]
     fn put_valid_config_is_204_and_written() {
         let path = tmp_config_path("e.toml");
-        let (status, _, _) = route(&Method::Put, "/api/config", "clear_on_pause = true\n", &path);
+        let (status, _, _) = route(
+            &Method::Put,
+            "/api/config",
+            "clear_on_pause = true\n",
+            &path,
+        );
         assert_eq!(status, 204);
         assert!(std::fs::read_to_string(&path)
             .unwrap()
@@ -307,8 +312,12 @@ mod tests {
     #[test]
     fn preview_with_valid_toml_renders() {
         let body = serde_json::json!({ "toml": "", "player_bus_name": null }).to_string();
-        let (status, ctype, payload) =
-            route(&Method::Post, "/api/preview", &body, &tmp_config_path("f.toml"));
+        let (status, ctype, payload) = route(
+            &Method::Post,
+            "/api/preview",
+            &body,
+            &tmp_config_path("f.toml"),
+        );
         assert_eq!(status, 200);
         assert!(ctype.starts_with("application/json"));
         let parsed: serde_json::Value = serde_json::from_str(&payload).unwrap();
@@ -319,8 +328,12 @@ mod tests {
     #[test]
     fn preview_with_invalid_toml_reports_error() {
         let body = serde_json::json!({ "toml": "[template\n" }).to_string();
-        let (_, _, payload) =
-            route(&Method::Post, "/api/preview", &body, &tmp_config_path("g.toml"));
+        let (_, _, payload) = route(
+            &Method::Post,
+            "/api/preview",
+            &body,
+            &tmp_config_path("g.toml"),
+        );
         let parsed: serde_json::Value = serde_json::from_str(&payload).unwrap();
         assert_eq!(parsed["valid"], false);
         assert!(parsed["error"].is_string());
