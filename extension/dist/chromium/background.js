@@ -235,6 +235,53 @@ function setBadge(site, tabId) {
 self.addEventListener("unload", () => {
   nativePort.disconnect();
 });
+var GENERIC_CONTENT_ID = "mprisence-generic-content";
+var GENERIC_PAGEWORLD_ID = "mprisence-generic-pageworld";
+function supportedMatches() {
+  return chrome.runtime.getManifest().content_scripts?.[0]?.matches ?? [];
+}
+async function syncGenericRegistration() {
+  if (!chrome.scripting?.registerContentScripts) return;
+  const enabled = (await chrome.storage.local.get("genericEnabled")).genericEnabled === true;
+  const hasPerm = await chrome.permissions.contains({ origins: ["<all_urls>"] }).catch(() => false);
+  const shouldRun = enabled && hasPerm;
+  const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [GENERIC_CONTENT_ID, GENERIC_PAGEWORLD_ID] }).catch(() => []);
+  try {
+    if (shouldRun && existing.length === 0) {
+      const exclude = supportedMatches();
+      await chrome.scripting.registerContentScripts([
+        {
+          id: GENERIC_CONTENT_ID,
+          matches: ["<all_urls>"],
+          excludeMatches: exclude,
+          js: ["content.js"],
+          runAt: "document_idle"
+        },
+        {
+          id: GENERIC_PAGEWORLD_ID,
+          matches: ["<all_urls>"],
+          excludeMatches: exclude,
+          js: ["page-world.js"],
+          runAt: "document_idle",
+          world: "MAIN"
+        }
+      ]);
+      console.log("[mprisence] generic fallback registered");
+    } else if (!shouldRun && existing.length > 0) {
+      await chrome.scripting.unregisterContentScripts({
+        ids: existing.map((s) => s.id)
+      });
+      console.log("[mprisence] generic fallback unregistered");
+    }
+  } catch (e) {
+    console.warn("[mprisence] generic registration sync failed:", e?.message ?? e);
+  }
+}
+chrome.storage?.onChanged?.addListener((changes, area) => {
+  if (area === "local" && "genericEnabled" in changes) {
+    void syncGenericRegistration();
+  }
+});
 async function init() {
   let extFingerprint;
   try {
@@ -264,7 +311,7 @@ async function init() {
     browser,
     extension_version: chrome.runtime.getManifest().version,
     protocol: PROTOCOL_VERSION,
-    git_sha: true ? "65c2d2f86-dirty" : void 0,
+    git_sha: true ? "a14401a-dirty" : void 0,
     extension_fingerprint: extFingerprint
   });
   chrome.runtime.onMessage.addListener(
@@ -275,5 +322,7 @@ async function init() {
   chrome.tabs?.onRemoved?.addListener((tabId) => {
     sendRemoveForTab(tabId, "tab closed");
   });
+  void syncGenericRegistration();
 }
 init();
+//# sourceMappingURL=background.js.map

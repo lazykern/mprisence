@@ -5,6 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --experimental-strip-types --test 'src/**/*.test.ts'",
     "build:firefox": "node build.mjs firefox",
     "build:chromium": "node build.mjs chromium",
     "build:all": "node build.mjs firefox && node build.mjs chromium",

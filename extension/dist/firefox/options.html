@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>mprisence bridge — options</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font: 14px/1.5 system-ui, sans-serif;
+      max-width: 46rem;
+      margin: 2rem auto;
+      padding: 0 1.25rem;
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 1rem; }
+    .row { display: flex; gap: 0.75rem; align-items: flex-start; margin: 1rem 0; }
+    .row input { margin-top: 0.2rem; width: 1.1rem; height: 1.1rem; }
+    label { font-weight: 600; }
+    .desc { font-weight: 400; opacity: 0.85; margin-top: 0.25rem; }
+    .warn {
+      border-left: 3px solid #d9a500;
+      background: rgba(217, 165, 0, 0.08);
+      padding: 0.6rem 0.85rem;
+      border-radius: 0 4px 4px 0;
+      margin: 0.75rem 0 0 1.85rem;
+    }
+    code { font-family: ui-monospace, monospace; font-size: 0.9em; }
+    .status { margin-left: 1.85rem; opacity: 0.8; font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <h1>mprisence bridge</h1>
+
+  <div class="row">
+    <input type="checkbox" id="generic" />
+    <div>
+      <label for="generic">Generic MPRIS for unsupported sites</label>
+      <div class="desc">
+        Publish a media player for any site with audio/video, using the page's
+        own Media Session data — not just the built-in supported players.
+      </div>
+      <div class="warn">
+        <strong>Enable only if you have disabled your browser's built-in media
+        integration.</strong> Otherwise you will see duplicate players (one from
+        mprisence, one from the browser).
+        <div class="desc" style="margin-top:0.5rem">
+          Firefox: set <code>media.hardwaremediakeys.enabled = false</code> in
+          <code>about:config</code>.<br />
+          Chromium: launch with
+          <code>--disable-features=HardwareMediaKeyHandling,MediaSessionService</code>.
+        </div>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+  </div>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>

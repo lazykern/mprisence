@@ -435,6 +435,74 @@ pub async fn doctor() {
     } else {
         println!("✗ D-Bus session bus: DBUS_SESSION_BUS_ADDRESS not set");
     }
+
+    match scan_competing_mpris().await {
+        Ok(names) if names.is_empty() => {
+            println!("✓ No competing browser MPRIS players detected");
+        }
+        Ok(names) => {
+            println!(
+                "⚠ Competing MPRIS player(s) present alongside mprisence: {}",
+                names.join(", ")
+            );
+            println!("  These publish the SAME media as the bridge → duplicate players.");
+            println!("  Disable the browser's built-in integration to remove duplicates:");
+            println!("    Firefox:  set media.hardwaremediakeys.enabled = false in about:config");
+            println!("    Chromium: launch with --disable-features=HardwareMediaKeyHandling,MediaSessionService");
+            println!("    Plasma:   disable the 'Plasma Integration' browser extension");
+        }
+        Err(e) => println!("⚠ Could not scan D-Bus for competing players: {e}"),
+    }
+}
+
+/// List well-known MPRIS bus names owned by browsers / other integrations that
+/// publish the SAME web media the bridge does (Firefox, Chromium-family, KDE
+/// Plasma Browser Integration). mprisence's own players (`mprisence_*`) and
+/// unrelated players (mpd, etc.) are excluded.
+async fn scan_competing_mpris() -> Result<Vec<String>, String> {
+    use mpris_server::zbus;
+    const PREFIX: &str = "org.mpris.MediaPlayer2.";
+
+    let conn = zbus::Connection::session()
+        .await
+        .map_err(|e| e.to_string())?;
+    let proxy = zbus::fdo::DBusProxy::new(&conn)
+        .await
+        .map_err(|e| e.to_string())?;
+    let names = proxy.list_names().await.map_err(|e| e.to_string())?;
+
+    let mut hits = Vec::new();
+    for name in names {
+        let full = name.as_str();
+        let Some(suffix) = full.strip_prefix(PREFIX) else {
+            continue;
+        };
+        if suffix.starts_with("mprisence_") {
+            continue; // our own players
+        }
+        if is_browser_integration(suffix) {
+            hits.push(full.to_string());
+        }
+    }
+    hits.sort();
+    hits.dedup();
+    Ok(hits)
+}
+
+/// True for MPRIS suffixes belonging to a browser or web-media integration
+/// that mirrors the bridge (not a standalone media app like mpd/vlc).
+fn is_browser_integration(suffix: &str) -> bool {
+    if suffix == "plasma-browser-integration" {
+        return true;
+    }
+    // Browsers expose either a bare name or `<browser>.instanceNNNN`
+    // (Firefox and the Chromium family both use instance suffixes).
+    const BROWSERS: &[&str] = &[
+        "firefox", "chromium", "chrome", "brave", "vivaldi", "edge", "opera",
+    ];
+    BROWSERS
+        .iter()
+        .any(|b| suffix == *b || suffix.starts_with(&format!("{b}.")))
 }
 
 pub async fn debug_fake_player(mpris_name: String) {
@@ -495,4 +563,31 @@ async fn debug_fake_player_inner(mpris_name: String) {
     publisher.publish(Some(&fake_source)).await;
     info!("Fake player published! Check with: playerctl metadata");
     info!("Running...");
+}
+
+#[cfg(test)]
+mod doctor_tests {
+    use super::is_browser_integration;
+
+    #[test]
+    fn flags_browser_and_plasma_integrations() {
+        assert!(is_browser_integration("firefox"));
+        assert!(is_browser_integration("firefox.instance_1_72"));
+        assert!(is_browser_integration("plasma-browser-integration"));
+        assert!(is_browser_integration("chromium.instance12345"));
+        assert!(is_browser_integration("chrome.instance99"));
+        assert!(is_browser_integration("brave.instance1"));
+        assert!(is_browser_integration("edge.instance7"));
+    }
+
+    #[test]
+    fn ignores_standalone_media_apps() {
+        assert!(!is_browser_integration("mpd"));
+        assert!(!is_browser_integration("vlc"));
+        assert!(!is_browser_integration("spotify"));
+        // our own players are filtered before this check, but be safe:
+        assert!(!is_browser_integration("mprisence_web.youtube.pabc"));
+        // substring must not false-match (e.g. a player literally named "chromed")
+        assert!(!is_browser_integration("chromed"));
+    }
 }

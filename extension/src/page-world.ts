@@ -8,6 +8,12 @@
  * Injected as a manifest-declared MAIN-world content script.
  */
 
+import {
+  pickArtwork,
+  isNotificationSound,
+  hasPublishableIdentity,
+} from "./utils/generic-media";
+
 (function () {
   // Prevent double injection
   if ((window as any).__mprisence_page_world) return;
@@ -28,7 +34,15 @@
     host.endsWith(".soundcloud.com") ||
     host.endsWith(".bandcamp.com") ||
     host.endsWith(".tidal.com");
-  if (!supported) return;
+
+  // On an unsupported origin this script is only present because the user
+  // enabled the generic fallback (background dynamically registers it on
+  // <all_urls> minus supported sites). So: supported → rich provider path
+  // below; unsupported → generic collector, then return.
+  if (!supported) {
+    startGenericMode();
+    return;
+  }
 
   /** Debounce utility */
   function debounce<T extends (...args: any[]) => void>(
@@ -323,4 +337,233 @@
   }
   // Also trigger initial YTM check
   checkYtmVideoId();
+
+  // ─── Generic mode (unsupported sites) ────────────────────────
+  //
+  // Runs only when this script was dynamically injected on an
+  // unsupported origin (user enabled the generic fallback). Reads the
+  // page's own Media Session + the active media element, captures the
+  // page's action handlers so Next/Previous can be routed back, and
+  // executes commands relayed from the isolated world.
+  function startGenericMode(): void {
+    // Active element = last one to actually play. Beats a naive
+    // querySelector: catches shadow-DOM / dynamically-added elements and
+    // ignores idle ones. Hook the prototype so we see every play() call.
+    let activeMedia: HTMLMediaElement | null = null;
+
+    function setActive(el: HTMLMediaElement | null): void {
+      activeMedia = el;
+    }
+
+    try {
+      const proto = HTMLMediaElement.prototype;
+      const origPlay = proto.play;
+      proto.play = function (this: HTMLMediaElement) {
+        setActive(this);
+        return origPlay.apply(this, arguments as any);
+      };
+    } catch {
+      // ignore — fall back to event-based detection below
+    }
+
+    // Backup: catch elements that started without our wrapped play()
+    // (autoplay, media-key play) and pick the first present element.
+    document.addEventListener(
+      "play",
+      (e) => {
+        const t = e.target;
+        if (t instanceof HTMLMediaElement) setActive(t);
+      },
+      true
+    );
+    if (!activeMedia) {
+      const existing = document.querySelector<HTMLMediaElement>("video, audio");
+      if (existing) setActive(existing);
+    }
+
+    // ── Capture the page's Media Session action handlers ──
+    // We need to know which actions the page supports (for CanGoNext /
+    // CanGoPrevious) and hold the handler refs so a relayed Next/Previous
+    // can invoke the page's own logic. Play/Pause/Seek go to the element
+    // directly, so we don't depend on handlers for those.
+    const handlers = new Map<string, MediaSessionActionHandler | null>();
+    try {
+      const ms: any = (navigator as any).mediaSession;
+      if (ms?.setActionHandler) {
+        const orig = ms.setActionHandler.bind(ms);
+        ms.setActionHandler = (
+          action: string,
+          handler: MediaSessionActionHandler | null
+        ) => {
+          if (handler) handlers.set(action, handler);
+          else handlers.delete(action);
+          scheduleDispatch();
+          return orig(action, handler);
+        };
+      }
+    } catch {
+      // ignore
+    }
+
+    function faviconUrl(): string | undefined {
+      const links = Array.from(
+        document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]')
+      );
+      let best: string | undefined;
+      let bestArea = -1;
+      for (const l of links) {
+        const area = (() => {
+          const m = /^(\d+)x(\d+)$/i.exec(l.sizes?.value?.trim().split(/\s+/)[0] ?? "");
+          return m ? parseInt(m[1]) * parseInt(m[2]) : 0;
+        })();
+        if (l.href && area > bestArea) {
+          bestArea = area;
+          best = l.href;
+        }
+      }
+      return best;
+    }
+
+    function metaContent(sel: string): string | undefined {
+      const el = document.querySelector<HTMLMetaElement>(sel);
+      const v = el?.content?.trim();
+      return v || undefined;
+    }
+
+    function collectGeneric(keepalive = false): Record<string, any> | null {
+      const media = activeMedia;
+
+      // Ad / notification-sound floor: ignore short finite clips.
+      const durSec = media?.duration ?? NaN;
+      const isNoise = media ? isNotificationSound(durSec) : false;
+      const usableMedia = media && !isNoise ? media : null;
+
+      // Metadata: Media Session first, then page-level fallbacks.
+      let title: string | undefined;
+      let artist: string[] = [];
+      let album: string | undefined;
+      let artUrl: string | undefined;
+
+      const ms: any = (navigator as any).mediaSession;
+      const md = ms?.metadata;
+      if (md) {
+        title = md.title || undefined;
+        artist = md.artist ? [md.artist] : [];
+        album = md.album || undefined;
+        artUrl = resolveArtworkUrl(pickArtwork(md.artwork as any));
+      }
+
+      // Only publish when there's genuine media intent: real usable media,
+      // or the page set its own Media Session. Otherwise this is just a web
+      // page (or a filtered notification sound) and shouldn't be a player.
+      if (!usableMedia && !md) return null;
+
+      if (!title) title = metaContent('meta[property="og:title"]') || document.title || undefined;
+      if (!artUrl) artUrl = metaContent('meta[property="og:image"]') || faviconUrl();
+      if (!album) album = metaContent('meta[property="og:site_name"]');
+
+      if (!hasPublishableIdentity(title, artist)) return null;
+
+      const playback = usableMedia
+        ? {
+            status: usableMedia.paused
+              ? "paused"
+              : usableMedia.ended
+                ? "stopped"
+                : "playing",
+            position_ms: Math.floor((usableMedia.currentTime || 0) * 1000),
+            duration_ms: Number.isFinite(usableMedia.duration)
+              ? Math.floor(usableMedia.duration * 1000)
+              : 0,
+          }
+        : { status: "playing", position_ms: 0, duration_ms: 0 };
+
+      const seekable = !!usableMedia && Number.isFinite(usableMedia.duration);
+      const capabilities = {
+        play_pause: !!usableMedia,
+        next: handlers.has("nexttrack"),
+        previous: handlers.has("previoustrack"),
+        seek: seekable,
+        set_position: seekable,
+      };
+
+      return {
+        type: "media-state",
+        metadata: { title, artist, album, album_artist: [], art_url: artUrl },
+        playback,
+        capabilities,
+        keepalive,
+      };
+    }
+
+    let lastGenericId = "";
+    function scheduleDispatch(force = false): void {
+      const state = collectGeneric(force);
+      if (!state) return;
+      const id = JSON.stringify({
+        t: state.metadata.title,
+        a: state.metadata.artist,
+        l: state.metadata.album,
+        u: state.metadata.art_url,
+        s: state.playback.status,
+        p: Math.floor(state.playback.position_ms / 1000),
+        c: state.capabilities,
+      });
+      if (!force && id === lastGenericId) return;
+      lastGenericId = id;
+      dispatch(state);
+    }
+
+    const onTimeupdate = (() => {
+      let last = 0;
+      return () => {
+        const now = Date.now();
+        if (now - last < 900) return;
+        last = now;
+        scheduleDispatch();
+      };
+    })();
+
+    for (const ev of ["play", "pause", "ended", "loadedmetadata", "durationchange", "ratechange", "seeked"]) {
+      document.addEventListener(ev, () => scheduleDispatch(), true);
+    }
+    document.addEventListener("timeupdate", onTimeupdate, true);
+
+    // Metadata can change with no media event (SPA track switch); poll identity.
+    setInterval(() => scheduleDispatch(), 1000);
+    // Keepalive so the bridge's stale-pruner keeps a paused tab alive.
+    setInterval(() => scheduleDispatch(true), 30_000);
+
+    // ── Command channel: isolated world → here ──
+    window.addEventListener("mprisence-command", ((e: CustomEvent) => {
+      const { command, position_ms } = e.detail || {};
+      const m = activeMedia;
+      switch (command) {
+        case "play_pause":
+          if (m) m.paused ? m.play().catch(() => {}) : m.pause();
+          break;
+        case "play":
+          if (m?.paused) m.play().catch(() => {});
+          break;
+        case "pause":
+          if (m && !m.paused) m.pause();
+          break;
+        case "set_position":
+          if (m && typeof position_ms === "number" && Number.isFinite(position_ms)) {
+            m.currentTime = Math.max(0, position_ms / 1000);
+          }
+          break;
+        case "next":
+          handlers.get("nexttrack")?.({ action: "nexttrack" } as any);
+          break;
+        case "previous":
+          handlers.get("previoustrack")?.({ action: "previoustrack" } as any);
+          break;
+      }
+      // Reflect the new state promptly.
+      scheduleDispatch(true);
+    }) as EventListener);
+
+    scheduleDispatch(true);
+  }
 })();

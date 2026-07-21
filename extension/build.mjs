@@ -63,6 +63,7 @@ const entryPoints = {
   "background": "src/background.ts",
   "content": "src/content.ts",
   "page-world": "src/page-world.ts",
+  "options": "src/options.ts",
 };
 
 async function build() {
@@ -93,6 +94,9 @@ async function build() {
 
     // Write manifest
     writeFileSync(join(outdir, "manifest.json"), JSON.stringify(merged, null, 2));
+
+    // Copy static HTML (options page)
+    copyFileSync(join(__dirname, "src", "options.html"), join(outdir, "options.html"));
 
     // Copy icons
     const iconDir = join(outdir, "icons");

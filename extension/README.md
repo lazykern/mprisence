@@ -100,9 +100,28 @@ Provider registry lives in `src/content.ts`:
 - TIDAL
 - Apple Music
 
-No generic `<video>`/`<audio>` fallback in store v1.
-
 Provider files live in `src/providers/`.
+
+### Generic fallback (unsupported sites)
+
+Opt-in, off by default. Enable it on the extension's options page. It publishes
+a player for any site with `<audio>`/`<video>`, from the page's own Media
+Session (title/artist/album/artwork) plus `og:`/favicon/title fallbacks, with
+play/pause/seek from the element and Next/Previous only when the page
+registered those Media Session action handlers.
+
+Enabling requests the optional `<all_urls>` host permission and dynamically
+registers `content.js` + `page-world.js` on `<all_urls>` minus the supported
+sites above (background `syncGenericRegistration`); disabling unregisters them
+and drops the permission. Collection runs in `page-world.ts`
+(`startGenericMode`) because the isolated world can't read the page's
+`navigator.mediaSession`.
+
+> Enable this only if you have disabled your browser's built-in MPRIS/media
+> integration — otherwise you get duplicate players. Firefox:
+> `media.hardwaremediakeys.enabled = false`. Chromium:
+> `--disable-features=HardwareMediaKeyHandling,MediaSessionService`.
+> `mprisence web doctor` warns when a competing browser player is on the bus.
 
 Provider interface:
 

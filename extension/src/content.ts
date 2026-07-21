@@ -158,7 +158,7 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
       }
     }
 
-    sendUpdate(result);
+    sendUpdate(result, data.keepalive === true);
 
     // Snapshot the fields we preserved so consecutive page-world
     // dispatches (same track) produce no-op dedup.
@@ -392,6 +392,18 @@ try {
             return true; // keep channel open for async response
           }
         }
+        // Generic fallback: no provider matched → this is an unsupported
+        // page running the generic collector. Relay the command to the
+        // page-world script, which owns the active element and handlers.
+        if (!isSupportedPage()) {
+          window.dispatchEvent(
+            new CustomEvent("mprisence-command", {
+              detail: { command: msg.command, position_ms: msg.position_ms },
+            })
+          );
+          sendResponse({ ok: true });
+          return true;
+        }
         sendResponse({ ok: false, error: "no matching provider" });
       }
       return true;
@@ -408,15 +420,21 @@ function isSupportedPage(): boolean {
   return providers.some((p) => p.matches(url));
 }
 
+function sendRemove(): void {
+  if (keepaliveInterval) clearInterval(keepaliveInterval);
+  safeSendMessage({ type: "remove", source_id: `${sourceIdBase}:frame` });
+}
+
 if (isSupportedPage()) {
   startObserving();
   triggerUpdate();
-  window.addEventListener("beforeunload", () => {
-    if (keepaliveInterval) clearInterval(keepaliveInterval);
-    const msg: ExtMessage = {
-      type: "remove",
-      source_id: `${sourceIdBase}:frame`,
-    };
-    safeSendMessage(msg);
-  });
+  window.addEventListener("beforeunload", sendRemove);
+} else {
+  // Generic relay mode. This script only runs on an unsupported page when
+  // the user enabled the generic fallback (background dynamically registers
+  // it). Collection + keepalive are driven by page-world.ts; content just
+  // relays its CustomEvents (listener above) to the bridge and forwards
+  // commands back (listener above). Clean up the source on navigation.
+  window.addEventListener("beforeunload", sendRemove);
+  window.addEventListener("pagehide", sendRemove);
 }

@@ -215,6 +215,72 @@ self.addEventListener("unload", () => {
   nativePort.disconnect();
 });
 
+// ─── Generic fallback: dynamic content-script registration ─────────
+//
+// The generic collector runs on unsupported sites only when the user opts
+// in (options page sets `genericEnabled` + grants the <all_urls> optional
+// permission). We register content.js + page-world.js on <all_urls> minus
+// the statically-matched supported sites, so exactly one instance runs per
+// page. Registration IS the enable-gate: the scripts need no storage checks.
+
+const GENERIC_CONTENT_ID = "mprisence-generic-content";
+const GENERIC_PAGEWORLD_ID = "mprisence-generic-pageworld";
+
+function supportedMatches(): string[] {
+  return chrome.runtime.getManifest().content_scripts?.[0]?.matches ?? [];
+}
+
+async function syncGenericRegistration(): Promise<void> {
+  if (!chrome.scripting?.registerContentScripts) return; // unsupported browser
+  const enabled =
+    (await chrome.storage.local.get("genericEnabled")).genericEnabled === true;
+  const hasPerm = await chrome.permissions
+    .contains({ origins: ["<all_urls>"] })
+    .catch(() => false);
+  const shouldRun = enabled && hasPerm;
+
+  const existing = await chrome.scripting
+    .getRegisteredContentScripts({ ids: [GENERIC_CONTENT_ID, GENERIC_PAGEWORLD_ID] })
+    .catch(() => [] as chrome.scripting.RegisteredContentScript[]);
+
+  try {
+    if (shouldRun && existing.length === 0) {
+      const exclude = supportedMatches();
+      await chrome.scripting.registerContentScripts([
+        {
+          id: GENERIC_CONTENT_ID,
+          matches: ["<all_urls>"],
+          excludeMatches: exclude,
+          js: ["content.js"],
+          runAt: "document_idle",
+        },
+        {
+          id: GENERIC_PAGEWORLD_ID,
+          matches: ["<all_urls>"],
+          excludeMatches: exclude,
+          js: ["page-world.js"],
+          runAt: "document_idle",
+          world: "MAIN",
+        },
+      ]);
+      console.log("[mprisence] generic fallback registered");
+    } else if (!shouldRun && existing.length > 0) {
+      await chrome.scripting.unregisterContentScripts({
+        ids: existing.map((s) => s.id),
+      });
+      console.log("[mprisence] generic fallback unregistered");
+    }
+  } catch (e: any) {
+    console.warn("[mprisence] generic registration sync failed:", e?.message ?? e);
+  }
+}
+
+chrome.storage?.onChanged?.addListener((changes, area) => {
+  if (area === "local" && "genericEnabled" in changes) {
+    void syncGenericRegistration();
+  }
+});
+
 // ─── Init ─────────────────────────────────────────────────────────
 
 async function init(): Promise<void> {
@@ -264,6 +330,10 @@ async function init(): Promise<void> {
   chrome.tabs?.onRemoved?.addListener((tabId) => {
     sendRemoveForTab(tabId, "tab closed");
   });
+
+  // Re-assert generic registration on every startup (registrations persist
+  // across restarts, but the granted permission may have been revoked).
+  void syncGenericRegistration();
 }
 
 init();

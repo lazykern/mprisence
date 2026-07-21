@@ -1,3 +1,39 @@
+// src/utils/generic-media.ts
+function pickArtwork(artwork) {
+  if (!artwork || artwork.length === 0) return void 0;
+  let best;
+  let bestArea = -1;
+  for (const entry of artwork) {
+    if (!entry?.src) continue;
+    const area = artworkArea(entry.sizes);
+    if (area > bestArea) {
+      bestArea = area;
+      best = entry;
+    }
+  }
+  return best?.src;
+}
+function artworkArea(sizes) {
+  if (!sizes) return 0;
+  let max = 0;
+  for (const token of sizes.trim().split(/\s+/)) {
+    if (token.toLowerCase() === "any") return Number.POSITIVE_INFINITY;
+    const m = /^(\d+)x(\d+)$/i.exec(token);
+    if (m) {
+      const area = parseInt(m[1], 10) * parseInt(m[2], 10);
+      if (area > max) max = area;
+    }
+  }
+  return max;
+}
+var NOTIFICATION_SOUND_MAX_SECONDS = 8;
+function isNotificationSound(durationSec) {
+  return Number.isFinite(durationSec) && durationSec > 0 && durationSec < NOTIFICATION_SOUND_MAX_SECONDS;
+}
+function hasPublishableIdentity(title, artist) {
+  return !!(title && title.trim()) || artist.length > 0;
+}
+
 // src/page-world.ts
 (function() {
   if (window.__mprisence_page_world) return;
@@ -13,7 +49,10 @@
   const host = window.location.hostname;
   const origin = window.location.origin;
   const supported = SUPPORTED_ORIGINS.includes(origin) || host.endsWith(".soundcloud.com") || host.endsWith(".bandcamp.com") || host.endsWith(".tidal.com");
-  if (!supported) return;
+  if (!supported) {
+    startGenericMode();
+    return;
+  }
   function debounce(fn, ms) {
     let timer = null;
     return ((...args) => {
@@ -225,4 +264,174 @@
     dispatch(collectState());
   }
   checkYtmVideoId();
+  function startGenericMode() {
+    let activeMedia = null;
+    function setActive(el) {
+      activeMedia = el;
+    }
+    try {
+      const proto = HTMLMediaElement.prototype;
+      const origPlay = proto.play;
+      proto.play = function() {
+        setActive(this);
+        return origPlay.apply(this, arguments);
+      };
+    } catch {
+    }
+    document.addEventListener(
+      "play",
+      (e) => {
+        const t = e.target;
+        if (t instanceof HTMLMediaElement) setActive(t);
+      },
+      true
+    );
+    if (!activeMedia) {
+      const existing = document.querySelector("video, audio");
+      if (existing) setActive(existing);
+    }
+    const handlers = /* @__PURE__ */ new Map();
+    try {
+      const ms = navigator.mediaSession;
+      if (ms?.setActionHandler) {
+        const orig = ms.setActionHandler.bind(ms);
+        ms.setActionHandler = (action, handler) => {
+          if (handler) handlers.set(action, handler);
+          else handlers.delete(action);
+          scheduleDispatch();
+          return orig(action, handler);
+        };
+      }
+    } catch {
+    }
+    function faviconUrl() {
+      const links = Array.from(
+        document.querySelectorAll('link[rel~="icon"]')
+      );
+      let best;
+      let bestArea = -1;
+      for (const l of links) {
+        const area = (() => {
+          const m = /^(\d+)x(\d+)$/i.exec(l.sizes?.value?.trim().split(/\s+/)[0] ?? "");
+          return m ? parseInt(m[1]) * parseInt(m[2]) : 0;
+        })();
+        if (l.href && area > bestArea) {
+          bestArea = area;
+          best = l.href;
+        }
+      }
+      return best;
+    }
+    function metaContent(sel) {
+      const el = document.querySelector(sel);
+      const v = el?.content?.trim();
+      return v || void 0;
+    }
+    function collectGeneric(keepalive = false) {
+      const media = activeMedia;
+      const durSec = media?.duration ?? NaN;
+      const isNoise = media ? isNotificationSound(durSec) : false;
+      const usableMedia = media && !isNoise ? media : null;
+      let title;
+      let artist = [];
+      let album;
+      let artUrl;
+      const ms = navigator.mediaSession;
+      const md = ms?.metadata;
+      if (md) {
+        title = md.title || void 0;
+        artist = md.artist ? [md.artist] : [];
+        album = md.album || void 0;
+        artUrl = resolveArtworkUrl(pickArtwork(md.artwork));
+      }
+      if (!usableMedia && !md) return null;
+      if (!title) title = metaContent('meta[property="og:title"]') || document.title || void 0;
+      if (!artUrl) artUrl = metaContent('meta[property="og:image"]') || faviconUrl();
+      if (!album) album = metaContent('meta[property="og:site_name"]');
+      if (!hasPublishableIdentity(title, artist)) return null;
+      const playback = usableMedia ? {
+        status: usableMedia.paused ? "paused" : usableMedia.ended ? "stopped" : "playing",
+        position_ms: Math.floor((usableMedia.currentTime || 0) * 1e3),
+        duration_ms: Number.isFinite(usableMedia.duration) ? Math.floor(usableMedia.duration * 1e3) : 0
+      } : { status: "playing", position_ms: 0, duration_ms: 0 };
+      const seekable = !!usableMedia && Number.isFinite(usableMedia.duration);
+      const capabilities = {
+        play_pause: !!usableMedia,
+        next: handlers.has("nexttrack"),
+        previous: handlers.has("previoustrack"),
+        seek: seekable,
+        set_position: seekable
+      };
+      return {
+        type: "media-state",
+        metadata: { title, artist, album, album_artist: [], art_url: artUrl },
+        playback,
+        capabilities,
+        keepalive
+      };
+    }
+    let lastGenericId = "";
+    function scheduleDispatch(force = false) {
+      const state = collectGeneric(force);
+      if (!state) return;
+      const id = JSON.stringify({
+        t: state.metadata.title,
+        a: state.metadata.artist,
+        l: state.metadata.album,
+        u: state.metadata.art_url,
+        s: state.playback.status,
+        p: Math.floor(state.playback.position_ms / 1e3),
+        c: state.capabilities
+      });
+      if (!force && id === lastGenericId) return;
+      lastGenericId = id;
+      dispatch(state);
+    }
+    const onTimeupdate = /* @__PURE__ */ (() => {
+      let last = 0;
+      return () => {
+        const now = Date.now();
+        if (now - last < 900) return;
+        last = now;
+        scheduleDispatch();
+      };
+    })();
+    for (const ev of ["play", "pause", "ended", "loadedmetadata", "durationchange", "ratechange", "seeked"]) {
+      document.addEventListener(ev, () => scheduleDispatch(), true);
+    }
+    document.addEventListener("timeupdate", onTimeupdate, true);
+    setInterval(() => scheduleDispatch(), 1e3);
+    setInterval(() => scheduleDispatch(true), 3e4);
+    window.addEventListener("mprisence-command", ((e) => {
+      const { command, position_ms } = e.detail || {};
+      const m = activeMedia;
+      switch (command) {
+        case "play_pause":
+          if (m) m.paused ? m.play().catch(() => {
+          }) : m.pause();
+          break;
+        case "play":
+          if (m?.paused) m.play().catch(() => {
+          });
+          break;
+        case "pause":
+          if (m && !m.paused) m.pause();
+          break;
+        case "set_position":
+          if (m && typeof position_ms === "number" && Number.isFinite(position_ms)) {
+            m.currentTime = Math.max(0, position_ms / 1e3);
+          }
+          break;
+        case "next":
+          handlers.get("nexttrack")?.({ action: "nexttrack" });
+          break;
+        case "previous":
+          handlers.get("previoustrack")?.({ action: "previoustrack" });
+          break;
+      }
+      scheduleDispatch(true);
+    }));
+    scheduleDispatch(true);
+  }
 })();
+//# sourceMappingURL=page-world.js.map

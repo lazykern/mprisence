@@ -1129,7 +1129,7 @@ window.addEventListener("mprisence-media-state", ((event) => {
         result.canonicalUrl = lastCanonicalUrlPageWorld;
       }
     }
-    sendUpdate(result);
+    sendUpdate(result, data.keepalive === true);
     lastPageWorldMeta = {
       title: result.metadata.title ?? "",
       artist: result.metadata.artist.join(","),
@@ -1277,6 +1277,15 @@ try {
             return true;
           }
         }
+        if (!isSupportedPage()) {
+          window.dispatchEvent(
+            new CustomEvent("mprisence-command", {
+              detail: { command: msg.command, position_ms: msg.position_ms }
+            })
+          );
+          sendResponse({ ok: true });
+          return true;
+        }
         sendResponse({ ok: false, error: "no matching provider" });
       }
       return true;
@@ -1289,16 +1298,16 @@ function isSupportedPage() {
   const url = new URL(window.location.href);
   return providers.some((p) => p.matches(url));
 }
+function sendRemove() {
+  if (keepaliveInterval) clearInterval(keepaliveInterval);
+  safeSendMessage({ type: "remove", source_id: `${sourceIdBase}:frame` });
+}
 if (isSupportedPage()) {
   startObserving();
   triggerUpdate();
-  window.addEventListener("beforeunload", () => {
-    if (keepaliveInterval) clearInterval(keepaliveInterval);
-    const msg = {
-      type: "remove",
-      source_id: `${sourceIdBase}:frame`
-    };
-    safeSendMessage(msg);
-  });
+  window.addEventListener("beforeunload", sendRemove);
+} else {
+  window.addEventListener("beforeunload", sendRemove);
+  window.addEventListener("pagehide", sendRemove);
 }
 //# sourceMappingURL=content.js.map
