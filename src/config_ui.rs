@@ -4,7 +4,8 @@ use mpris::{PlaybackStatus, PlayerFinder};
 use serde::{Deserialize, Serialize};
 use tiny_http::Method;
 
-use crate::config::{self, ConfigManager};
+use crate::config::schema::{PlayerConfig, PlayerConfigLayer, WebPlayerConfigLayer};
+use crate::config::{self};
 use crate::error::Error;
 use crate::metadata::{MediaMetadata, MetadataSource};
 use crate::player::{canonical_player_bus_name, is_playerctld_no_active_error};
@@ -73,6 +74,7 @@ fn route(
         (Method::Get, "/api/settings") => get_settings(config_path),
         (Method::Patch, "/api/settings") => patch_settings(config_path, body),
         (Method::Get, "/api/players") => list_players(config_path),
+        (Method::Get, "/api/web_players") => list_web_players(config_path),
         (Method::Post, "/api/preview") => preview(config_path, body),
         _ => (404, "text/plain", "not found".to_string()),
     }
@@ -82,34 +84,20 @@ fn route(
 /// Only paths advertised by a live player are readable — never arbitrary
 /// request-supplied paths.
 fn art_bytes(config_path: &Path, url: &str) -> Option<Vec<u8>> {
-    let bus = url.split_once("player_bus_name=")?.1;
-    let bus = percent_decode(bus.split('&').next().unwrap_or(bus));
+    let parsed = url::Url::parse(&format!("http://localhost{url}")).ok()?;
+    let bus = parsed
+        .query_pairs()
+        .find(|(k, _)| k == "player_bus_name")?
+        .1
+        .into_owned();
     let entries = collect_players(config_path).ok()?;
     let art = entries
         .iter()
         .find(|e| e.player_bus_name == bus)?
         .art_url
         .clone()?;
-    let path = percent_decode(art.strip_prefix("file://")?);
+    let path = url::Url::parse(&art).ok()?.to_file_path().ok()?;
     std::fs::read(path).ok()
-}
-
-fn percent_decode(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(b);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 fn get_config_text(config_path: &Path) -> (u16, &'static str, String) {
@@ -147,6 +135,11 @@ struct PlayerEntry {
     status: Option<String>,
     art_url: Option<String>,
     context: RenderContext,
+    /// Effective per-player config the daemon uses (defaults + overrides).
+    resolved: PlayerConfig,
+    /// The user's explicit `[player.<config_key>]` layer, so the UI knows
+    /// which fields are overridden (and can show a per-field reset).
+    overrides: PlayerConfigLayer,
 }
 
 /// Effective config loaded from disk (defaults if the file is missing/broken).
@@ -168,7 +161,7 @@ fn list_players(config_path: &Path) -> (u16, &'static str, String) {
 }
 
 fn collect_players(config_path: &Path) -> Result<Vec<PlayerEntry>, Error> {
-    let manager = ConfigManager::new_with_config(effective_config(config_path));
+    let config = effective_config(config_path);
     let mut finder = PlayerFinder::new()?;
     finder.set_player_timeout_ms(2000);
     let mut entries = Vec::new();
@@ -193,9 +186,12 @@ fn collect_players(config_path: &Path) -> Result<Vec<PlayerEntry>, Error> {
         let context = RenderContext::new(&player, status, metadata, None);
         let identity = player.identity().to_string();
         let player_bus_name = canonical_player_bus_name(player.bus_name());
+        let config_key = normalize_player_identity(&identity);
         entries.push(PlayerEntry {
-            config_key: normalize_player_identity(&identity),
-            allowed: manager.is_player_allowed(&identity, &player_bus_name),
+            allowed: config.is_player_allowed(&identity, &player_bus_name),
+            resolved: config.get_player_config(&identity, &player_bus_name),
+            overrides: config.user_player.get(&config_key).cloned().unwrap_or_default(),
+            config_key,
             identity,
             player_bus_name,
             status: context.status.clone(),
@@ -204,6 +200,46 @@ fn collect_players(config_path: &Path) -> Result<Vec<PlayerEntry>, Error> {
         });
     }
     Ok(entries)
+}
+
+/// One configured web-player site (bundled and/or user-overridden).
+#[derive(Serialize)]
+struct WebPlayerEntry {
+    /// Key for `[web_player.<key>]` in config.toml.
+    key: String,
+    /// True if this key ships in the bundled defaults.
+    bundled: bool,
+    /// Merged (effective) layer the daemon matches against.
+    effective: WebPlayerConfigLayer,
+    /// The user's explicit `[web_player.<key>]` layer, for per-field reset.
+    overrides: WebPlayerConfigLayer,
+}
+
+/// List every configured web player (bundled defaults merged with user
+/// overrides). Sorted with `default` first, then alphabetically.
+fn list_web_players(config_path: &Path) -> (u16, &'static str, String) {
+    let config = effective_config(config_path);
+    let mut keys: Vec<&String> = config.merged_web_player.keys().collect();
+    keys.sort_by(|a, b| match (a.as_str(), b.as_str()) {
+        ("default", "default") => std::cmp::Ordering::Equal,
+        ("default", _) => std::cmp::Ordering::Less,
+        (_, "default") => std::cmp::Ordering::Greater,
+        _ => a.cmp(b),
+    });
+    let entries: Vec<WebPlayerEntry> = keys
+        .into_iter()
+        .map(|key| WebPlayerEntry {
+            bundled: config.bundled_web_player.contains_key(key),
+            effective: config.merged_web_player.get(key).cloned().unwrap_or_default(),
+            overrides: config.user_web_player.get(key).cloned().unwrap_or_default(),
+            key: key.clone(),
+        })
+        .collect();
+    (
+        200,
+        "application/json",
+        serde_json::to_string(&entries).expect("serializable web players"),
+    )
 }
 
 /// Template overrides for as-you-type preview; missing fields fall back to
@@ -220,14 +256,18 @@ struct PreviewRequest {
 
 #[derive(Serialize, Default)]
 struct PreviewResponse {
-    valid: bool,
     error: Option<String>,
     player: Option<String>,
+    /// Playback status of the previewed player ("Playing"/"Paused"/"Stopped"),
+    /// so the UI can flag when a preview isn't actually live in Discord.
+    status: Option<String>,
     art_url: Option<String>,
     details: Option<String>,
     state: Option<String>,
     large_text: Option<String>,
     small_text: Option<String>,
+    status_icon: Option<String>,
+    duration: Option<String>,
 }
 
 fn preview(config_path: &Path, body: &str) -> (u16, &'static str, String) {
@@ -270,14 +310,16 @@ fn render_preview(config_path: &Path, request: &PreviewRequest) -> PreviewRespon
         )
     };
     PreviewResponse {
-        valid: true,
         error: None,
         player: Some(player_label),
+        status: context.status.clone(),
         art_url,
         details: render("details"),
         state: render("state"),
         large_text: render("large_text"),
         small_text: render("small_text"),
+        status_icon: context.status_icon.clone(),
+        duration: context.metadata.duration_display.clone(),
     }
 }
 
@@ -344,6 +386,9 @@ fn sample_context() -> RenderContext {
 #[derive(Serialize)]
 struct Settings {
     interval: u64,
+    event_driven: bool,
+    fallback_poll_interval: u64,
+    allowed_players: Vec<String>,
     activity_type: String,
     use_content_type: bool,
     time_show: bool,
@@ -353,13 +398,34 @@ struct Settings {
     large_text: String,
     small_text: String,
     cover_providers: Vec<String>,
+    cover_file_names: Vec<String>,
+    cover_local_search_depth: usize,
+    musicbrainz_min_score: u8,
     imgbb_api_key: Option<String>,
+    imgbb_expiration: u64,
+    catbox_user_hash: Option<String>,
+    catbox_use_litter: bool,
+    catbox_litter_hours: u8,
+    /// Default template strings, so the UI can show a per-field reset.
+    defaults: TemplateDefaults,
+}
+
+#[derive(Serialize)]
+struct TemplateDefaults {
+    details: String,
+    state: String,
+    large_text: String,
+    small_text: String,
 }
 
 fn get_settings(config_path: &Path) -> (u16, &'static str, String) {
     let config = effective_config(config_path);
+    let default = config::parse_config_str("").expect("bundled default config is valid");
     let settings = Settings {
         interval: config.interval,
+        event_driven: config.event_driven,
+        fallback_poll_interval: config.fallback_poll_interval,
+        allowed_players: config.allowed_players.clone(),
         activity_type: format!("{:?}", config.activity_type.default).to_lowercase(),
         use_content_type: config.activity_type.use_content_type,
         time_show: config.time.show,
@@ -369,7 +435,20 @@ fn get_settings(config_path: &Path) -> (u16, &'static str, String) {
         large_text: config.template.large_text.to_string(),
         small_text: config.template.small_text.to_string(),
         cover_providers: config.cover.provider.provider.clone(),
+        cover_file_names: config.cover.file_names.clone(),
+        cover_local_search_depth: config.cover.local_search_depth,
+        musicbrainz_min_score: config.cover.provider.musicbrainz.min_score,
         imgbb_api_key: config.cover.provider.imgbb.api_key.clone(),
+        imgbb_expiration: config.cover.provider.imgbb.expiration,
+        catbox_user_hash: config.cover.provider.catbox.user_hash.clone(),
+        catbox_use_litter: config.cover.provider.catbox.use_litter,
+        catbox_litter_hours: config.cover.provider.catbox.litter_hours,
+        defaults: TemplateDefaults {
+            details: default.template.details.to_string(),
+            state: default.template.state.to_string(),
+            large_text: default.template.large_text.to_string(),
+            small_text: default.template.small_text.to_string(),
+        },
     };
     (
         200,
@@ -523,7 +602,7 @@ mod tests {
         assert_eq!(status, 200);
         assert!(ctype.starts_with("application/json"));
         let parsed: serde_json::Value = serde_json::from_str(&payload).unwrap();
-        assert_eq!(parsed["valid"], true);
+        assert!(parsed["error"].is_null());
         assert!(parsed["details"].is_string());
     }
 
@@ -537,8 +616,49 @@ mod tests {
             &tmp_config_path("g.toml"),
         );
         let parsed: serde_json::Value = serde_json::from_str(&payload).unwrap();
-        assert_eq!(parsed["valid"], false);
         assert!(parsed["error"].is_string());
+    }
+
+    #[test]
+    fn get_settings_exposes_extended_fields() {
+        let (status, _, payload) =
+            route(&Method::Get, "/api/settings", "", &tmp_config_path("set2.toml"));
+        assert_eq!(status, 200);
+        let p: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        assert!(p["event_driven"].is_boolean());
+        assert!(p["fallback_poll_interval"].is_u64());
+        assert!(p["allowed_players"].is_array());
+        assert!(p["cover_file_names"].is_array());
+        assert!(p["musicbrainz_min_score"].is_u64());
+        assert!(p["catbox_use_litter"].is_boolean());
+        assert!(p["catbox_litter_hours"].is_u64());
+        assert!(p["imgbb_expiration"].is_u64());
+    }
+
+    #[test]
+    fn web_players_lists_bundled_sites() {
+        let (status, ctype, payload) =
+            route(&Method::Get, "/api/web_players", "", &tmp_config_path("web.toml"));
+        assert_eq!(status, 200);
+        assert!(ctype.starts_with("application/json"));
+        let list: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        let arr = list.as_array().unwrap();
+        assert!(!arr.is_empty(), "bundled web players should be listed");
+        assert!(arr.iter().any(|e| e["key"] == "youtube"));
+        assert!(arr.iter().any(|e| e["bundled"] == true));
+    }
+
+    #[test]
+    fn patch_web_player_writes_nested_key() {
+        let path = tmp_config_path("webpatch.toml");
+        let body =
+            serde_json::json!({ "path": ["web_player", "youtube", "ignore"], "value": false })
+                .to_string();
+        let (status, _, _) = route(&Method::Patch, "/api/settings", &body, &path);
+        assert_eq!(status, 204);
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("[web_player.youtube]"));
+        assert!(saved.contains("ignore = false"));
     }
 
     #[test]
@@ -611,6 +731,8 @@ mod tests {
             status: Some(status.to_string()),
             art_url: None,
             context,
+            resolved: PlayerConfig::default(),
+            overrides: PlayerConfigLayer::default(),
         }
     }
 

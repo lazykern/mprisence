@@ -46,17 +46,36 @@
   .discord .kind { font-size: .7rem; text-transform: uppercase; color: #8b8fa3;
                    letter-spacing: .04em; margin-bottom: .5rem; }
   .discord .body { display: flex; gap: .8rem; align-items: center; }
-  .discord .art { width: 64px; height: 64px; border-radius: 8px; background: #2b2d3a;
-                  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-                  font-size: 1.6rem; color: #8b8fa3; overflow: hidden; }
-  .discord .art img { width: 100%; height: 100%; object-fit: cover; }
-  .discord .lines { min-width: 0; }
+  .discord .art { position: relative; width: 64px; height: 64px; border-radius: 8px;
+                  background: #2b2d3a center / cover no-repeat; flex-shrink: 0; display: flex;
+                  align-items: center; justify-content: center; font-size: 1.6rem; color: #8b8fa3; }
+  .discord .badge { position: absolute; right: -5px; bottom: -5px; width: 22px; height: 22px;
+                    border-radius: 50%; background: #1f2129; border: 2px solid #111214;
+                    display: flex; align-items: center; justify-content: center; font-size: .7rem; }
+  .discord .lines { min-width: 0; flex: 1; }
   .discord .l1 { font-weight: 600; }
   .discord .l1, .discord .l2, .discord .l3 { overflow: hidden; text-overflow: ellipsis;
                                              white-space: nowrap; }
   .discord .l2, .discord .l3 { color: #b8bccc; font-size: .9rem; }
+  .discord .bar { margin-top: .45rem; }
+  .discord .track { height: 4px; background: #3a3d4d; border-radius: 2px; overflow: hidden; }
+  .discord .fill { height: 100%; width: 0; background: #b8bccc; }
+  .discord .times { display: flex; justify-content: space-between; color: #8b8fa3;
+                    font-size: .7rem; margin-top: .2rem; }
   .discord .hl { background: #2b2d4d; border-radius: 3px; }
   .discord .err { color: #ff6b6b; font-size: .85rem; white-space: pre-wrap; }
+  .pvsource { color: #8b8fa3; font-size: .78rem; margin: .1rem 0 .2rem .2rem; }
+  .reset { background: none; border: 0; color: #8b8fa3; cursor: pointer; font-size: .9rem;
+           padding: 0 .2rem; line-height: 1; }
+  .reset:hover { color: #e8e8ee; }
+  .pvpick { flex: 1; text-align: left; background: none; border: 0; color: inherit; font: inherit;
+            cursor: pointer; padding: 0; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; }
+  .pvpick:hover { color: #a9c1ff; }
+  .selected .pvpick { color: #a9c1ff; font-weight: 600; }
+  .selected .pvpick::before { content: "▸ "; }
+  #offline { background: #5c2330; color: #ffd7dd; padding: .55rem 1rem; border-radius: 8px;
+             margin-bottom: 1rem; font-size: .85rem; }
   .count { color: #8b8fa3; font-size: .72rem; }
   .count.over { color: #ff6b6b; font-weight: 700; }
   #toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
@@ -73,53 +92,95 @@
   .advBar button { background: #5865f2; color: #fff; border: 0; border-radius: 6px;
                    padding: .4rem 1rem; font-weight: 600; cursor: pointer; }
   #playersEmpty { color: #8b8fa3; padding: .65rem 0; }
+  .warn { color: #ffb454; font-size: .78rem; padding: .2rem 0; }
+  .tags { display: flex; flex-wrap: wrap; gap: .3rem; padding: .1rem 0 .3rem; }
+  .tag { background: #2b2d3a; color: #8b8fa3; border-radius: 4px; padding: .05rem .4rem;
+         font-size: .72rem; font-family: ui-monospace, monospace; }
+  .ovpanel { padding: .1rem 0 .5rem 1.2rem; border-left: 2px solid #2b2d3a; margin: 0 0 .4rem; }
+  .ovrow { display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+           padding: .3rem 0; }
+  .ovrow .lbl { color: #b8bccc; font-size: .82rem; flex-shrink: 0; }
+  .ovrow.stack { flex-direction: column; align-items: stretch; gap: .2rem; }
+  .ovrow input[type=text], .ovrow input[type=url] { width: 100%; }
+  .ovrow select { min-width: 8rem; }
+  .expand { background: none; border: 0; color: #8b8fa3; cursor: pointer; font-size: .85rem;
+            padding: 0 .3rem; flex-shrink: 0; }
+  .expand:hover { color: #e8e8ee; }
+  .expand::before { content: "▸"; display: inline-block; transition: transform .12s; }
+  .expand.open::before { transform: rotate(90deg); }
+  .ordbtn { background: #2b2d3a; border: 0; color: #a9c1ff; border-radius: 4px; cursor: pointer;
+            width: 1.5rem; height: 1.5rem; font-size: .8rem; }
+  .ordbtn:disabled { color: #4a4d5d; cursor: default; }
+  .provline { display: flex; align-items: center; gap: .4rem; padding: .3rem 0;
+              border-top: 1px solid #262835; }
+  .provline:first-child { border-top: 0; }
+  .provline .pname { flex: 1; }
+  .addweb { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; padding: .5rem 0 .2rem; }
+  .addweb input { flex: 1; min-width: 7rem; }
+  .addweb button { background: #5865f2; color: #fff; border: 0; border-radius: 6px;
+                   padding: .4rem .9rem; font-weight: 600; cursor: pointer; }
+  textarea.list { width: 100%; height: 4.5rem; resize: vertical; background: #17181d; color: #e8e8ee;
+                  border: 1px solid #33354a; border-radius: 6px; padding: .5rem;
+                  font: 12.5px/1.5 ui-monospace, monospace; }
 </style>
 </head>
 <body>
 <div class="wrap">
+  <div id="offline" hidden>mprisence isn't responding — is it still running in your terminal?</div>
   <h1>mprisence</h1>
-  <div class="sub">Changes apply instantly — no save button. Discord updates within a couple of seconds.</div>
+  <div class="sub">Saved and applied as you type. No save button.</div>
 
   <section>
-    <h2>Now in Discord</h2>
+    <h2 id="pvHeader">Now in Discord</h2>
+    <div class="row" style="padding-top:.4rem">
+      <span class="label">Preview player</span>
+      <select id="pvPlayer"><option value="">Auto (playing player)</option></select>
+    </div>
     <div class="discord">
       <div class="kind" id="pvKind">Listening to …</div>
       <div class="body">
-        <div class="art" id="pvArt">♪</div>
+        <div class="art" id="pvArt"><span id="pvGlyph">♪</span><span class="badge" id="pvBadge" hidden></span></div>
         <div class="lines">
           <div class="l1" id="pvDetails"></div>
           <div class="l2" id="pvState"></div>
           <div class="l3" id="pvLarge"></div>
+          <div class="bar" id="pvBar" hidden>
+            <div class="track"><div class="fill"></div></div>
+            <div class="times"><span>0:00</span><span id="pvDuration"></span></div>
+          </div>
         </div>
       </div>
       <div class="err" id="pvError" hidden></div>
     </div>
-    <div class="row">
-      <span class="label">Preview using
-        <span class="hint" id="pvSource">Pick which player's current track drives the preview</span></span>
-      <select id="player"><option value="">Auto</option></select>
-    </div>
+    <div class="pvsource" id="pvSource">Previewing …</div>
+    <div class="warn" id="pvNotLive" hidden>Preview only. This player is stopped, not live in Discord.</div>
   </section>
 
   <section>
     <h2>Status text</h2>
+    <div class="hint" style="padding:.2rem 0 .1rem">Click a value to insert it into the last field you edited.</div>
     <div class="chips" id="chips"></div>
     <div class="row stack">
-      <span class="label">Line 1 <span class="count" id="c-details"></span></span>
+      <span class="label">Line 1 <span class="count" id="c-details"></span>
+        <button class="reset" id="r-details" title="Reset to default" hidden>↺</button></span>
       <input type="text" id="t-details" spellcheck="false">
     </div>
     <div class="row stack">
-      <span class="label">Line 2 <span class="count" id="c-state"></span></span>
+      <span class="label">Line 2 <span class="count" id="c-state"></span>
+        <button class="reset" id="r-state" title="Reset to default" hidden>↺</button></span>
       <input type="text" id="t-state" spellcheck="false">
     </div>
     <div class="row stack">
-      <span class="label">Cover art hover text <span class="count" id="c-large_text"></span></span>
+      <span class="label">Cover art hover text <span class="count" id="c-large_text"></span>
+        <button class="reset" id="r-large_text" title="Reset to default" hidden>↺</button></span>
       <input type="text" id="t-large_text" spellcheck="false">
     </div>
     <div class="row stack">
-      <span class="label">Small icon hover text <span class="count" id="c-small_text"></span></span>
+      <span class="label">Small icon hover text <span class="count" id="c-small_text"></span>
+        <button class="reset" id="r-small_text" title="Reset to default" hidden>↺</button></span>
       <input type="text" id="t-small_text" spellcheck="false">
     </div>
+    <div class="hint" style="padding:0 0 .3rem">Small icon text only shows when a player has "Show player icon" on (expand a player below).</div>
   </section>
 
   <section>
@@ -151,38 +212,83 @@
       <span class="label">Count up (elapsed) instead of down (remaining)</span>
       <label class="switch"><input type="checkbox" id="timeElapsed"><span></span></label>
     </div>
+  </section>
+
+  <section>
+    <h2>Updates &amp; discovery</h2>
     <div class="row">
-      <span class="label">Update interval
-        <span class="hint">Seconds between Discord updates</span></span>
+      <span class="label">Event-driven mode
+        <span class="hint">React to MPRIS signals live. Off = poll on a fixed interval. Restart mprisence to apply this one.</span></span>
+      <label class="switch"><input type="checkbox" id="eventDriven"><span></span></label>
+    </div>
+    <div class="row">
+      <span class="label">Rediscover interval
+        <span class="hint">Seconds between scans for new players (event-driven mode)</span></span>
+      <input type="number" id="fallbackInterval" min="1" step="1">
+    </div>
+    <div class="row">
+      <span class="label">Poll interval
+        <span class="hint">Seconds between updates when event-driven is off</span></span>
       <input type="number" id="interval" min="0.5" step="0.5">
+    </div>
+    <div class="row stack">
+      <span class="label">Allowed players
+        <span class="hint">One pattern per line — identity, wildcard (*mpd*), or re:regex. Empty = allow all.</span></span>
+      <textarea class="list" id="allowedPlayers" spellcheck="false"></textarea>
     </div>
   </section>
 
   <section>
     <h2>Cover art</h2>
-    <div class="row">
-      <span class="label">MusicBrainz<span class="hint">Look up album art online</span></span>
-      <label class="switch"><input type="checkbox" class="provider" value="musicbrainz"><span></span></label>
-    </div>
-    <div class="row">
-      <span class="label">Catbox<span class="hint">Upload art embedded in local files</span></span>
-      <label class="switch"><input type="checkbox" class="provider" value="catbox"><span></span></label>
-    </div>
-    <div class="row">
-      <span class="label">ImgBB<span class="hint">Upload art embedded in local files (needs API key)</span></span>
-      <label class="switch"><input type="checkbox" class="provider" value="imgbb"><span></span></label>
-    </div>
+    <div class="hint" style="padding:.2rem 0 .1rem">Sources tried top to bottom. Toggle to enable, arrows to reorder.</div>
+    <div id="providerList"></div>
     <div class="row" id="imgbbKeyRow" hidden>
       <span class="label">ImgBB API key</span>
       <input type="password" id="imgbbKey" placeholder="not set" autocomplete="off">
     </div>
+    <div class="warn" id="imgbbWarn" hidden>ImgBB is enabled but has no API key, so it's skipped.</div>
+    <details>
+      <summary>Cover art details</summary>
+      <div class="ovpanel">
+        <div class="ovrow"><span class="lbl">MusicBrainz min score
+          <span class="hint">0–100; higher = stricter match</span></span>
+          <input type="number" id="mbMinScore" min="0" max="100" step="1"></div>
+        <div class="ovrow"><span class="lbl">Catbox: use Litterbox
+          <span class="hint">Temporary hosting instead of permanent</span></span>
+          <label class="switch"><input type="checkbox" id="catboxLitter"><span></span></label></div>
+        <div class="ovrow"><span class="lbl">Litterbox hours
+          <span class="hint">1, 12, 24, or 72</span></span>
+          <input type="number" id="catboxHours" min="1" step="1"></div>
+        <div class="ovrow stack"><span class="lbl">Catbox user hash <span class="hint">optional, for deleting uploads later</span></span>
+          <input type="text" id="catboxHash" spellcheck="false" placeholder="not set"></div>
+        <div class="ovrow"><span class="lbl">ImgBB expiration (s)
+          <span class="hint">0 = never expires</span></span>
+          <input type="number" id="imgbbExp" min="0" step="1"></div>
+        <div class="ovrow"><span class="lbl">Local search depth
+          <span class="hint">parent dirs to scan for art files</span></span>
+          <input type="number" id="coverDepth" min="0" step="1"></div>
+        <div class="ovrow stack"><span class="lbl">Local art file names <span class="hint">comma separated, no extension</span></span>
+          <input type="text" id="coverFiles" spellcheck="false"></div>
+      </div>
+    </details>
   </section>
 
   <section>
     <h2>Players</h2>
-    <div class="hint" style="padding-bottom:.3rem">Switch a player off to hide it from Discord.</div>
+    <div class="hint" style="padding-bottom:.3rem">Switch a player off to hide it from Discord. Tap a name to preview its track above.</div>
     <div id="playerRows"></div>
     <div id="playersEmpty" hidden>No media players detected. Start one and it appears here.</div>
+  </section>
+
+  <section>
+    <h2>Web players</h2>
+    <div class="hint" style="padding-bottom:.3rem">Per-site presence for browser media (YouTube, Spotify Web…). Toggle a site off to hide it; expand to set its Discord app, icon, and activity.</div>
+    <div id="webRows"></div>
+    <div class="addweb">
+      <input type="text" id="webNewKey" placeholder="key e.g. last_fm" spellcheck="false">
+      <input type="text" id="webNewHost" placeholder="host e.g. last.fm" spellcheck="false">
+      <button id="webAdd">Add site</button>
+    </div>
   </section>
 
   <details>
@@ -207,9 +313,31 @@ const CHIPS = [
 const PREVIEW_LINE = { details: 'pvDetails', state: 'pvState', large_text: 'pvLarge' };
 const ACTIVITY_VERB = { listening: 'Listening to', watching: 'Watching',
                         playing: 'Playing', competing: 'Competing in' };
+const PROVIDERS = [
+  ['musicbrainz', 'MusicBrainz', 'Look up album art online'],
+  ['catbox', 'Catbox / Litterbox', 'Upload art embedded in local files'],
+  ['imgbb', 'ImgBB', 'Upload art from local files (needs API key)'],
+];
+// Per-player and per-site override fields, shared editor.
+const OVERRIDE_FIELDS = [
+  { key: 'name', label: 'Display name', type: 'text' },
+  { key: 'app_id', label: 'Discord app ID', type: 'text' },
+  { key: 'icon', label: 'Icon URL', type: 'text' },
+  { key: 'show_icon', label: 'Show player icon', type: 'bool' },
+  { key: 'allow_streaming', label: 'Allow streaming media', type: 'bool' },
+  { key: 'status_display_type', label: 'Status shows', type: 'select',
+    options: [['name', 'Player name'], ['state', 'Line 2'], ['details', 'Line 1']] },
+  { key: 'override_activity_type', label: 'Force activity type', type: 'act' },
+];
+const isSet = v => v !== null && v !== undefined;
+let providerOrder = [];      // enabled cover providers, in preference order
 let previewTimer = null;
 let toastTimer = null;
 let lastTemplateFocus = 't-details';
+let previewBus = '';        // '' = auto-pick
+let defaults = {};          // default template strings, for per-field reset
+let rawDirty = false;       // unsaved edits sit in the raw textarea
+let lastPlayersJson = '';   // skip DOM rebuild when the player list is unchanged
 
 function toast(text, isError) {
   const el = $('toast');
@@ -219,32 +347,166 @@ function toast(text, isError) {
   toastTimer = setTimeout(() => el.className = '', isError ? 4000 : 1200);
 }
 
+// Every network call routes through here so a dead server flips one banner
+// instead of throwing uncaught in a dozen places.
+async function req(url, opts) {
+  try {
+    const res = await fetch(url, opts);
+    $('offline').hidden = true;
+    return res;
+  } catch (e) {
+    $('offline').hidden = false;
+    throw e;
+  }
+}
+
 async function patch(path, value) {
-  const res = await fetch('/api/settings', {
-    method: 'PATCH',
-    body: JSON.stringify({ path, value }),
-  });
-  if (res.ok) { toast('Saved'); schedulePreview(); }
+  let res;
+  try { res = await req('/api/settings', { method: 'PATCH', body: JSON.stringify({ path, value }) }); }
+  catch { return; }
+  if (res.ok) { toast('Saved'); schedulePreview(); syncRawEditor(); }
   else { toast('Rejected: ' + await res.text(), true); loadSettings(); }
 }
 
+// A patch just rewrote the file. If the raw editor is open on clean content,
+// refresh it silently; if it has unsaved edits, warn rather than clobber.
+function syncRawEditor() {
+  if (!document.querySelector('details').open) return;
+  if (rawDirty) toast('Raw editor is now out of date — reopen it to refresh', true);
+  else loadRaw();
+}
+
 async function loadSettings() {
-  const s = await (await fetch('/api/settings')).json();
+  let s;
+  try { s = await (await req('/api/settings')).json(); } catch { return; }
+  defaults = s.defaults;
   for (const f of TEMPLATE_FIELDS) $('t-' + f).value = s[f];
   $('activityType').value = s.activity_type;
   $('useContentType').checked = s.use_content_type;
   $('timeShow').checked = s.time_show;
   $('timeElapsed').checked = s.time_as_elapsed;
   $('interval').value = s.interval / 1000;
-  for (const box of document.querySelectorAll('.provider'))
-    box.checked = s.cover_providers.includes(box.value);
+  $('eventDriven').checked = s.event_driven;
+  $('fallbackInterval').value = s.fallback_poll_interval / 1000;
+  $('allowedPlayers').value = (s.allowed_players ?? []).join('\n');
+  providerOrder = s.cover_providers.slice();
   $('imgbbKey').value = s.imgbb_api_key ?? '';
+  $('mbMinScore').value = s.musicbrainz_min_score;
+  $('catboxLitter').checked = s.catbox_use_litter;
+  $('catboxHours').value = s.catbox_litter_hours;
+  $('catboxHash').value = s.catbox_user_hash ?? '';
+  $('imgbbExp').value = s.imgbb_expiration;
+  $('coverDepth').value = s.cover_local_search_depth;
+  $('coverFiles').value = (s.cover_file_names ?? []).join(', ');
+  renderProviders();
+  syncResets();
   syncImgbbRow();
   schedulePreview();
 }
 
+// Cover providers as an ordered, reorderable list. Enabled ones (in
+// preference order, with move arrows) first, then the disabled remainder.
+function renderProviders() {
+  const list = $('providerList');
+  list.innerHTML = '';
+  const enabled = providerOrder.filter(id => PROVIDERS.some(p => p[0] === id));
+  const disabled = PROVIDERS.map(p => p[0]).filter(id => !enabled.includes(id));
+  const draw = (id, idx, on) => {
+    const meta = PROVIDERS.find(p => p[0] === id);
+    const line = document.createElement('div');
+    line.className = 'provline';
+    const up = document.createElement('button');
+    up.className = 'ordbtn'; up.textContent = '↑';
+    up.disabled = !on || idx === 0;
+    up.onclick = () => { [enabled[idx - 1], enabled[idx]] = [enabled[idx], enabled[idx - 1]]; saveProviders(enabled); };
+    const down = document.createElement('button');
+    down.className = 'ordbtn'; down.textContent = '↓';
+    down.disabled = !on || idx === enabled.length - 1;
+    down.onclick = () => { [enabled[idx + 1], enabled[idx]] = [enabled[idx], enabled[idx + 1]]; saveProviders(enabled); };
+    const name = document.createElement('span');
+    name.className = 'pname';
+    name.innerHTML = meta[1] + ' <span class="hint">' + meta[2] + '</span>';
+    const sw = document.createElement('label');
+    sw.className = 'switch';
+    const box = document.createElement('input');
+    box.type = 'checkbox'; box.checked = on;
+    box.onchange = () => saveProviders(box.checked ? [...enabled, id] : enabled.filter(x => x !== id));
+    sw.append(box, document.createElement('span'));
+    line.append(up, down, name, sw);
+    list.appendChild(line);
+  };
+  enabled.forEach((id, i) => draw(id, i, true));
+  disabled.forEach(id => draw(id, null, false));
+}
+
+function saveProviders(order) {
+  providerOrder = order;
+  renderProviders();
+  syncImgbbRow();
+  patch(['cover', 'provider', 'provider'], order);
+}
+
+function syncResets() {
+  for (const f of TEMPLATE_FIELDS)
+    $('r-' + f).hidden = $('t-' + f).value === (defaults[f] ?? '');
+}
+
 function syncImgbbRow() {
-  $('imgbbKeyRow').hidden = !document.querySelector('.provider[value=imgbb]').checked;
+  const on = providerOrder.includes('imgbb');
+  $('imgbbKeyRow').hidden = !on;
+  $('imgbbWarn').hidden = !(on && !$('imgbbKey').value);
+}
+
+// Shared per-override editor for a player or web-player. `values` holds the
+// effective values shown (concrete for players, possibly null for sites);
+// `overrides` is the user's explicit layer, so unset text fields show the
+// default as a placeholder instead of a real value.
+function overrideEditor(scope, key, values, overrides) {
+  const panel = document.createElement('div');
+  panel.className = 'ovpanel';
+  for (const f of OVERRIDE_FIELDS) {
+    const cur = values[f.key];
+    const overridden = isSet(overrides[f.key]);
+    const set = v => patch([scope, key, f.key], v);
+    const row = document.createElement('div');
+    const lbl = document.createElement('span');
+    lbl.className = 'lbl';
+    lbl.textContent = f.label;
+    if (f.type === 'bool') {
+      row.className = 'ovrow';
+      const sw = document.createElement('label');
+      sw.className = 'switch';
+      const box = document.createElement('input');
+      box.type = 'checkbox'; box.checked = !!cur;
+      box.onchange = () => set(box.checked);
+      sw.append(box, document.createElement('span'));
+      row.append(lbl, sw);
+    } else if (f.type === 'select' || f.type === 'act') {
+      row.className = 'ovrow';
+      const sel = document.createElement('select');
+      const opts = f.type === 'act'
+        ? [['', '(from Activity settings)'], ['listening', 'Listening'], ['watching', 'Watching'],
+           ['playing', 'Playing'], ['competing', 'Competing']]
+        : f.options;
+      for (const [v, l] of opts) {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = l; sel.appendChild(o);
+      }
+      sel.value = cur ?? '';
+      sel.onchange = () => set(sel.value === '' ? null : sel.value);
+      row.append(lbl, sel);
+    } else {
+      row.className = 'ovrow stack';
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.spellcheck = false;
+      inp.value = overridden ? (overrides[f.key] ?? '') : '';
+      if (!overridden && isSet(cur)) inp.placeholder = String(cur);
+      inp.onchange = () => set(inp.value === '' ? null : inp.value);
+      row.append(lbl, inp);
+    }
+    panel.appendChild(row);
+  }
+  return panel;
 }
 
 function schedulePreview() {
@@ -253,21 +515,39 @@ function schedulePreview() {
 }
 
 async function preview() {
-  const body = { player_bus_name: $('player').value || null };
+  const body = { player_bus_name: previewBus || null };
   for (const f of TEMPLATE_FIELDS) body[f] = $('t-' + f).value;
-  const p = await (await fetch('/api/preview', { method: 'POST', body: JSON.stringify(body) })).json();
-  $('pvError').hidden = p.valid;
-  if (!p.valid) { $('pvError').textContent = p.error; return; }
+  let p;
+  try { p = await (await req('/api/preview', { method: 'POST', body: JSON.stringify(body) })).json(); }
+  catch { return; }
+  $('pvError').hidden = !p.error;
+  if (p.error) { $('pvError').textContent = p.error; return; }
   $('pvKind').textContent = ACTIVITY_VERB[$('activityType').value] ?? 'Listening to';
   $('pvSource').textContent = 'Previewing ' + (p.player ?? 'sample track');
+  // When the previewed player isn't Playing, this is a template preview —
+  // the daemon wouldn't be pushing it to Discord. Say so.
+  const playing = p.status === 'Playing';
+  $('pvHeader').textContent = playing ? 'Now in Discord' : 'Preview';
+  $('pvNotLive').hidden = playing || !p.status;
+  if (!playing && p.status) $('pvNotLive').textContent =
+    'Preview only. This player is ' + p.status.toLowerCase() + ', not live in Discord.';
+
   const art = $('pvArt');
   if (p.art_url) {
-    art.innerHTML = '';
-    const img = document.createElement('img');
+    const img = new Image();
+    img.onload = () => { art.style.backgroundImage = 'url("' + p.art_url + '")'; $('pvGlyph').hidden = true; };
+    img.onerror = () => { art.style.backgroundImage = ''; $('pvGlyph').hidden = false; };
     img.src = p.art_url;
-    img.onerror = () => art.textContent = '♪';
-    art.appendChild(img);
-  } else art.textContent = '♪';
+  } else { art.style.backgroundImage = ''; $('pvGlyph').hidden = false; }
+
+  const badge = $('pvBadge');
+  badge.hidden = !p.status_icon;
+  if (p.status_icon) { badge.textContent = p.status_icon; badge.title = p.small_text ?? ''; }
+
+  const bar = $('pvBar');
+  bar.hidden = !($('timeShow').checked && p.duration);
+  if (!bar.hidden) $('pvDuration').textContent = p.duration;
+
   $('pvDetails').textContent = p.details ?? '';
   $('pvState').textContent = p.state ?? '';
   $('pvLarge').textContent = p.large_text ?? '';
@@ -279,29 +559,64 @@ async function preview() {
   }
 }
 
-async function refreshPlayers() {
-  let players = [];
-  try { players = await (await fetch('/api/players')).json(); } catch { return; }
-  const select = $('player');
-  const current = select.value;
-  select.innerHTML = '<option value="">Auto</option>';
-  for (const p of players) {
-    const opt = document.createElement('option');
-    opt.value = p.player_bus_name;
-    opt.textContent = p.identity + (p.status ? ' (' + p.status + ')' : '');
-    select.appendChild(opt);
-  }
-  select.value = [...select.options].some(o => o.value === current) ? current : '';
+// Mirror the backend's pick order so the variable chips show the same track.
+function pickPreview(players) {
+  return players.find(p => p.player_bus_name === previewBus)
+    ?? players.find(p => p.status === 'Playing')
+    ?? players[0];
+}
 
-  const rows = $('playerRows');
-  rows.innerHTML = '';
-  $('playersEmpty').hidden = players.length > 0;
+let lastPlayers = [];   // newest player list, for the top preview selector
+
+function markSelected() {
+  for (const w of $('playerRows').children)
+    w.classList.toggle('selected', w.dataset.bus === previewBus);
+}
+
+// Single entry point for changing which player the preview renders.
+// Keeps the top dropdown, the Players-list highlight, chips, and the
+// rendered preview all in sync.
+function setPreview(bus) {
+  previewBus = bus;
+  if ($('pvPlayer').value !== bus) $('pvPlayer').value = bus;
+  markSelected();
+  renderChips(pickPreview(lastPlayers));
+  preview();
+}
+
+function populatePvSelect(players) {
+  const sel = $('pvPlayer');
+  const want = previewBus;
+  sel.innerHTML = '<option value="">Auto (playing player)</option>';
   for (const p of players) {
-    const row = document.createElement('div');
-    row.className = 'row';
-    const label = document.createElement('span');
-    label.className = 'label';
-    label.textContent = p.identity;
+    const o = document.createElement('option');
+    o.value = p.player_bus_name;
+    o.textContent = p.identity + (p.status ? ' (' + p.status + ')' : '');
+    sel.appendChild(o);
+  }
+  // Preserve selection if the player is still present, else fall to Auto.
+  sel.value = players.some(p => p.player_bus_name === want) ? want : '';
+  if (sel.value !== previewBus) previewBus = sel.value;
+}
+
+function playerRow(p, players) {
+  const wrap = document.createElement('div');
+  const bus = p ? p.player_bus_name : '';
+  wrap.dataset.bus = bus;
+  if (bus === previewBus) wrap.classList.add('selected');
+  const row = document.createElement('div');
+  row.className = 'row';
+  const pick = document.createElement('button');
+  pick.className = 'pvpick';
+  pick.textContent = p ? p.identity + (p.status ? ' (' + p.status + ')' : '') : 'Auto (playing player)';
+  pick.onclick = () => setPreview(bus);
+  row.appendChild(pick);
+  if (p) {
+    const panel = overrideEditor('player', p.config_key, p.resolved, p.overrides);
+    panel.hidden = true;
+    const exp = document.createElement('button');
+    exp.className = 'expand'; exp.title = 'Per-player settings';
+    exp.onclick = () => { panel.hidden = !panel.hidden; exp.classList.toggle('open', !panel.hidden); };
     const sw = document.createElement('label');
     sw.className = 'switch';
     const box = document.createElement('input');
@@ -309,10 +624,74 @@ async function refreshPlayers() {
     box.checked = p.allowed;
     box.onchange = () => patch(['player', p.config_key, 'ignore'], !box.checked);
     sw.append(box, document.createElement('span'));
-    row.append(label, sw);
-    rows.appendChild(row);
+    row.append(exp, sw);
+    wrap.append(row, panel);
+  } else {
+    wrap.appendChild(row);
   }
-  renderChips(players.find(p => p.player_bus_name === select.value) ?? players[0]);
+  return wrap;
+}
+
+async function refreshWebPlayers() {
+  let list;
+  try { list = await (await req('/api/web_players')).json(); } catch { return; }
+  const rows = $('webRows');
+  rows.innerHTML = '';
+  for (const e of list) rows.appendChild(webRow(e));
+}
+
+function webRow(e) {
+  const wrap = document.createElement('div');
+  const row = document.createElement('div');
+  row.className = 'row';
+  const title = document.createElement('span');
+  title.className = 'label';
+  title.textContent = (e.effective.name || e.key) + (e.bundled ? '' : ' (custom)');
+  const panel = overrideEditor('web_player', e.key, e.effective, e.overrides);
+  const pats = [];
+  if (e.effective.match_pattern) pats.push(e.effective.match_pattern);
+  if (e.effective.match_patterns) pats.push(...e.effective.match_patterns);
+  if (pats.length) {
+    const tags = document.createElement('div');
+    tags.className = 'tags';
+    for (const p of pats) {
+      const t = document.createElement('span');
+      t.className = 'tag'; t.textContent = p;
+      tags.appendChild(t);
+    }
+    panel.insertBefore(tags, panel.firstChild);
+  }
+  panel.hidden = true;
+  const exp = document.createElement('button');
+  exp.className = 'expand'; exp.title = 'Per-site settings';
+  exp.onclick = () => { panel.hidden = !panel.hidden; exp.classList.toggle('open', !panel.hidden); };
+  const sw = document.createElement('label');
+  sw.className = 'switch';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = !e.effective.ignore;   // enabled = not ignored
+  box.onchange = () => patch(['web_player', e.key, 'ignore'], !box.checked);
+  sw.append(box, document.createElement('span'));
+  row.append(title, exp, sw);
+  wrap.append(row, panel);
+  return wrap;
+}
+
+async function refreshPlayers() {
+  let text;
+  try { text = await (await req('/api/players')).text(); } catch { return; }
+  if (text === lastPlayersJson) return;
+  lastPlayersJson = text;
+  const players = JSON.parse(text);
+  lastPlayers = players;
+  const rows = $('playerRows');
+  rows.innerHTML = '';
+  $('playersEmpty').hidden = players.length > 0;
+  rows.appendChild(playerRow(null, players));
+  for (const p of players) rows.appendChild(playerRow(p, players));
+  populatePvSelect(players);
+  renderChips(pickPreview(players));
+  schedulePreview();
 }
 
 function renderChips(player) {
@@ -336,19 +715,21 @@ function renderChips(player) {
       input.setRangeText('{{' + key + '}}', input.selectionStart, input.selectionEnd, 'end');
       input.focus();
       input.dispatchEvent(new Event('change'));
-      schedulePreview();
     };
     chips.appendChild(button);
   }
 }
 
 async function loadRaw() {
-  $('rawToml').value = await (await fetch('/api/config')).text();
+  try { $('rawToml').value = await (await req('/api/config')).text(); rawDirty = false; }
+  catch {}
 }
 
 async function saveRaw() {
-  const res = await fetch('/api/config', { method: 'PUT', body: $('rawToml').value });
-  if (res.ok) { toast('Saved'); loadSettings(); }
+  let res;
+  try { res = await req('/api/config', { method: 'PUT', body: $('rawToml').value }); }
+  catch { return; }
+  if (res.ok) { rawDirty = false; toast('Saved'); loadSettings(); }
   else toast('Rejected: ' + await res.text(), true);
 }
 
@@ -361,29 +742,58 @@ for (const f of TEMPLATE_FIELDS) {
   input.addEventListener('blur', () => {
     if (PREVIEW_LINE[f]) $(PREVIEW_LINE[f]).classList.remove('hl');
   });
-  input.addEventListener('input', schedulePreview);
+  input.addEventListener('input', () => { syncResets(); schedulePreview(); });
   input.addEventListener('change', () => patch(['template', f], input.value));
+  $('r-' + f).onclick = () => {
+    input.value = defaults[f] ?? '';
+    patch(['template', f], null);   // drop the override; daemon falls back to default
+    syncResets();
+    schedulePreview();
+  };
 }
 $('activityType').onchange = () => patch(['activity_type', 'default'], $('activityType').value);
 $('useContentType').onchange = () => patch(['activity_type', 'use_content_type'], $('useContentType').checked);
 $('timeShow').onchange = () => patch(['time', 'show'], $('timeShow').checked);
 $('timeElapsed').onchange = () => patch(['time', 'as_elapsed'], $('timeElapsed').checked);
 $('interval').onchange = () => patch(['interval'], Math.round(Number($('interval').value) * 1000));
-for (const box of document.querySelectorAll('.provider'))
-  box.onchange = () => {
-    syncImgbbRow();
-    patch(['cover', 'provider', 'provider'],
-      [...document.querySelectorAll('.provider')].filter(b => b.checked).map(b => b.value));
-  };
-$('imgbbKey').onchange = () => patch(['cover', 'provider', 'imgbb', 'api_key'],
-  $('imgbbKey').value || null);
-$('player').onchange = preview;
+$('eventDriven').onchange = () => patch(['event_driven'], $('eventDriven').checked);
+$('fallbackInterval').onchange = () =>
+  patch(['fallback_poll_interval'], Math.round(Number($('fallbackInterval').value) * 1000));
+$('allowedPlayers').onchange = () =>
+  patch(['allowed_players'], $('allowedPlayers').value.split('\n').map(s => s.trim()).filter(Boolean));
+$('mbMinScore').onchange = () =>
+  patch(['cover', 'provider', 'musicbrainz', 'min_score'], Math.round(Number($('mbMinScore').value)));
+$('catboxLitter').onchange = () => patch(['cover', 'provider', 'catbox', 'use_litter'], $('catboxLitter').checked);
+$('catboxHours').onchange = () =>
+  patch(['cover', 'provider', 'catbox', 'litter_hours'], Math.round(Number($('catboxHours').value)));
+$('catboxHash').onchange = () => patch(['cover', 'provider', 'catbox', 'user_hash'], $('catboxHash').value || null);
+$('imgbbExp').onchange = () =>
+  patch(['cover', 'provider', 'imgbb', 'expiration'], Math.round(Number($('imgbbExp').value)));
+$('coverDepth').onchange = () => patch(['cover', 'local_search_depth'], Math.round(Number($('coverDepth').value)));
+$('coverFiles').onchange = () =>
+  patch(['cover', 'file_names'], $('coverFiles').value.split(',').map(s => s.trim()).filter(Boolean));
+$('imgbbKey').addEventListener('input', syncImgbbRow);
+$('imgbbKey').onchange = () => {
+  patch(['cover', 'provider', 'imgbb', 'api_key'], $('imgbbKey').value || null);
+  syncImgbbRow();
+};
+$('pvPlayer').onchange = () => setPreview($('pvPlayer').value);
+$('webAdd').onclick = async () => {
+  const key = $('webNewKey').value.trim();
+  const host = $('webNewHost').value.trim();
+  if (!key || !host) { toast('Need a key and a host', true); return; }
+  await patch(['web_player', key, 'match_pattern'], host);
+  $('webNewKey').value = ''; $('webNewHost').value = '';
+  refreshWebPlayers();
+};
+$('rawToml').addEventListener('input', () => rawDirty = true);
 $('rawSave').onclick = saveRaw;
 document.querySelector('details').addEventListener('toggle', e => {
   if (e.target.open) loadRaw();
 });
 loadSettings();
 refreshPlayers();
+refreshWebPlayers();
 setInterval(refreshPlayers, 2000);
 </script>
 </body>
