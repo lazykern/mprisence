@@ -58,6 +58,7 @@ regex = "1"
 catbox = "0.8.2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 mpris-server = { version = "0.10", default-features = false, features = ["tokio"] }
+toml_edit = "0.25.13"
 
 [dev-dependencies]
 

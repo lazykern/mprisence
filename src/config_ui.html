@@ -3,77 +3,222 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>mprisence config</title>
+<title>mprisence settings</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: #1e1f26; color: #e8e8ee; }
-  header { padding: .6rem 1rem; background: #16171c; display: flex; align-items: baseline; gap: 1rem; }
-  header h1 { font-size: 1rem; margin: 0; }
-  header .path { color: #8b8fa3; font-size: .8rem; }
-  main { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem; height: calc(100vh - 3rem); }
-  section { display: flex; flex-direction: column; gap: .5rem; min-height: 0; }
-  textarea { flex: 1; width: 100%; resize: none; background: #16171c; color: #e8e8ee;
-             border: 1px solid #33354a; border-radius: 6px; padding: .75rem;
-             font: 13px/1.5 ui-monospace, monospace; tab-size: 2; }
-  .bar { display: flex; gap: .75rem; align-items: center; }
-  button { background: #5865f2; color: #fff; border: 0; border-radius: 6px;
-           padding: .45rem 1.1rem; font-weight: 600; cursor: pointer; }
-  button:disabled { opacity: .5; cursor: default; }
-  #status { font-size: .85rem; white-space: pre-wrap; }
-  #status.ok { color: #57cc7f; } #status.err { color: #ff6b6b; }
-  .card { background: #16171c; border: 1px solid #33354a; border-radius: 6px; padding: .75rem 1rem; }
-  .card h2 { margin: 0 0 .5rem; font-size: .8rem; text-transform: uppercase; color: #8b8fa3; }
-  .line { display: flex; justify-content: space-between; gap: 1rem; }
-  .line .val { overflow-wrap: anywhere; }
-  .count { color: #8b8fa3; font-size: .75rem; flex-shrink: 0; }
+  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #17181d; color: #e8e8ee; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+  h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+  .sub { color: #8b8fa3; font-size: .85rem; margin-bottom: 1.25rem; }
+  section { background: #1f2129; border: 1px solid #2b2d3a; border-radius: 10px;
+            padding: .25rem 1rem; margin-bottom: 1rem; }
+  section h2 { font-size: .75rem; text-transform: uppercase; letter-spacing: .05em;
+               color: #8b8fa3; margin: .9rem 0 .2rem; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+         padding: .65rem 0; border-top: 1px solid #262835; }
+  .row:first-of-type { border-top: 0; }
+  .row .label { flex: 1; }
+  .row .hint { display: block; color: #8b8fa3; font-size: .8rem; }
+  .row.stack { flex-direction: column; align-items: stretch; gap: .35rem; }
+  input[type=text], input[type=password], input[type=number], select {
+    background: #17181d; color: #e8e8ee; border: 1px solid #33354a; border-radius: 6px;
+    padding: .4rem .6rem; font: inherit; }
+  input[type=text] { width: 100%; font-family: ui-monospace, monospace; font-size: .85rem; }
+  input[type=number] { width: 6.5rem; }
+  .switch { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .switch span { position: absolute; inset: 0; background: #3a3d4d; border-radius: 12px;
+                 transition: .15s; pointer-events: none; }
+  .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px;
+                        height: 18px; background: #fff; border-radius: 50%; transition: .15s; }
+  .switch input:checked + span { background: #57cc7f; }
+  .switch input:checked + span::after { transform: translateX(18px); }
+  .chips { display: flex; flex-wrap: wrap; gap: .35rem; padding: .3rem 0 .5rem; }
+  .chip { background: #2b2d3a; color: #a9c1ff; border: 0; border-radius: 999px;
+          padding: .15rem .6rem; font-size: .75rem; font-family: ui-monospace, monospace;
+          cursor: pointer; }
+  .chip:hover { background: #33364a; }
+  .discord { background: #111214; border-radius: 10px; padding: .8rem 1rem; margin: .6rem 0;
+             border-left: 4px solid #5865f2; }
+  .discord .kind { font-size: .7rem; text-transform: uppercase; color: #8b8fa3;
+                   letter-spacing: .04em; margin-bottom: .3rem; }
+  .discord .l1 { font-weight: 600; }
+  .discord .l2, .discord .l3 { color: #b8bccc; font-size: .9rem; }
+  .discord .err { color: #ff6b6b; font-size: .85rem; white-space: pre-wrap; }
+  .count { color: #8b8fa3; font-size: .72rem; }
   .count.over { color: #ff6b6b; font-weight: 700; }
-  select { background: #16171c; color: #e8e8ee; border: 1px solid #33354a; border-radius: 6px; padding: .3rem; }
-  #vars { flex: 1; overflow-y: auto; }
-  #vars table { width: 100%; border-collapse: collapse; font-size: .8rem; }
-  #vars td { padding: .15rem .4rem; border-top: 1px solid #26283a; vertical-align: top; }
-  #vars td:first-child { color: #7aa2f7; cursor: pointer; white-space: nowrap;
-                         font-family: ui-monospace, monospace; }
-  #vars td:first-child:hover { text-decoration: underline; }
+  #toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
+           background: #2b2d3a; color: #e8e8ee; padding: .5rem 1rem; border-radius: 8px;
+           font-size: .85rem; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  #toast.err { background: #5c2330; }
+  details { margin-top: .5rem; }
+  summary { cursor: pointer; color: #8b8fa3; padding: .5rem 0; }
+  #rawToml { width: 100%; height: 320px; resize: vertical; background: #17181d; color: #e8e8ee;
+             border: 1px solid #33354a; border-radius: 6px; padding: .6rem;
+             font: 12.5px/1.5 ui-monospace, monospace; }
+  .advBar { display: flex; gap: .75rem; align-items: center; margin: .5rem 0 1rem; }
+  .advBar button { background: #5865f2; color: #fff; border: 0; border-radius: 6px;
+                   padding: .4rem 1rem; font-weight: 600; cursor: pointer; }
+  #playersEmpty { color: #8b8fa3; padding: .65rem 0; }
 </style>
 </head>
 <body>
-<header>
-  <h1>mprisence config</h1>
-  <span class="path" id="path">saving applies live via hot-reload</span>
-</header>
-<main>
+<div class="wrap">
+  <h1>mprisence</h1>
+  <div class="sub">Changes apply instantly — no save button. Discord updates within a couple of seconds.</div>
+
   <section>
-    <textarea id="toml" spellcheck="false"></textarea>
-    <div class="bar">
-      <button id="save">Save</button>
-      <span id="status"></span>
+    <h2>Now in Discord</h2>
+    <div class="discord">
+      <div class="kind" id="pvKind">Listening to …</div>
+      <div class="l1" id="pvDetails"></div>
+      <div class="l2" id="pvState"></div>
+      <div class="l3" id="pvLarge"></div>
+      <div class="err" id="pvError" hidden></div>
+    </div>
+    <div class="row">
+      <span class="label">Preview using
+        <span class="hint">Pick which player's current track drives the preview</span></span>
+      <select id="player"><option value="">Auto</option></select>
     </div>
   </section>
+
   <section>
-    <div class="card">
-      <h2>Preview <select id="player"><option value="">auto</option></select>
-          <span class="count" id="previewPlayer"></span></h2>
-      <div class="line"><span class="val" id="p-details"></span><span class="count" id="c-details"></span></div>
-      <div class="line"><span class="val" id="p-state"></span><span class="count" id="c-state"></span></div>
-      <div class="line"><span class="val" id="p-large_text"></span><span class="count" id="c-large_text"></span></div>
-      <div class="line"><span class="val" id="p-small_text"></span><span class="count" id="c-small_text"></span></div>
+    <h2>Status text</h2>
+    <div class="chips" id="chips"></div>
+    <div class="row stack">
+      <span class="label">Line 1 <span class="count" id="c-details"></span></span>
+      <input type="text" id="t-details" spellcheck="false">
     </div>
-    <div class="card" id="vars">
-      <h2>Variables (click to insert)</h2>
-      <table><tbody id="varRows"></tbody></table>
+    <div class="row stack">
+      <span class="label">Line 2 <span class="count" id="c-state"></span></span>
+      <input type="text" id="t-state" spellcheck="false">
+    </div>
+    <div class="row stack">
+      <span class="label">Cover art hover text <span class="count" id="c-large_text"></span></span>
+      <input type="text" id="t-large_text" spellcheck="false">
+    </div>
+    <div class="row stack">
+      <span class="label">Small icon hover text <span class="count" id="c-small_text"></span></span>
+      <input type="text" id="t-small_text" spellcheck="false">
     </div>
   </section>
-</main>
+
+  <section>
+    <h2>Activity</h2>
+    <div class="row">
+      <span class="label">Activity type
+        <span class="hint">How Discord phrases it: "Listening to", "Watching"…</span></span>
+      <select id="activityType">
+        <option value="listening">Listening</option>
+        <option value="watching">Watching</option>
+        <option value="playing">Playing</option>
+        <option value="competing">Competing</option>
+      </select>
+    </div>
+    <div class="row">
+      <span class="label">Detect from media type
+        <span class="hint">Videos show as Watching, music as Listening</span></span>
+      <label class="switch"><input type="checkbox" id="useContentType"><span></span></label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Time</h2>
+    <div class="row">
+      <span class="label">Show progress</span>
+      <label class="switch"><input type="checkbox" id="timeShow"><span></span></label>
+    </div>
+    <div class="row">
+      <span class="label">Count up (elapsed) instead of down (remaining)</span>
+      <label class="switch"><input type="checkbox" id="timeElapsed"><span></span></label>
+    </div>
+    <div class="row">
+      <span class="label">Update interval
+        <span class="hint">Milliseconds between Discord updates</span></span>
+      <input type="number" id="interval" min="500" step="500">
+    </div>
+  </section>
+
+  <section>
+    <h2>Cover art</h2>
+    <div class="row">
+      <span class="label">MusicBrainz<span class="hint">Look up album art online</span></span>
+      <label class="switch"><input type="checkbox" class="provider" value="musicbrainz"><span></span></label>
+    </div>
+    <div class="row">
+      <span class="label">Catbox<span class="hint">Upload art embedded in local files</span></span>
+      <label class="switch"><input type="checkbox" class="provider" value="catbox"><span></span></label>
+    </div>
+    <div class="row">
+      <span class="label">ImgBB<span class="hint">Upload art embedded in local files (needs API key)</span></span>
+      <label class="switch"><input type="checkbox" class="provider" value="imgbb"><span></span></label>
+    </div>
+    <div class="row">
+      <span class="label">ImgBB API key</span>
+      <input type="password" id="imgbbKey" placeholder="not set" autocomplete="off">
+    </div>
+  </section>
+
+  <section>
+    <h2>Players</h2>
+    <div id="playerRows"></div>
+    <div id="playersEmpty" hidden>No media players detected. Start one and it appears here.</div>
+  </section>
+
+  <details>
+    <summary>Advanced: edit raw config file</summary>
+    <textarea id="rawToml" spellcheck="false"></textarea>
+    <div class="advBar">
+      <button id="rawSave">Save file</button>
+      <span class="count">Full config reference — everything not shown above lives here.</span>
+    </div>
+  </details>
+</div>
+<div id="toast"></div>
 <script>
 const $ = id => document.getElementById(id);
-const FIELDS = ['details', 'state', 'large_text', 'small_text'];
+const TEMPLATE_FIELDS = ['details', 'state', 'large_text', 'small_text'];
 const DISCORD_LIMIT = 128;
+const CHIP_KEYS = ['title', 'artist_display', 'album', 'year', 'duration_display',
+                   'player', 'status', 'status_icon', 'genre_display', 'track_display'];
+const ACTIVITY_VERB = { listening: 'Listening to', watching: 'Watching',
+                        playing: 'Playing', competing: 'Competing in' };
 let previewTimer = null;
+let toastTimer = null;
+let lastTemplateFocus = 't-details';
 
-async function loadConfig() {
-  $('toml').value = await (await fetch('/api/config')).text();
-  preview();
+function toast(text, isError) {
+  const el = $('toast');
+  el.textContent = text;
+  el.className = 'show' + (isError ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = '', isError ? 4000 : 1200);
+}
+
+async function patch(path, value) {
+  const res = await fetch('/api/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({ path, value }),
+  });
+  if (res.ok) { toast('Saved'); schedulePreview(); }
+  else { toast('Rejected: ' + await res.text(), true); loadSettings(); }
+}
+
+async function loadSettings() {
+  const s = await (await fetch('/api/settings')).json();
+  for (const f of TEMPLATE_FIELDS) $('t-' + f).value = s[f];
+  $('activityType').value = s.activity_type;
+  $('useContentType').checked = s.use_content_type;
+  $('timeShow').checked = s.time_show;
+  $('timeElapsed').checked = s.time_as_elapsed;
+  $('interval').value = s.interval;
+  for (const box of document.querySelectorAll('.provider'))
+    box.checked = s.cover_providers.includes(box.value);
+  $('imgbbKey').value = s.imgbb_api_key ?? '';
+  schedulePreview();
 }
 
 function schedulePreview() {
@@ -82,38 +227,22 @@ function schedulePreview() {
 }
 
 async function preview() {
-  const body = JSON.stringify({
-    toml: $('toml').value,
-    player_bus_name: $('player').value || null,
-  });
-  const res = await fetch('/api/preview', { method: 'POST', body });
-  const p = await res.json();
-  if (!p.valid) {
-    setStatus('Config error: ' + p.error, false);
-    return;
-  }
-  setStatus('Valid', true);
-  $('previewPlayer').textContent = p.player ? 'against: ' + p.player : '';
-  for (const f of FIELDS) {
-    $('p-' + f).textContent = p[f] ?? '';
-    const el = $('c-' + f);
+  const body = { player_bus_name: $('player').value || null };
+  for (const f of TEMPLATE_FIELDS) body[f] = $('t-' + f).value;
+  const p = await (await fetch('/api/preview', { method: 'POST', body: JSON.stringify(body) })).json();
+  $('pvError').hidden = p.valid;
+  if (!p.valid) { $('pvError').textContent = p.error; return; }
+  $('pvKind').textContent = (ACTIVITY_VERB[$('activityType').value] ?? 'Listening to')
+    + (p.player ? ' — via ' + p.player : '');
+  $('pvDetails').textContent = p.details ?? '';
+  $('pvState').textContent = p.state ?? '';
+  $('pvLarge').textContent = p.large_text ?? '';
+  for (const f of TEMPLATE_FIELDS) {
     const len = (p[f] ?? '').length;
-    el.textContent = f + ' ' + len + '/' + DISCORD_LIMIT;
+    const el = $('c-' + f);
+    el.textContent = len + '/' + DISCORD_LIMIT;
     el.classList.toggle('over', len > DISCORD_LIMIT);
   }
-}
-
-async function save() {
-  $('save').disabled = true;
-  const res = await fetch('/api/config', { method: 'PUT', body: $('toml').value });
-  if (res.ok) setStatus('Saved — applied live if the daemon is running', true);
-  else setStatus('Save failed: ' + await res.text(), false);
-  $('save').disabled = false;
-}
-
-function setStatus(text, ok) {
-  $('status').textContent = text;
-  $('status').className = ok ? 'ok' : 'err';
 }
 
 async function refreshPlayers() {
@@ -121,7 +250,7 @@ async function refreshPlayers() {
   try { players = await (await fetch('/api/players')).json(); } catch { return; }
   const select = $('player');
   const current = select.value;
-  select.innerHTML = '<option value="">auto</option>';
+  select.innerHTML = '<option value="">Auto</option>';
   for (const p of players) {
     const opt = document.createElement('option');
     opt.value = p.player_bus_name;
@@ -129,39 +258,87 @@ async function refreshPlayers() {
     select.appendChild(opt);
   }
   select.value = [...select.options].some(o => o.value === current) ? current : '';
-  renderVars(players.find(p => p.player_bus_name === select.value) ?? players[0]);
+
+  const rows = $('playerRows');
+  rows.innerHTML = '';
+  $('playersEmpty').hidden = players.length > 0;
+  for (const p of players) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = p.identity;
+    const hint = document.createElement('span');
+    hint.className = 'hint';
+    hint.textContent = 'Show this player in Discord';
+    label.appendChild(hint);
+    const sw = document.createElement('label');
+    sw.className = 'switch';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = p.allowed;
+    box.onchange = () => patch(['player', p.config_key, 'ignore'], !box.checked);
+    sw.append(box, document.createElement('span'));
+    row.append(label, sw);
+    rows.appendChild(row);
+  }
+  renderChips(players.find(p => p.player_bus_name === select.value) ?? players[0]);
 }
 
-function renderVars(player) {
-  const rows = $('varRows');
-  rows.innerHTML = '';
-  if (!player) return;
-  for (const [key, value] of Object.entries(player.context)) {
-    if (value === null || (Array.isArray(value) && value.length === 0)) continue;
-    const tr = document.createElement('tr');
-    const name = document.createElement('td');
-    name.textContent = '{{' + key + '}}';
-    name.onclick = () => insertVar(key);
-    const val = document.createElement('td');
-    val.textContent = Array.isArray(value) ? value.join(', ') : String(value);
-    tr.append(name, val);
-    rows.appendChild(tr);
+function renderChips(player) {
+  const chips = $('chips');
+  chips.innerHTML = '';
+  const context = player?.context ?? {};
+  for (const key of CHIP_KEYS) {
+    const value = context[key];
+    const button = document.createElement('button');
+    button.className = 'chip';
+    button.textContent = '{{' + key + '}}';
+    if (value !== null && value !== undefined && value !== '')
+      button.title = String(value);
+    button.onclick = () => {
+      const input = $(lastTemplateFocus);
+      input.setRangeText('{{' + key + '}}', input.selectionStart, input.selectionEnd, 'end');
+      input.focus();
+      input.dispatchEvent(new Event('change'));
+      schedulePreview();
+    };
+    chips.appendChild(button);
   }
 }
 
-function insertVar(key) {
-  const area = $('toml');
-  const snippet = '{{' + key + '}}';
-  const start = area.selectionStart;
-  area.setRangeText(snippet, start, area.selectionEnd, 'end');
-  area.focus();
-  schedulePreview();
+async function loadRaw() {
+  $('rawToml').value = await (await fetch('/api/config')).text();
 }
 
-$('toml').addEventListener('input', schedulePreview);
-$('player').addEventListener('change', preview);
-$('save').addEventListener('click', save);
-loadConfig();
+async function saveRaw() {
+  const res = await fetch('/api/config', { method: 'PUT', body: $('rawToml').value });
+  if (res.ok) { toast('Saved'); loadSettings(); }
+  else toast('Rejected: ' + await res.text(), true);
+}
+
+for (const f of TEMPLATE_FIELDS) {
+  const input = $('t-' + f);
+  input.addEventListener('focus', () => lastTemplateFocus = 't-' + f);
+  input.addEventListener('input', schedulePreview);
+  input.addEventListener('change', () => patch(['template', f], input.value));
+}
+$('activityType').onchange = () => patch(['activity_type', 'default'], $('activityType').value);
+$('useContentType').onchange = () => patch(['activity_type', 'use_content_type'], $('useContentType').checked);
+$('timeShow').onchange = () => patch(['time', 'show'], $('timeShow').checked);
+$('timeElapsed').onchange = () => patch(['time', 'as_elapsed'], $('timeElapsed').checked);
+$('interval').onchange = () => patch(['interval'], Number($('interval').value));
+for (const box of document.querySelectorAll('.provider'))
+  box.onchange = () => patch(['cover', 'provider', 'provider'],
+    [...document.querySelectorAll('.provider')].filter(b => b.checked).map(b => b.value));
+$('imgbbKey').onchange = () => patch(['cover', 'provider', 'imgbb', 'api_key'],
+  $('imgbbKey').value || null);
+$('player').onchange = preview;
+$('rawSave').onclick = saveRaw;
+document.querySelector('details').addEventListener('toggle', e => {
+  if (e.target.open) loadRaw();
+});
+loadSettings();
 refreshPlayers();
 setInterval(refreshPlayers, 2000);
 </script>

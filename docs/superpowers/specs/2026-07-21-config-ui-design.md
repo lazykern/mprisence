@@ -20,11 +20,14 @@ Embedded local web UI, always compiled (no cargo feature gate).
   `127.0.0.1:0` (random free port), prints the URL, opens it with `xdg-open`.
   Localhost only; no auth.
 - UI: one embedded HTML file (`include_str!`), vanilla JS, no build step, no
-  framework. The raw TOML pane IS the editor (single source of truth); the
-  server only validates and saves whole TOML documents. No client-side TOML
-  patching, no separate form fields — the live preview panel, variable
-  palette, and player list provide the interactive layer. Unknown keys are
-  never touched (schema drift-proof).
+  framework. **Settings-app style** (revised after user feedback: "like music
+  app settings, not technical"): sections with toggles/dropdowns for common
+  options, a Discord-style live preview card, click-to-insert variable chips,
+  per-player show/hide switches, and a raw TOML editor tucked under an
+  Advanced disclosure. No save button — every control change is PATCHed to the
+  server immediately, which edits just that key in `config.toml` via
+  `toml_edit` (comments and formatting preserved, unknown keys untouched),
+  validates, and writes atomically; the daemon hot-reloads it.
 - The running daemon needs no changes and no IPC: the existing `notify` config
   watcher hot-reloads `config.toml` when the UI saves it. The UI server also
   works standalone (daemon not running) — it queries MPRIS directly.
@@ -37,7 +40,9 @@ Embedded local web UI, always compiled (no cargo feature gate).
 | GET | `/api/config` | Raw TOML text of the user's `config.toml` |
 | PUT | `/api/config` | Body = full TOML text. Validate by parsing through the existing figment/schema path; 400 + error message on failure, write file on success |
 | GET | `/api/players` | Current MPRIS players + playback status + render context (see interactivity) |
-| POST | `/api/preview` | Body = `{toml, player_bus_name?}` — the whole candidate TOML from the editor. Parse (defaults merged), compile its templates, render against the chosen (default: active) player's live metadata. Returns rendered texts or parse/compile error. Taking whole TOML kills any client-side TOML patching: the textarea is the single source of truth and preview doubles as live validation |
+| GET | `/api/settings` | Flat JSON of the common settings' effective values (defaults merged): interval, activity type, time display, templates, cover providers, imgbb key |
+| PATCH | `/api/settings` | Body = `{path: ["time","show"], value: false}` — one key change. Server edits that key in the user's TOML via `toml_edit`, validates through the production loader on a temp file, atomic-renames. `value: null` removes the key (revert to default). 400 + error on invalid |
+| POST | `/api/preview` | Body = `{details?, state?, large_text?, small_text?, player_bus_name?}` — optional template overrides for as-you-type preview; missing fields fall back to the saved config. Renders against the chosen (default: active) player's live metadata, or a hardcoded sample track when no player runs |
 
 ## Interactivity (researched capabilities)
 

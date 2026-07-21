@@ -775,11 +775,7 @@ mod tests {
             duration_ms: 100_000,
         };
 
-        stabilize_playback(
-            &prev,
-            &mut playback,
-            "/mprisence/track/ytm_pbDY7Bsbxwk",
-        );
+        stabilize_playback(&prev, &mut playback, "/mprisence/track/ytm_pbDY7Bsbxwk");
 
         assert_eq!(playback.duration_ms, 598_000);
         assert_eq!(playback.position_ms, 156_000);

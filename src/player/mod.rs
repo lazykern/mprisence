@@ -225,8 +225,8 @@ fn youtube_video_id(url_str: &str) -> Option<String> {
         return None;
     }
 
-    let is_youtube_host = host.eq_ignore_ascii_case("youtube.com")
-        || host.ends_with(".youtube.com");
+    let is_youtube_host =
+        host.eq_ignore_ascii_case("youtube.com") || host.ends_with(".youtube.com");
     if !is_youtube_host {
         return None;
     }
