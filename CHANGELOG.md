@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `mprisence config ui` — local web UI for editing the config with live
+  template preview, live validation, and a variable palette.
+
 ## [1.7.0] - 2026-06-17
 
 **Web player support, now bundled in `mprisence`.**

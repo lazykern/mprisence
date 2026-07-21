@@ -177,6 +177,19 @@ curl -o ~/.config/mprisence/config.toml \
   https://raw.githubusercontent.com/lazykern/mprisence/main/config/config.example.toml
 ```
 
+### Config UI
+
+Prefer a GUI? Run:
+
+```bash
+mprisence config ui
+```
+
+This opens a local web page (localhost only) for editing the config with
+live template preview against your currently playing track, live validation,
+and a click-to-insert variable palette. Saving applies immediately — the
+running daemon hot-reloads the file.
+
 Reference files:
 - [`config/config.example.toml`](./config/config.example.toml) — documented example
 - [`config/config.default.toml`](./config/config.default.toml) — bundled player and web-player presets
