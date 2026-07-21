@@ -417,7 +417,7 @@ fn wait_for_config_ready(path: &Path) {
     );
 }
 
-fn get_config_path() -> Result<PathBuf, ConfigError> {
+pub(crate) fn get_config_path() -> Result<PathBuf, ConfigError> {
     let config_dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("mprisence");
@@ -433,7 +433,7 @@ fn ensure_config_exists(path: &Path) -> Result<(), ConfigError> {
     Ok(())
 }
 
-fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
+pub(crate) fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     log::info!("Loading configuration from {}", path.display());
 
     let default_provider = Figment::new().merge(Toml::string(include_str!(
@@ -464,6 +464,21 @@ fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> {
     config.bundled_web_player = bundled.web_player;
     config.user_web_player = load_user_web_player_configs(path)?;
     config.rebuild_merged_web_player();
+    config.precompile_patterns();
+    Ok(config)
+}
+
+/// Parse a candidate user config from a TOML string (defaults merged in).
+/// Used by the config UI for validation and template preview. Unlike
+/// `load_config_from_file` it skips legacy-key handling and sibling
+/// player-config files — those don't affect template preview.
+pub(crate) fn parse_config_str(user_toml: &str) -> Result<Config, ConfigError> {
+    let figment = Figment::new()
+        .merge(Toml::string(include_str!(
+            "../../config/config.default.toml"
+        )))
+        .merge(Toml::string(user_toml));
+    let mut config: Config = figment.extract().map_err(ConfigError::from)?;
     config.precompile_patterns();
     Ok(config)
 }
@@ -697,5 +712,16 @@ icon = "user-icon"
         assert!(resolved.allow_streaming);
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn parse_config_str_accepts_valid_toml() {
+        let config = parse_config_str("clear_on_pause = true\n").expect("valid toml");
+        assert!(!config.template.details.is_empty(), "defaults merged in");
+    }
+
+    #[test]
+    fn parse_config_str_rejects_invalid_toml() {
+        assert!(parse_config_str("[template\ndetails = ").is_err());
     }
 }
