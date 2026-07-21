@@ -27,6 +27,7 @@ static GLOBAL: System = System;
 
 mod cli;
 mod config;
+mod config_ui;
 mod cover;
 mod discord;
 mod error;

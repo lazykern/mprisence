@@ -1,4 +1,5 @@
 pub mod config;
+pub mod config_ui;
 pub mod cover;
 pub mod discord;
 pub mod error;
