@@ -1,3 +1,169 @@
 <!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>mprisence config</title>
-<textarea id="toml"></textarea>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: #1e1f26; color: #e8e8ee; }
+  header { padding: .6rem 1rem; background: #16171c; display: flex; align-items: baseline; gap: 1rem; }
+  header h1 { font-size: 1rem; margin: 0; }
+  header .path { color: #8b8fa3; font-size: .8rem; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem; height: calc(100vh - 3rem); }
+  section { display: flex; flex-direction: column; gap: .5rem; min-height: 0; }
+  textarea { flex: 1; width: 100%; resize: none; background: #16171c; color: #e8e8ee;
+             border: 1px solid #33354a; border-radius: 6px; padding: .75rem;
+             font: 13px/1.5 ui-monospace, monospace; tab-size: 2; }
+  .bar { display: flex; gap: .75rem; align-items: center; }
+  button { background: #5865f2; color: #fff; border: 0; border-radius: 6px;
+           padding: .45rem 1.1rem; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { font-size: .85rem; white-space: pre-wrap; }
+  #status.ok { color: #57cc7f; } #status.err { color: #ff6b6b; }
+  .card { background: #16171c; border: 1px solid #33354a; border-radius: 6px; padding: .75rem 1rem; }
+  .card h2 { margin: 0 0 .5rem; font-size: .8rem; text-transform: uppercase; color: #8b8fa3; }
+  .line { display: flex; justify-content: space-between; gap: 1rem; }
+  .line .val { overflow-wrap: anywhere; }
+  .count { color: #8b8fa3; font-size: .75rem; flex-shrink: 0; }
+  .count.over { color: #ff6b6b; font-weight: 700; }
+  select { background: #16171c; color: #e8e8ee; border: 1px solid #33354a; border-radius: 6px; padding: .3rem; }
+  #vars { flex: 1; overflow-y: auto; }
+  #vars table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+  #vars td { padding: .15rem .4rem; border-top: 1px solid #26283a; vertical-align: top; }
+  #vars td:first-child { color: #7aa2f7; cursor: pointer; white-space: nowrap;
+                         font-family: ui-monospace, monospace; }
+  #vars td:first-child:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<header>
+  <h1>mprisence config</h1>
+  <span class="path" id="path">saving applies live via hot-reload</span>
+</header>
+<main>
+  <section>
+    <textarea id="toml" spellcheck="false"></textarea>
+    <div class="bar">
+      <button id="save">Save</button>
+      <span id="status"></span>
+    </div>
+  </section>
+  <section>
+    <div class="card">
+      <h2>Preview <select id="player"><option value="">auto</option></select>
+          <span class="count" id="previewPlayer"></span></h2>
+      <div class="line"><span class="val" id="p-details"></span><span class="count" id="c-details"></span></div>
+      <div class="line"><span class="val" id="p-state"></span><span class="count" id="c-state"></span></div>
+      <div class="line"><span class="val" id="p-large_text"></span><span class="count" id="c-large_text"></span></div>
+      <div class="line"><span class="val" id="p-small_text"></span><span class="count" id="c-small_text"></span></div>
+    </div>
+    <div class="card" id="vars">
+      <h2>Variables (click to insert)</h2>
+      <table><tbody id="varRows"></tbody></table>
+    </div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const FIELDS = ['details', 'state', 'large_text', 'small_text'];
+const DISCORD_LIMIT = 128;
+let previewTimer = null;
+
+async function loadConfig() {
+  $('toml').value = await (await fetch('/api/config')).text();
+  preview();
+}
+
+function schedulePreview() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(preview, 300);
+}
+
+async function preview() {
+  const body = JSON.stringify({
+    toml: $('toml').value,
+    player_bus_name: $('player').value || null,
+  });
+  const res = await fetch('/api/preview', { method: 'POST', body });
+  const p = await res.json();
+  if (!p.valid) {
+    setStatus('Config error: ' + p.error, false);
+    return;
+  }
+  setStatus('Valid', true);
+  $('previewPlayer').textContent = p.player ? 'against: ' + p.player : '';
+  for (const f of FIELDS) {
+    $('p-' + f).textContent = p[f] ?? '';
+    const el = $('c-' + f);
+    const len = (p[f] ?? '').length;
+    el.textContent = f + ' ' + len + '/' + DISCORD_LIMIT;
+    el.classList.toggle('over', len > DISCORD_LIMIT);
+  }
+}
+
+async function save() {
+  $('save').disabled = true;
+  const res = await fetch('/api/config', { method: 'PUT', body: $('toml').value });
+  if (res.ok) setStatus('Saved — applied live if the daemon is running', true);
+  else setStatus('Save failed: ' + await res.text(), false);
+  $('save').disabled = false;
+}
+
+function setStatus(text, ok) {
+  $('status').textContent = text;
+  $('status').className = ok ? 'ok' : 'err';
+}
+
+async function refreshPlayers() {
+  let players = [];
+  try { players = await (await fetch('/api/players')).json(); } catch { return; }
+  const select = $('player');
+  const current = select.value;
+  select.innerHTML = '<option value="">auto</option>';
+  for (const p of players) {
+    const opt = document.createElement('option');
+    opt.value = p.player_bus_name;
+    opt.textContent = p.identity + (p.status ? ' (' + p.status + ')' : '');
+    select.appendChild(opt);
+  }
+  select.value = [...select.options].some(o => o.value === current) ? current : '';
+  renderVars(players.find(p => p.player_bus_name === select.value) ?? players[0]);
+}
+
+function renderVars(player) {
+  const rows = $('varRows');
+  rows.innerHTML = '';
+  if (!player) return;
+  for (const [key, value] of Object.entries(player.context)) {
+    if (value === null || (Array.isArray(value) && value.length === 0)) continue;
+    const tr = document.createElement('tr');
+    const name = document.createElement('td');
+    name.textContent = '{{' + key + '}}';
+    name.onclick = () => insertVar(key);
+    const val = document.createElement('td');
+    val.textContent = Array.isArray(value) ? value.join(', ') : String(value);
+    tr.append(name, val);
+    rows.appendChild(tr);
+  }
+}
+
+function insertVar(key) {
+  const area = $('toml');
+  const snippet = '{{' + key + '}}';
+  const start = area.selectionStart;
+  area.setRangeText(snippet, start, area.selectionEnd, 'end');
+  area.focus();
+  schedulePreview();
+}
+
+$('toml').addEventListener('input', schedulePreview);
+$('player').addEventListener('change', preview);
+$('save').addEventListener('click', save);
+loadConfig();
+refreshPlayers();
+setInterval(refreshPlayers, 2000);
+</script>
+</body>
+</html>
