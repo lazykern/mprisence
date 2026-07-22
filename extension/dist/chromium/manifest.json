@@ -18,7 +18,7 @@
   ],
   "minimum_chrome_version": "111",
   "action": {
-    "default_title": "mprisence bridge",
+    "default_title": "mprisence bridge — open settings",
     "default_icon": {
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png"

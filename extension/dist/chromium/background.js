@@ -282,6 +282,18 @@ chrome.storage?.onChanged?.addListener((changes, area) => {
     void syncGenericRegistration();
   }
 });
+function hasAllUrls(p) {
+  return (p?.origins ?? []).includes("<all_urls>");
+}
+chrome.permissions?.onAdded?.addListener((p) => {
+  if (hasAllUrls(p)) void chrome.storage.local.set({ genericEnabled: true });
+});
+chrome.permissions?.onRemoved?.addListener((p) => {
+  if (hasAllUrls(p)) void chrome.storage.local.set({ genericEnabled: false });
+});
+chrome.action?.onClicked?.addListener(() => {
+  chrome.runtime.openOptionsPage();
+});
 async function init() {
   let extFingerprint;
   try {
@@ -311,7 +323,7 @@ async function init() {
     browser,
     extension_version: chrome.runtime.getManifest().version,
     protocol: PROTOCOL_VERSION,
-    git_sha: true ? "2952998-dirty" : void 0,
+    git_sha: true ? "359a686b0-dirty" : void 0,
     extension_fingerprint: extFingerprint
   });
   chrome.runtime.onMessage.addListener(

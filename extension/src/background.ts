@@ -281,6 +281,31 @@ chrome.storage?.onChanged?.addListener((changes, area) => {
   }
 });
 
+// Own the enable-state from the permission itself, not from the popup's
+// continuation. A Firefox popup closes when the permission doorhanger appears,
+// killing any code after `await permissions.request` — so the popup can never
+// reliably persist the flag. These events fire regardless, and also let the
+// user enable/disable straight from the browser's permission UI.
+function hasAllUrls(p?: chrome.permissions.Permissions): boolean {
+  return (p?.origins ?? []).includes("<all_urls>");
+}
+
+chrome.permissions?.onAdded?.addListener((p) => {
+  if (hasAllUrls(p)) void chrome.storage.local.set({ genericEnabled: true });
+});
+
+chrome.permissions?.onRemoved?.addListener((p) => {
+  if (hasAllUrls(p)) void chrome.storage.local.set({ genericEnabled: false });
+});
+
+// Toolbar click opens the options page. The generic toggle needs an
+// <all_urls> permission grant, and the doorhanger for it is only reliably
+// clickable from a full tab — inside a toolbar popup the prompt renders behind
+// the popup and can't be reached.
+chrome.action?.onClicked?.addListener(() => {
+  chrome.runtime.openOptionsPage();
+});
+
 // ─── Init ─────────────────────────────────────────────────────────
 
 async function init(): Promise<void> {

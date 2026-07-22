@@ -495,7 +495,7 @@ fn format_site_name(site: &str) -> String {
         "bandcamp" => "Bandcamp".into(),
         "tidal" => "Tidal".into(),
         "apple_music" => "Apple Music".into(),
-        "generic" => "Browser".into(),
+        "generic" => "Web Media".into(),
         other => other
             .split('_')
             .map(|w| {
@@ -507,6 +507,33 @@ fn format_site_name(site: &str) -> String {
             })
             .collect::<Vec<_>>()
             .join(" "),
+    }
+}
+
+/// Display name for a source. Known sites keep their curated names; generic
+/// sources derive one from the track URL's hostname
+/// ("www.crunchyroll.com" → "Crunchyroll") instead of a catch-all label.
+fn source_display_name(s: &SourceState) -> String {
+    if s.site != "generic" {
+        return format_site_name(&s.site);
+    }
+    let url = select_best_url(s);
+    let label = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .and_then(|rest| rest.split(['/', '?', '#']).next())
+        .map(|h| h.trim_start_matches("www."))
+        .and_then(|h| h.split('.').next())
+        .filter(|l| !l.is_empty());
+    match label {
+        Some(l) => {
+            let mut c = l.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => format_site_name(&s.site),
+            }
+        }
+        None => format_site_name(&s.site),
     }
 }
 
@@ -531,7 +558,7 @@ fn build_snapshot(source: Option<&SourceState>) -> PublishedSnapshot {
         .filter(|u| u.starts_with("http://") || u.starts_with("https://"))
         .unwrap_or_default();
     PublishedSnapshot {
-        identity: format_site_name(&s.site),
+        identity: source_display_name(s),
         status: Some(s.playback.status),
         meta: MetaSnapshot {
             track_id: make_track_id(s, meta),
