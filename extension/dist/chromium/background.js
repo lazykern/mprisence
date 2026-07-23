@@ -323,7 +323,7 @@ async function init() {
     browser,
     extension_version: chrome.runtime.getManifest().version,
     protocol: PROTOCOL_VERSION,
-    git_sha: true ? "359a686b0-dirty" : void 0,
+    git_sha: true ? "unknown" : void 0,
     extension_fingerprint: extFingerprint
   });
   chrome.runtime.onMessage.addListener(
