@@ -510,30 +510,18 @@ fn format_site_name(site: &str) -> String {
     }
 }
 
-/// Display name for a source. Known sites keep their curated names; generic
-/// sources derive one from the track URL's hostname
-/// ("www.crunchyroll.com" → "Crunchyroll") instead of a catch-all label.
 fn source_display_name(s: &SourceState) -> String {
     if s.site != "generic" {
         return format_site_name(&s.site);
     }
-    let url = select_best_url(s);
-    let label = url
-        .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))
-        .and_then(|rest| rest.split(['/', '?', '#']).next())
-        .map(|h| h.trim_start_matches("www."))
-        .and_then(|h| h.split('.').next())
-        .filter(|l| !l.is_empty());
-    match label {
-        Some(l) => {
-            let mut c = l.chars();
-            match c.next() {
-                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-                None => format_site_name(&s.site),
-            }
-        }
-        None => format_site_name(&s.site),
+
+    match s.source_id.split(':').next() {
+        Some("firefox") => "Firefox".into(),
+        Some("chromium") => "Chromium".into(),
+        Some("brave") => "Brave".into(),
+        Some("vivaldi") => "Vivaldi".into(),
+        Some("edge") => "Edge".into(),
+        _ => format_site_name(&s.site),
     }
 }
 
@@ -695,7 +683,39 @@ fn make_track_id(s: &SourceState, meta: &MediaMetadata) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::protocol::{Capabilities, PlaybackState};
     use super::*;
+
+    fn source(site: &str, source_id: &str, url: &str) -> SourceState {
+        SourceState {
+            source_id: source_id.into(),
+            url: url.into(),
+            origin: String::new(),
+            site: site.into(),
+            playback: PlaybackState {
+                status: Status::Playing,
+                position_ms: 0,
+                duration_ms: 0,
+            },
+            metadata: MediaMetadata {
+                title: None,
+                artist: vec![],
+                album: None,
+                album_artist: vec![],
+                art_url: None,
+                track_id: None,
+            },
+            capabilities: Capabilities {
+                play_pause: true,
+                next: false,
+                previous: false,
+                seek: false,
+                set_position: false,
+            },
+            last_seen: std::time::Instant::now(),
+            canonical_url: None,
+        }
+    }
 
     fn snap() -> PublishedSnapshot {
         PublishedSnapshot {
@@ -781,6 +801,38 @@ mod tests {
                 ..Default::default()
             }
         );
+    }
+
+    #[test]
+    fn generic_source_uses_browser_identity() {
+        for (source_id, expected) in [
+            ("firefox:tab:12:0:frame", "Firefox"),
+            ("chromium:tab:12:0:frame", "Chromium"),
+            ("brave:tab:12:0:frame", "Brave"),
+            ("vivaldi:tab:12:0:frame", "Vivaldi"),
+            ("edge:tab:12:0:frame", "Edge"),
+        ] {
+            let source = source("generic", source_id, "https://open.spotify.com/track/123");
+            assert_eq!(source_display_name(&source), expected);
+        }
+    }
+
+    #[test]
+    fn generic_source_with_unknown_browser_uses_web_media_identity() {
+        let source = source("generic", "unknown", "https://example.com/media");
+
+        assert_eq!(source_display_name(&source), "Web Media");
+    }
+
+    #[test]
+    fn supported_source_keeps_curated_identity() {
+        let source = source(
+            "youtube_music",
+            "firefox:tab:12:0:frame",
+            "https://music.youtube.com/watch?v=123",
+        );
+
+        assert_eq!(source_display_name(&source), "YouTube Music");
     }
 
     #[test]
