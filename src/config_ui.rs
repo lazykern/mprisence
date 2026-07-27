@@ -4,11 +4,17 @@ use mpris::{PlaybackStatus, PlayerFinder};
 use serde::{Deserialize, Serialize};
 use tiny_http::Method;
 
-use crate::config::schema::{PlayerConfig, PlayerConfigLayer, WebPlayerConfigLayer};
+use crate::config::schema::{
+    PlayerConfig, PlayerConfigLayer, PlayerConfigMatch, WebPlayerConfigLayer,
+};
 use crate::config::{self};
 use crate::error::Error;
 use crate::metadata::{MediaMetadata, MetadataSource};
-use crate::player::{canonical_player_bus_name, is_playerctld_no_active_error};
+use crate::player::{
+    canonical_player_bus_name, is_mprisence_web_bridge_bus, is_playerctld_no_active_error,
+    BRIDGE_CONFIG_KEY,
+};
+use crate::presence::{determine_activity_type, resolve_status_display_type};
 use crate::template::{RenderContext, TemplateManager};
 use crate::utils::{format_playback_status_icon, normalize_player_identity};
 
@@ -69,8 +75,10 @@ fn route(
 ) -> (u16, &'static str, String) {
     match (method, url) {
         (Method::Get, "/") => (200, "text/html; charset=utf-8", INDEX_HTML.to_string()),
+        (Method::Get, "/favicon.ico") => (204, "image/x-icon", String::new()),
         (Method::Get, "/api/config") => get_config_text(config_path),
         (Method::Put, "/api/config") => save_config(config_path, body),
+        (Method::Post, "/api/config/validate") => validate_config(body),
         (Method::Get, "/api/settings") => get_settings(config_path),
         (Method::Patch, "/api/settings") => patch_settings(config_path, body),
         (Method::Get, "/api/players") => list_players(config_path),
@@ -126,6 +134,197 @@ fn save_config(config_path: &Path, body: &str) -> (u16, &'static str, String) {
 }
 
 #[derive(Serialize)]
+struct ConfigValidation {
+    valid: bool,
+    error: Option<String>,
+    warnings: Vec<String>,
+}
+
+fn validate_config(body: &str) -> (u16, &'static str, String) {
+    let warnings = config_warnings(body);
+    let validation = match config::parse_config_str(body) {
+        Ok(_) => ConfigValidation {
+            valid: true,
+            error: None,
+            warnings,
+        },
+        Err(error) => ConfigValidation {
+            valid: false,
+            error: Some(error.to_string()),
+            warnings,
+        },
+    };
+    (
+        200,
+        "application/json",
+        serde_json::to_string(&validation).expect("serializable validation"),
+    )
+}
+
+fn config_warnings(body: &str) -> Vec<String> {
+    let Ok(toml::Value::Table(root)) = toml::from_str::<toml::Value>(body) else {
+        return Vec::new();
+    };
+    let mut warnings = Vec::new();
+    warn_unknown_keys(
+        "",
+        &root,
+        &[
+            "interval",
+            "event_driven",
+            "fallback_poll_interval",
+            "discovery_interval",
+            "allowed_players",
+            "web_player_enabled",
+            "template",
+            "time",
+            "cover",
+            "activity_type",
+            "player",
+            "web_player",
+        ],
+        &mut warnings,
+    );
+    warn_table(
+        &root,
+        "template",
+        &["details", "detail", "state", "large_text", "small_text"],
+        &mut warnings,
+    );
+    warn_table(&root, "time", &["show", "as_elapsed"], &mut warnings);
+    warn_table(
+        &root,
+        "activity_type",
+        &["use_content_type", "default"],
+        &mut warnings,
+    );
+    warn_table(
+        &root,
+        "cover",
+        &["file_names", "provider", "local_search_depth"],
+        &mut warnings,
+    );
+    if let Some(provider) = table_at(&root, &["cover", "provider"]) {
+        warn_unknown_keys(
+            "cover.provider",
+            provider,
+            &["provider", "imgbb", "musicbrainz", "catbox"],
+            &mut warnings,
+        );
+        warn_nested_table(
+            provider,
+            "cover.provider",
+            "imgbb",
+            &["api_key", "expiration"],
+            &mut warnings,
+        );
+        warn_nested_table(
+            provider,
+            "cover.provider",
+            "musicbrainz",
+            &["min_score"],
+            &mut warnings,
+        );
+        warn_nested_table(
+            provider,
+            "cover.provider",
+            "catbox",
+            &["user_hash", "use_litter", "litter_hours"],
+            &mut warnings,
+        );
+    }
+    // `ignore_unmatched` is a [player.default] concept only — web players hide
+    // unmatched sites unconditionally.
+    for (section, extra) in [
+        ("player", Some("ignore_unmatched")),
+        ("web_player", Some("title_suffix")),
+    ] {
+        if let Some(entries) = root.get(section).and_then(toml::Value::as_table) {
+            for (key, value) in entries {
+                if let Some(layer) = value.as_table() {
+                    let mut allowed = vec![
+                        "match_pattern",
+                        "match_patterns",
+                        "name",
+                        "ignore",
+                        "app_id",
+                        "icon",
+                        "show_icon",
+                        "allow_streaming",
+                        "status_display_type",
+                        "override_activity_type",
+                    ];
+                    if let Some(extra) = extra {
+                        allowed.push(extra);
+                    }
+                    warn_unknown_keys(&format!("{section}.{key}"), layer, &allowed, &mut warnings);
+                    if section == "web_player" && key == "default" && layer.contains_key("ignore") {
+                        warnings.push(
+                            "web_player.default.ignore is no longer used; set web_player_enabled = false to turn web players off"
+                                .to_string(),
+                        );
+                    }
+                }
+            }
+        }
+    }
+    if root.contains_key("discovery_interval") {
+        warnings.push("discovery_interval is deprecated; use fallback_poll_interval".to_string());
+    }
+    if let Some(template) = root.get("template").and_then(toml::Value::as_table) {
+        if template.contains_key("detail") {
+            warnings.push("template.detail is deprecated; use template.details".to_string());
+        }
+    }
+    if root.contains_key("clear_on_pause") {
+        warnings.push("clear_on_pause was removed and has no effect".to_string());
+    }
+    warnings
+}
+
+fn table_at<'a>(root: &'a toml::value::Table, path: &[&str]) -> Option<&'a toml::value::Table> {
+    let mut value = root.get(*path.first()?)?;
+    for key in &path[1..] {
+        value = value.get(*key)?;
+    }
+    value.as_table()
+}
+
+fn warn_table(root: &toml::value::Table, key: &str, allowed: &[&str], warnings: &mut Vec<String>) {
+    if let Some(table) = root.get(key).and_then(toml::Value::as_table) {
+        warn_unknown_keys(key, table, allowed, warnings);
+    }
+}
+
+fn warn_nested_table(
+    root: &toml::value::Table,
+    prefix: &str,
+    key: &str,
+    allowed: &[&str],
+    warnings: &mut Vec<String>,
+) {
+    if let Some(table) = root.get(key).and_then(toml::Value::as_table) {
+        warn_unknown_keys(&format!("{prefix}.{key}"), table, allowed, warnings);
+    }
+}
+
+fn warn_unknown_keys(
+    prefix: &str,
+    table: &toml::value::Table,
+    allowed: &[&str],
+    warnings: &mut Vec<String>,
+) {
+    for key in table.keys().filter(|key| !allowed.contains(&key.as_str())) {
+        let path = if prefix.is_empty() {
+            key.to_string()
+        } else {
+            format!("{prefix}.{key}")
+        };
+        warnings.push(format!("Unknown setting: {path}"));
+    }
+}
+
+#[derive(Clone, Serialize)]
 struct PlayerEntry {
     identity: String,
     player_bus_name: String,
@@ -134,22 +333,19 @@ struct PlayerEntry {
     /// False for the synthetic `default` layer and configured-but-not-running
     /// entries, so the UI can render them as config-only rows.
     live: bool,
+    bundled: bool,
     allowed: bool,
     status: Option<String>,
     art_url: Option<String>,
     context: RenderContext,
     /// Effective per-player config the daemon uses (defaults + overrides).
     resolved: PlayerConfig,
+    effective: PlayerConfigLayer,
     /// The user's explicit `[player.<config_key>]` layer, so the UI knows
     /// which fields are overridden (and can show a per-field reset).
     overrides: PlayerConfigLayer,
-}
-
-/// Effective config loaded from disk (defaults if the file is missing/broken).
-fn effective_config(config_path: &Path) -> config::Config {
-    config::load_config_from_file(config_path)
-        .or_else(|_| config::parse_config_str(""))
-        .expect("bundled default config is valid")
+    matches: Vec<PlayerConfigMatch>,
+    web_player_key: Option<String>,
 }
 
 fn list_players(config_path: &Path) -> (u16, &'static str, String) {
@@ -164,7 +360,7 @@ fn list_players(config_path: &Path) -> (u16, &'static str, String) {
 }
 
 fn collect_players(config_path: &Path) -> Result<Vec<PlayerEntry>, Error> {
-    let config = effective_config(config_path);
+    let config = config::load_config_from_file(config_path)?;
     let mut finder = PlayerFinder::new()?;
     finder.set_player_timeout_ms(2000);
     let mut entries = Vec::new();
@@ -179,6 +375,12 @@ fn collect_players(config_path: &Path) -> Result<Vec<PlayerEntry>, Error> {
             .get_playback_status()
             .unwrap_or(PlaybackStatus::Stopped);
         let mpris_metadata = player.get_metadata().ok();
+        let url = mpris_metadata
+            .as_ref()
+            .and_then(|m| m.url().map(String::from));
+        let title = mpris_metadata
+            .as_ref()
+            .and_then(|m| m.title().map(String::from));
         let art_url = mpris_metadata
             .as_ref()
             .and_then(|m| m.art_url())
@@ -186,15 +388,56 @@ fn collect_players(config_path: &Path) -> Result<Vec<PlayerEntry>, Error> {
         let metadata = mpris_metadata
             .map(|m| MetadataSource::from_mpris_with_override(m, None).to_media_metadata())
             .unwrap_or_default();
-        let context = RenderContext::new(&player, status, metadata, None);
+        let mut context = RenderContext::new(&player, status, metadata, None);
         let identity = player.identity().to_string();
         let player_bus_name = canonical_player_bus_name(player.bus_name());
-        let config_key = normalize_player_identity(&identity);
+        let (config_identity, config_bus) = if is_mprisence_web_bridge_bus(&player_bus_name) {
+            (BRIDGE_CONFIG_KEY, BRIDGE_CONFIG_KEY)
+        } else {
+            (identity.as_str(), player_bus_name.as_str())
+        };
+        let resolution = config.resolve_source(
+            config_identity,
+            config_bus,
+            url.as_deref(),
+            title.as_deref(),
+        );
+        if let Some(name) = resolution.config.name.as_ref() {
+            context.player.clone_from(name);
+        }
+        let player_keys: Vec<String> = resolution
+            .player_matches
+            .iter()
+            .map(|matched| matched.config_key.clone())
+            .collect();
+        let allowed = config.is_source_allowed(
+            &identity,
+            &player_bus_name,
+            &player_keys,
+            resolution.web_player_key.as_deref(),
+        );
+        let config_key = resolution
+            .player_matches
+            .last()
+            .map(|matched| matched.config_key.clone())
+            .unwrap_or_else(|| normalize_player_identity(&identity));
         entries.push(PlayerEntry {
-            allowed: config.is_player_allowed(&identity, &player_bus_name),
-            resolved: config.get_player_config(&identity, &player_bus_name),
-            overrides: config.user_player.get(&config_key).cloned().unwrap_or_default(),
+            allowed,
+            resolved: resolution.config,
+            effective: config
+                .merged_player
+                .get(&config_key)
+                .cloned()
+                .unwrap_or_default(),
+            overrides: config
+                .user_player
+                .get(&config_key)
+                .cloned()
+                .unwrap_or_default(),
+            matches: resolution.player_matches,
+            web_player_key: resolution.web_player_key,
             live: true,
+            bundled: config.bundled_player.contains_key(&config_key),
             config_key,
             identity,
             player_bus_name,
@@ -208,13 +451,13 @@ fn collect_players(config_path: &Path) -> Result<Vec<PlayerEntry>, Error> {
     Ok(entries)
 }
 
-/// Append config-only player rows: the `[player.default]` layer and any
-/// `[player.*]` key (including regex/wildcard patterns) that isn't currently
-/// running. Lets the UI edit every player entry the config allows, not just
-/// whatever happens to be open right now. `default` first, then the rest.
+/// Append config-only player rows: the `[player.default]` layer and every
+/// bundled or user-defined `[player.*]` key that isn't currently running.
+/// `default` is first, followed by the complete preset catalog.
 fn append_configured_only(entries: &mut Vec<PlayerEntry>, config: &config::Config) {
+    let effective_configs = config.effective_player_configs();
     let mut offline: Vec<String> = config
-        .user_player
+        .merged_player
         .keys()
         .filter(|k| k.as_str() != "default" && !entries.iter().any(|e| &e.config_key == *k))
         .cloned()
@@ -222,11 +465,22 @@ fn append_configured_only(entries: &mut Vec<PlayerEntry>, config: &config::Confi
     offline.sort();
     for key in std::iter::once("default".to_string()).chain(offline) {
         let is_default = key == "default";
+        let player_keys = [key.clone()];
+        let identity_allowed = config.is_player_allowed(&key, &key);
         entries.push(PlayerEntry {
-            allowed: is_default || config.is_player_allowed(&key, &key),
-            resolved: config.get_player_config(&key, &key),
+            allowed: is_default
+                || identity_allowed
+                || config.is_source_allowed(&key, &key, &player_keys, None),
+            resolved: effective_configs
+                .get(&key)
+                .cloned()
+                .unwrap_or_else(|| config.get_player_config(&key, &key)),
+            effective: config.merged_player.get(&key).cloned().unwrap_or_default(),
             overrides: config.user_player.get(&key).cloned().unwrap_or_default(),
+            matches: Vec::new(),
+            web_player_key: None,
             live: false,
+            bundled: config.bundled_player.contains_key(&key),
             identity: if is_default {
                 "Default (all players)".to_string()
             } else {
@@ -269,7 +523,10 @@ struct WebPlayerEntry {
 /// List every configured web player (bundled defaults merged with user
 /// overrides). Sorted with `default` first, then alphabetically.
 fn list_web_players(config_path: &Path) -> (u16, &'static str, String) {
-    let config = effective_config(config_path);
+    let config = match config::load_config_from_file(config_path) {
+        Ok(config) => config,
+        Err(error) => return (400, "text/plain", error.to_string()),
+    };
     let mut keys: Vec<&String> = config.merged_web_player.keys().collect();
     keys.sort_by(|a, b| match (a.as_str(), b.as_str()) {
         ("default", "default") => std::cmp::Ordering::Equal,
@@ -281,7 +538,7 @@ fn list_web_players(config_path: &Path) -> (u16, &'static str, String) {
         .into_iter()
         .map(|key| WebPlayerEntry {
             bundled: config.bundled_web_player.contains_key(key),
-            effective: config.merged_web_player.get(key).cloned().unwrap_or_default(),
+            effective: config.effective_web_player_layer(key),
             overrides: config.user_web_player.get(key).cloned().unwrap_or_default(),
             key: key.clone(),
         })
@@ -303,6 +560,8 @@ struct PreviewRequest {
     large_text: Option<String>,
     small_text: Option<String>,
     player_bus_name: Option<String>,
+    source_scope: Option<String>,
+    source_key: Option<String>,
 }
 
 #[derive(Serialize, Default)]
@@ -313,12 +572,26 @@ struct PreviewResponse {
     /// so the UI can flag when a preview isn't actually live in Discord.
     status: Option<String>,
     art_url: Option<String>,
+    large_image_url: Option<String>,
+    small_image_url: Option<String>,
+    icon_url: Option<String>,
     details: Option<String>,
     state: Option<String>,
     large_text: Option<String>,
     small_text: Option<String>,
     status_icon: Option<String>,
     duration: Option<String>,
+    context: Option<RenderContext>,
+    activity_type: Option<String>,
+    status_display_type: Option<String>,
+    show_icon: bool,
+    allow_streaming: bool,
+    live: bool,
+    allowed: bool,
+    ignored: bool,
+    config_key: Option<String>,
+    web_player_key: Option<String>,
+    matches: Vec<PlayerConfigMatch>,
 }
 
 fn preview(config_path: &Path, body: &str) -> (u16, &'static str, String) {
@@ -335,7 +608,15 @@ fn preview(config_path: &Path, body: &str) -> (u16, &'static str, String) {
 }
 
 fn render_preview(config_path: &Path, request: &PreviewRequest) -> PreviewResponse {
-    let config = effective_config(config_path);
+    let config = match config::load_config_from_file(config_path) {
+        Ok(config) => config,
+        Err(error) => {
+            return PreviewResponse {
+                error: Some(error.to_string()),
+                ..Default::default()
+            }
+        }
+    };
     let t = &config.template;
     let manager = match TemplateManager::new_raw(
         request.details.as_deref().unwrap_or(&t.details),
@@ -351,8 +632,14 @@ fn render_preview(config_path: &Path, request: &PreviewRequest) -> PreviewRespon
             }
         }
     };
-    let (context, player_label, art_url) =
-        preview_context(config_path, request.player_bus_name.as_deref());
+    let selection = preview_context(
+        config_path,
+        &config,
+        request.player_bus_name.as_deref(),
+        request.source_scope.as_deref(),
+        request.source_key.as_deref(),
+    );
+    let context = &selection.context;
     let render = |name: &str| {
         Some(
             manager
@@ -360,18 +647,63 @@ fn render_preview(config_path: &Path, request: &PreviewRequest) -> PreviewRespon
                 .unwrap_or_else(|e| format!("<render error: {e}>")),
         )
     };
+    let activity_type = determine_activity_type(
+        &config.activity_type,
+        &selection.player_config,
+        context.metadata.url.as_deref(),
+    );
+    let status_display_type = resolve_status_display_type(&selection.player_config);
+    let icon_url =
+        (!selection.player_config.icon.is_empty()).then(|| selection.player_config.icon.clone());
+    let (large_image_url, small_image_url) = if selection.art_url.is_some() {
+        (
+            selection.art_url.clone(),
+            selection
+                .player_config
+                .show_icon
+                .then(|| selection.player_config.icon.clone()),
+        )
+    } else {
+        (icon_url.clone(), None)
+    };
     PreviewResponse {
         error: None,
-        player: Some(player_label),
+        player: Some(selection.player_label),
         status: context.status.clone(),
-        art_url,
+        art_url: selection.art_url,
+        large_image_url,
+        small_image_url,
+        icon_url,
         details: render("details"),
         state: render("state"),
         large_text: render("large_text"),
         small_text: render("small_text"),
         status_icon: context.status_icon.clone(),
         duration: context.metadata.duration_display.clone(),
+        context: Some(context.clone()),
+        activity_type: Some(format!("{activity_type:?}").to_lowercase()),
+        status_display_type: Some(format!("{status_display_type:?}").to_lowercase()),
+        show_icon: selection.player_config.show_icon,
+        allow_streaming: selection.player_config.allow_streaming,
+        live: selection.live,
+        allowed: selection.allowed,
+        ignored: selection.player_config.ignore,
+        config_key: selection.config_key,
+        web_player_key: selection.web_player_key,
+        matches: selection.matches,
     }
+}
+
+struct PreviewSelection {
+    context: RenderContext,
+    player_label: String,
+    art_url: Option<String>,
+    player_config: PlayerConfig,
+    live: bool,
+    allowed: bool,
+    config_key: Option<String>,
+    web_player_key: Option<String>,
+    matches: Vec<PlayerConfigMatch>,
 }
 
 /// Pick the requested player, else the first Playing one, else the first
@@ -379,22 +711,124 @@ fn render_preview(config_path: &Path, request: &PreviewRequest) -> PreviewRespon
 /// picked player has no current track, so template editing always previews.
 fn preview_context(
     config_path: &Path,
+    config: &crate::config::schema::Config,
     bus_name: Option<&str>,
-) -> (RenderContext, String, Option<String>) {
-    if let Ok(entries) = collect_players(config_path) {
+    source_scope: Option<&str>,
+    source_key: Option<&str>,
+) -> PreviewSelection {
+    let entries = collect_players(config_path).unwrap_or_default();
+    if bus_name.is_some() {
         if let Some(entry) = pick_preview_entry(&entries, bus_name) {
-            // file:// art can't load in a browser page; point it at our proxy.
-            let art_url = entry.art_url.as_deref().map(|u| {
-                if u.starts_with("file://") {
-                    format!("/api/art?player_bus_name={}", entry.player_bus_name)
-                } else {
-                    u.to_string()
-                }
-            });
-            return (entry.context.clone(), entry.identity.clone(), art_url);
+            return preview_selection_from_entry(entry);
         }
     }
-    (sample_context(), "sample track".to_string(), None)
+    if let (Some(scope), Some(key)) = (source_scope, source_key) {
+        if let Some(selection) = scoped_sample_preview(config, &entries, scope, key) {
+            return selection;
+        }
+    }
+    if let Some(entry) = pick_preview_entry(&entries, None) {
+        return preview_selection_from_entry(entry);
+    }
+    PreviewSelection {
+        context: sample_context(),
+        player_label: "Sample Player".to_string(),
+        art_url: None,
+        player_config: PlayerConfig::default(),
+        live: false,
+        allowed: true,
+        config_key: None,
+        web_player_key: None,
+        matches: Vec::new(),
+    }
+}
+
+fn preview_selection_from_entry(entry: &PlayerEntry) -> PreviewSelection {
+    let art_url = entry.art_url.as_deref().map(|url| {
+        if url.starts_with("file://") {
+            format!("/api/art?player_bus_name={}", entry.player_bus_name)
+        } else {
+            url.to_string()
+        }
+    });
+    PreviewSelection {
+        context: entry.context.clone(),
+        player_label: entry.identity.clone(),
+        art_url,
+        player_config: entry.resolved.clone(),
+        live: entry.live,
+        allowed: entry.allowed,
+        config_key: Some(entry.config_key.clone()),
+        web_player_key: entry.web_player_key.clone(),
+        matches: entry.matches.clone(),
+    }
+}
+
+fn scoped_sample_preview(
+    config: &crate::config::schema::Config,
+    entries: &[PlayerEntry],
+    scope: &str,
+    key: &str,
+) -> Option<PreviewSelection> {
+    if scope == "player" {
+        let entry = entries
+            .iter()
+            .find(|entry| entry.config_key == key && entry.web_player_key.is_none())?;
+        let player_label = entry
+            .resolved
+            .name
+            .clone()
+            .unwrap_or_else(|| entry.identity.clone());
+        let mut context = sample_context();
+        context.player = player_label.clone();
+        context.player_bus_name = key.to_string();
+        return Some(PreviewSelection {
+            context,
+            player_label,
+            art_url: None,
+            player_config: entry.resolved.clone(),
+            live: false,
+            allowed: entry.allowed,
+            config_key: Some(key.to_string()),
+            web_player_key: None,
+            matches: entry.matches.clone(),
+        });
+    }
+    if scope != "web_player" {
+        return None;
+    }
+
+    let web = config.effective_web_player_configs().remove(key)?;
+    let player_label = web.name.clone().unwrap_or_else(|| {
+        if key == "default" {
+            "Website defaults".to_string()
+        } else {
+            key.to_string()
+        }
+    });
+    let patterns = web.match_patterns.clone();
+    let player_config = web.into_player_config();
+    let bus_name = format!("mprisence_web.{key}");
+    let mut context = sample_context();
+    context.player = player_label.clone();
+    context.player_bus_name = bus_name.clone();
+    context.metadata.url = patterns.iter().find_map(|pattern| {
+        (!pattern.starts_with("re:") && !pattern.contains('*') && !pattern.contains('?'))
+            .then(|| format!("https://{pattern}"))
+    });
+    let player_keys = vec![BRIDGE_CONFIG_KEY.to_string()];
+    let allowed = config.is_source_allowed(&player_label, &bus_name, &player_keys, Some(key));
+    Some(PreviewSelection {
+        context,
+        player_label,
+        art_url: None,
+        player_config,
+        live: false,
+        allowed,
+        config_key: Some(BRIDGE_CONFIG_KEY.to_string()),
+        web_player_key: Some(key.to_string()),
+        matches: Vec::new(),
+    })
 }
 
 fn pick_preview_entry<'a>(
@@ -440,6 +874,7 @@ struct Settings {
     event_driven: bool,
     fallback_poll_interval: u64,
     allowed_players: Vec<String>,
+    web_player_enabled: bool,
     activity_type: String,
     use_content_type: bool,
     time_show: bool,
@@ -470,13 +905,17 @@ struct TemplateDefaults {
 }
 
 fn get_settings(config_path: &Path) -> (u16, &'static str, String) {
-    let config = effective_config(config_path);
+    let config = match config::load_config_from_file(config_path) {
+        Ok(config) => config,
+        Err(error) => return (400, "text/plain", error.to_string()),
+    };
     let default = config::parse_config_str("").expect("bundled default config is valid");
     let settings = Settings {
         interval: config.interval,
         event_driven: config.event_driven,
         fallback_poll_interval: config.fallback_poll_interval,
         allowed_players: config.allowed_players.clone(),
+        web_player_enabled: config.web_player_enabled,
         activity_type: format!("{:?}", config.activity_type.default).to_lowercase(),
         use_content_type: config.activity_type.use_content_type,
         time_show: config.time.show,
@@ -511,9 +950,17 @@ fn get_settings(config_path: &Path) -> (u16, &'static str, String) {
 /// One key change: `{"path": ["time", "show"], "value": false}`.
 /// `value: null` removes the key (reverts to default).
 #[derive(Deserialize)]
+struct PatchChange {
+    path: Vec<String>,
+    value: serde_json::Value,
+}
+
+#[derive(Deserialize)]
 struct PatchRequest {
     path: Vec<String>,
     value: serde_json::Value,
+    #[serde(default)]
+    also: Vec<PatchChange>,
 }
 
 fn patch_settings(config_path: &Path, body: &str) -> (u16, &'static str, String) {
@@ -529,14 +976,26 @@ fn patch_settings(config_path: &Path, body: &str) -> (u16, &'static str, String)
         Ok(d) => d,
         Err(e) => return (400, "text/plain", e.to_string()),
     };
-    if let Err(message) = apply_patch(&mut doc, &request) {
+    let primary = PatchChange {
+        path: request.path,
+        value: request.value,
+    };
+    if let Err(message) = apply_patch(&mut doc, &primary) {
         return (400, "text/plain", message);
+    }
+    for change in &request.also {
+        if change.path.is_empty() {
+            return (400, "text/plain", "empty secondary path".to_string());
+        }
+        if let Err(message) = apply_patch(&mut doc, change) {
+            return (400, "text/plain", message);
+        }
     }
     // Reuse the validate-on-temp-file + atomic-rename save path.
     save_config(config_path, &doc.to_string())
 }
 
-fn apply_patch(doc: &mut toml_edit::DocumentMut, request: &PatchRequest) -> Result<(), String> {
+fn apply_patch(doc: &mut toml_edit::DocumentMut, request: &PatchChange) -> Result<(), String> {
     let (last, parents) = request.path.split_last().expect("checked non-empty");
     let mut table = doc.as_table_mut();
     for key in parents {
@@ -605,6 +1064,126 @@ mod tests {
     }
 
     #[test]
+    fn index_raw_editor_has_dedicated_safe_loading_state() {
+        assert!(INDEX_HTML.contains("<details id=\"rawEditor\">"));
+        assert!(INDEX_HTML.contains("<button id=\"rawReload\" type=\"button\" disabled>"));
+        assert!(INDEX_HTML.contains("<button id=\"rawSave\" disabled>"));
+        assert!(INDEX_HTML.contains("$('rawEditor').addEventListener('toggle'"));
+        assert!(!INDEX_HTML.contains("document.querySelector('details')"));
+    }
+
+    #[test]
+    fn index_announces_save_and_connection_status() {
+        assert!(INDEX_HTML.contains("id=\"saveStatus\" role=\"status\" aria-live=\"polite\""));
+        assert!(INDEX_HTML.contains("id=\"offline\" role=\"alert\""));
+        assert!(INDEX_HTML.contains("id=\"toast\" role=\"status\" aria-live=\"polite\""));
+    }
+
+    #[test]
+    fn index_static_form_controls_have_programmatic_labels() {
+        for id in [
+            "pvPlayer",
+            "t-details",
+            "activityType",
+            "timeShow",
+            "eventDriven",
+            "fallbackInterval",
+            "interval",
+            "allowedPlayers",
+            "rawToml",
+        ] {
+            assert!(
+                INDEX_HTML.contains(&format!("for=\"{id}\"")),
+                "missing label for {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn index_groups_source_controls_by_user_intent() {
+        for id in [
+            "players",
+            "settings-players",
+            "settings-appearance",
+            "settings-artwork",
+            "settings-behavior",
+            "settings-advanced",
+            "playingRows",
+            "webPolicyRows",
+            "playerPolicyRows",
+            "sourceFilter",
+            "sourceDetail",
+            "playerSearch",
+            "localPlayersPanel",
+            "webPlayersPanel",
+            "previewColumn",
+            "pvResolution",
+            "variableSearch",
+        ] {
+            assert!(
+                INDEX_HTML.contains(&format!("id=\"{id}\"")),
+                "missing source control {id}"
+            );
+        }
+        assert!(INDEX_HTML.contains("Websites with no web player rule are never shown"));
+        assert!(INDEX_HTML.contains("Recognize web players"));
+        assert!(INDEX_HTML.contains("id=\"webDisabledNote\""));
+        assert!(INDEX_HTML.contains("id=\"webCatalog\" open"));
+        assert!(INDEX_HTML.contains(">Players</button>"));
+        assert!(INDEX_HTML.contains("id=\"playerPresetCatalog\" open"));
+        assert!(INDEX_HTML.contains("This filter overrides the switches above"));
+    }
+
+    #[test]
+    fn index_exposes_every_typed_config_area() {
+        for id in [
+            "activityType",
+            "useContentType",
+            "timeShow",
+            "timeElapsed",
+            "eventDriven",
+            "fallbackInterval",
+            "interval",
+            "allowedPlayers",
+            "imgbbKey",
+            "mbMinScore",
+            "catboxLitter",
+            "catboxHours",
+            "catboxHash",
+            "imgbbExp",
+            "coverDepth",
+            "coverFiles",
+            "providerList",
+        ] {
+            assert!(
+                INDEX_HTML.contains(&format!("id=\"{id}\"")),
+                "missing typed config control {id}"
+            );
+        }
+        for key in [
+            "name",
+            "app_id",
+            "icon",
+            "show_icon",
+            "allow_streaming",
+            "status_display_type",
+            "override_activity_type",
+            "match_patterns",
+            "title_suffix",
+        ] {
+            assert!(
+                INDEX_HTML.contains(&format!("key: '{key}'")),
+                "missing source override control {key}"
+            );
+        }
+        assert!(INDEX_HTML.contains("'ignore'"));
+        assert!(INDEX_HTML.contains("'ignore_unmatched'"));
+        assert!(INDEX_HTML.contains("'match_pattern'"));
+        assert!(INDEX_HTML.contains("id=\"rawToml\""));
+        assert!(INDEX_HTML.contains("/api/config/validate"));
+    }
+
+    #[test]
     fn unknown_route_is_404() {
         let (status, _, _) = route(&Method::Get, "/nope", "", &tmp_config_path("b.toml"));
         assert_eq!(status, 404);
@@ -642,6 +1221,41 @@ mod tests {
     }
 
     #[test]
+    fn raw_validation_reports_unknown_removed_and_deprecated_keys() {
+        let body = "clear_on_pause = true\ndiscovery_interval = 1000\nwat = 1\n[template]\ndetail = \"x\"\n";
+        let (status, _, payload) = route(
+            &Method::Post,
+            "/api/config/validate",
+            body,
+            &tmp_config_path("validate.toml"),
+        );
+        assert_eq!(status, 200);
+        let parsed: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        let warnings = parsed["warnings"].as_array().unwrap();
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.as_str().unwrap().contains("clear_on_pause")));
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.as_str().unwrap().contains("discovery_interval")));
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.as_str().unwrap().contains("Unknown setting: wat")));
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.as_str().unwrap().contains("template.detail")));
+    }
+
+    #[test]
+    fn broken_config_is_not_silently_replaced_in_settings() {
+        let path = tmp_config_path("broken-settings.toml");
+        std::fs::write(&path, "[template\n").unwrap();
+        let (status, _, message) = route(&Method::Get, "/api/settings", "", &path);
+        assert_eq!(status, 400);
+        assert!(!message.is_empty());
+    }
+
+    #[test]
     fn preview_with_defaults_renders() {
         let body = serde_json::json!({}).to_string();
         let (status, ctype, payload) = route(
@@ -655,6 +1269,11 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&payload).unwrap();
         assert!(parsed["error"].is_null());
         assert!(parsed["details"].is_string());
+        assert_eq!(parsed["activity_type"], "listening");
+        assert_eq!(parsed["status_display_type"], "state");
+        assert!(parsed["context"].is_object());
+        assert!(parsed["live"].is_boolean());
+        assert!(parsed["ignored"].is_boolean());
     }
 
     #[test]
@@ -672,8 +1291,12 @@ mod tests {
 
     #[test]
     fn get_settings_exposes_extended_fields() {
-        let (status, _, payload) =
-            route(&Method::Get, "/api/settings", "", &tmp_config_path("set2.toml"));
+        let (status, _, payload) = route(
+            &Method::Get,
+            "/api/settings",
+            "",
+            &tmp_config_path("set2.toml"),
+        );
         assert_eq!(status, 200);
         let p: serde_json::Value = serde_json::from_str(&payload).unwrap();
         assert!(p["event_driven"].is_boolean());
@@ -688,8 +1311,12 @@ mod tests {
 
     #[test]
     fn web_players_lists_bundled_sites() {
-        let (status, ctype, payload) =
-            route(&Method::Get, "/api/web_players", "", &tmp_config_path("web.toml"));
+        let (status, ctype, payload) = route(
+            &Method::Get,
+            "/api/web_players",
+            "",
+            &tmp_config_path("web.toml"),
+        );
         assert_eq!(status, 200);
         assert!(ctype.starts_with("application/json"));
         let list: serde_json::Value = serde_json::from_str(&payload).unwrap();
@@ -712,6 +1339,29 @@ mod tests {
         assert!(saved.contains("ignore = false"));
     }
 
+    /// The toggle is a top-level scalar written into a file that already has
+    /// tables — make sure toml_edit places it where it still parses back.
+    #[test]
+    fn patch_web_player_enabled_round_trips() {
+        let path = tmp_config_path("webenabled.toml");
+        std::fs::write(&path, "[template]\ndetails = \"{{{title}}}\"\n").unwrap();
+        let body = serde_json::json!({ "path": ["web_player_enabled"], "value": false }).to_string();
+        let (status, _, _) = route(&Method::Patch, "/api/settings", &body, &path);
+        assert_eq!(status, 204);
+
+        let reloaded = config::load_config_from_file(&path).expect("config should reload");
+        assert!(!reloaded.web_player_enabled);
+        assert!(reloaded
+            .resolve_source(
+                "Firefox",
+                "firefox",
+                Some("https://music.youtube.com/watch?v=x"),
+                None,
+            )
+            .web_player_key
+            .is_none());
+    }
+
     #[test]
     fn patch_writes_array_value() {
         // match_patterns and provider order patch arrays; make sure that path
@@ -726,6 +1376,22 @@ mod tests {
         assert_eq!(status, 204);
         let saved = std::fs::read_to_string(&path).unwrap();
         assert!(saved.contains("match_patterns = [\"last.fm\", \"*.last.fm\"]"));
+    }
+
+    #[test]
+    fn patch_applies_related_changes_atomically() {
+        let path = tmp_config_path("multi-patch.toml");
+        let body = serde_json::json!({
+            "path": ["web_player", "youtube", "match_patterns"],
+            "value": ["music.youtube.com"],
+            "also": [{ "path": ["web_player", "youtube", "match_pattern"], "value": "" }]
+        })
+        .to_string();
+        let (status, _, _) = route(&Method::Patch, "/api/settings", &body, &path);
+        assert_eq!(status, 204);
+        let saved = std::fs::read_to_string(path).unwrap();
+        assert!(saved.contains("match_patterns = [\"music.youtube.com\"]"));
+        assert!(saved.contains("match_pattern = \"\""));
     }
 
     #[test]
@@ -786,6 +1452,41 @@ mod tests {
         assert_eq!(out, "Sample Player - Sample Track");
     }
 
+    #[test]
+    fn preview_uses_an_offline_local_preset() {
+        let path = tmp_config_path("preview_local_preset.toml");
+        std::fs::write(&path, "").unwrap();
+        let response = render_preview(
+            &path,
+            &PreviewRequest {
+                source_scope: Some("player".to_string()),
+                source_key: Some("audacious".to_string()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(response.config_key.as_deref(), Some("audacious"));
+        assert_ne!(response.player.as_deref(), Some("Sample Player"));
+        assert!(!response.live);
+    }
+
+    #[test]
+    fn preview_uses_a_preconfigured_web_player() {
+        let path = tmp_config_path("preview_web_preset.toml");
+        std::fs::write(&path, "").unwrap();
+        let response = render_preview(
+            &path,
+            &PreviewRequest {
+                source_scope: Some("web_player".to_string()),
+                source_key: Some("youtube".to_string()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(response.config_key.as_deref(), Some(BRIDGE_CONFIG_KEY));
+        assert_eq!(response.web_player_key.as_deref(), Some("youtube"));
+        assert_ne!(response.player.as_deref(), Some("Sample Player"));
+        assert!(!response.live);
+    }
+
     fn fake_entry(bus: &str, status: &str, title: Option<&str>) -> PlayerEntry {
         let mut context = sample_context();
         context.status = Some(status.to_string());
@@ -795,18 +1496,22 @@ mod tests {
             player_bus_name: bus.to_string(),
             config_key: bus.to_string(),
             live: true,
+            bundled: false,
             allowed: true,
             status: Some(status.to_string()),
             art_url: None,
             context,
             resolved: PlayerConfig::default(),
+            effective: PlayerConfigLayer::default(),
             overrides: PlayerConfigLayer::default(),
+            matches: Vec::new(),
+            web_player_key: None,
         }
     }
 
     #[test]
-    fn configured_only_adds_default_and_offline_skipping_running() {
-        // A running spotify plus a configured-but-not-running vlc override.
+    fn configured_only_adds_presets_default_and_offline_skipping_running() {
+        // A running spotify plus a configured-but-not-running custom override.
         // user_player is only populated by the file loader, not parse_config_str.
         let path = tmp_config_path("configured_only.toml");
         std::fs::write(
@@ -818,12 +1523,22 @@ mod tests {
         let mut entries = vec![fake_entry("spotify", "Playing", Some("x"))];
         append_configured_only(&mut entries, &config);
         let keys: Vec<&str> = entries.iter().map(|e| e.config_key.as_str()).collect();
-        // Running spotify stays once (not duplicated), default is added, and the
-        // not-running vlc override shows up as a config-only row.
+        // Running spotify stays once, default and bundled presets are added, and
+        // the not-running custom override shows up as a config-only row.
         assert_eq!(keys.iter().filter(|k| **k == "spotify").count(), 1);
         assert!(keys.contains(&"default"));
+        assert!(keys.contains(&"audacious"));
         assert!(keys.contains(&"vlc_media_player"));
-        let vlc = entries.iter().find(|e| e.config_key == "vlc_media_player").unwrap();
+        let audacious = entries
+            .iter()
+            .find(|e| e.config_key == "audacious")
+            .unwrap();
+        assert!(audacious.bundled);
+        assert!(!audacious.live);
+        let vlc = entries
+            .iter()
+            .find(|e| e.config_key == "vlc_media_player")
+            .unwrap();
         assert!(!vlc.live);
     }
 

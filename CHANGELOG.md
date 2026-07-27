@@ -8,6 +8,22 @@
   without touching TOML: toggles and dropdowns for common options, live
   Discord-status preview, per-player show/hide switches, and a raw config
   editor under Advanced. Changes apply instantly via hot-reload.
+- Stable native-player preset keys with explicit `match_pattern` / `match_patterns`,
+  including optional `identity:` and `bus:` selectors.
+- Source-aware `allowed_players` selectors: `player:`, `web_player:`, `identity:`,
+  and `bus:`. Existing unscoped entries remain supported with a deprecation warning.
+- Top-level `web_player_enabled` toggle (default `true`). Setting it to `false`
+  stops website detection entirely — neither `xesam:url` nor title suffixes are
+  inspected, so browsers resolve through `[player.*]` like any other player and
+  `[web_player.*]` rules become inert. Exposed as a single switch in the
+  config UI.
+
+### Removed
+
+- `[web_player.default] ignore` and `[web_player.*] ignore_unmatched`. Websites
+  with no matching `[web_player.*]` entry are now always hidden, and turning
+  websites off globally is `web_player_enabled = false`. Both keys are warned
+  about and ignored on load. Per-site `ignore` is unchanged.
 
 ## [1.7.0] - 2026-06-17
 

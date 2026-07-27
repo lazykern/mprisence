@@ -67,7 +67,7 @@ impl UpdateSnapshot {
     }
 }
 
-fn resolve_status_display_type(player_config: &PlayerConfig) -> StatusDisplayType {
+pub(crate) fn resolve_status_display_type(player_config: &PlayerConfig) -> StatusDisplayType {
     if player_config.app_id == DEFAULT_PLAYER_APP_ID
         && player_config.status_display_type == StatusDisplayType::Name
     {
@@ -75,6 +75,40 @@ fn resolve_status_display_type(player_config: &PlayerConfig) -> StatusDisplayTyp
     } else {
         player_config.status_display_type
     }
+}
+
+pub(crate) fn determine_activity_type(
+    activity_type_config: &ActivityTypesConfig,
+    player_config: &PlayerConfig,
+    url: Option<&str>,
+) -> ActivityType {
+    if let Some(override_type) = player_config.override_activity_type {
+        debug!("Using overridden activity type: {:?}", override_type);
+        return override_type;
+    }
+
+    if activity_type_config.use_content_type && url.is_some() {
+        trace!("Attempting to determine activity type from content type");
+        if let Some(content_type) = url.and_then(utils::get_content_type_from_metadata) {
+            match content_type.type_() {
+                mime::AUDIO => {
+                    debug!("Content type is audio, using Listening activity type");
+                    return ActivityType::Listening;
+                }
+                mime::VIDEO | mime::IMAGE => {
+                    debug!("Content type is video/image, using Watching activity type");
+                    return ActivityType::Watching;
+                }
+                _ => trace!("Unrecognized content type, falling back to default"),
+            }
+        }
+    }
+
+    debug!(
+        "Using default activity type: {:?}",
+        activity_type_config.default
+    );
+    activity_type_config.default
 }
 
 fn summarize_log_value_with_limit(
@@ -600,48 +634,6 @@ impl Presence {
         Ok(())
     }
 
-    fn determine_activity_type(
-        &self,
-        activity_type_config: &ActivityTypesConfig,
-        player_config: &PlayerConfig,
-        url: Option<&str>,
-    ) -> ActivityType {
-        trace!(
-            "Determining activity type for player: {}",
-            self.player.identity()
-        );
-
-        if let Some(override_type) = player_config.override_activity_type {
-            debug!("Using overridden activity type: {:?}", override_type);
-            return override_type;
-        }
-
-        if activity_type_config.use_content_type && url.is_some() {
-            trace!("Attempting to determine activity type from content type");
-            if let Some(content_type) = url.and_then(utils::get_content_type_from_metadata) {
-                match content_type.type_() {
-                    mime::AUDIO => {
-                        debug!("Content type is audio, using Listening activity type");
-                        return ActivityType::Listening;
-                    }
-                    mime::VIDEO | mime::IMAGE => {
-                        debug!("Content type is video/image, using Watching activity type");
-                        return ActivityType::Watching;
-                    }
-                    _ => {
-                        trace!("Unrecognized content type, falling back to default");
-                    }
-                }
-            }
-        }
-
-        debug!(
-            "Using default activity type: {:?}",
-            activity_type_config.default
-        );
-        activity_type_config.default
-    }
-
     fn generation_matches(&self, generation: Option<u64>) -> bool {
         generation
             .map(|gen| self.update_generation.load(Ordering::Relaxed) == gen)
@@ -1055,7 +1047,7 @@ impl Presence {
             return Ok(());
         }
 
-        let activity_type = self.determine_activity_type(
+        let activity_type = determine_activity_type(
             &self.config.activity_type_config(),
             &player_config,
             track_url_ref,

@@ -264,7 +264,7 @@ async function init() {
     browser,
     extension_version: chrome.runtime.getManifest().version,
     protocol: PROTOCOL_VERSION,
-    git_sha: true ? "f54a48155-dirty" : void 0,
+    git_sha: true ? "80eca0c12-dirty" : void 0,
     extension_fingerprint: extFingerprint
   });
   chrome.runtime.onMessage.addListener(

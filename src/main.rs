@@ -130,15 +130,16 @@ impl Mprisence {
             let pid = presence.player_id();
             let url = presence.current_url();
             let title = presence.current_title();
-            let (player_config, _) = self.config.get_player_config_with_title_fallback(
+            let resolution = self.config.resolve_source(
                 &pid.identity,
                 &pid.player_bus_name,
                 url.as_deref(),
                 title.as_deref(),
             );
-            let is_allowed = self
-                .config
-                .is_player_allowed(&pid.identity, &pid.player_bus_name);
+            let player_config = &resolution.config;
+            let is_allowed =
+                self.config
+                    .is_source_allowed(&pid.identity, &pid.player_bus_name, &resolution);
             if player_config.ignore || !is_allowed {
                 debug!(
                     "Player now {}: {}",
@@ -163,16 +164,16 @@ impl Mprisence {
             let pid = presence.player_id();
             let url = presence.current_url();
             let title = presence.current_title();
-            let (player_config, _) = self.config.get_player_config_with_title_fallback(
+            let resolution = self.config.resolve_source(
                 &pid.identity,
                 &pid.player_bus_name,
                 url.as_deref(),
                 title.as_deref(),
             );
-            !player_config.ignore
+            !resolution.config.ignore
                 && self
                     .config
-                    .is_player_allowed(&pid.identity, &pid.player_bus_name)
+                    .is_source_allowed(&pid.identity, &pid.player_bus_name, &resolution)
         });
 
         debug!("All media players updated with new configuration");
@@ -215,14 +216,6 @@ impl Mprisence {
 
             let id = PlayerIdentifier::from(&player);
 
-            if !self
-                .config
-                .is_player_allowed(&id.identity, &id.player_bus_name)
-            {
-                trace!("Skipping disallowed player: {}", id.identity);
-                continue;
-            }
-
             let metadata = player.get_metadata().ok();
             let url = metadata
                 .as_ref()
@@ -230,13 +223,20 @@ impl Mprisence {
             let title = metadata
                 .as_ref()
                 .and_then(|m| m.title().map(|s| s.to_string()));
-            let (player_config, _) = self.config.get_player_config_with_title_fallback(
+            let resolution = self.config.resolve_source(
                 &id.identity,
                 &id.player_bus_name,
                 url.as_deref(),
                 title.as_deref(),
             );
-            if player_config.ignore {
+            if !self
+                .config
+                .is_source_allowed(&id.identity, &id.player_bus_name, &resolution)
+            {
+                trace!("Skipping disallowed player: {}", id.identity);
+                continue;
+            }
+            if resolution.config.ignore {
                 trace!(
                     "Skipping ignored player: {} ({})",
                     id.identity,
@@ -478,23 +478,25 @@ impl Mprisence {
                 let pid = presence.player_id();
                 (pid.identity.clone(), pid.player_bus_name.clone())
             };
-            let allowed = self.config.is_player_allowed(&identity, &player_bus_name);
             // Use URL-aware config to respect web_player overrides (e.g. SoundCloud
             // un-ignoring a browser that is ignored by default).
             // Also try title-suffix inference for players without xesam:url.
             let url = presence.current_url();
             let title = presence.current_title();
-            let (player_config, _suffix) = self.config.get_player_config_with_title_fallback(
+            let resolution = self.config.resolve_source(
                 &identity,
                 &player_bus_name,
                 url.as_deref(),
                 title.as_deref(),
             );
-            let keep = current_norm_ids.contains(norm_id) && !player_config.ignore && allowed;
+            let allowed = self
+                .config
+                .is_source_allowed(&identity, &player_bus_name, &resolution);
+            let keep = current_norm_ids.contains(norm_id) && !resolution.config.ignore && allowed;
             if !keep {
                 let reason = if !current_norm_ids.contains(norm_id) {
                     "player no longer exists"
-                } else if player_config.ignore {
+                } else if resolution.config.ignore {
                     "player is now ignored"
                 } else {
                     "player is not in the allowed list"

@@ -18,11 +18,12 @@
 # fallback_poll_interval = 5000        # ms between fallback polls (event-driven mode)
 # interval = 2000                      # ms between polls (poll-only mode)
 
-# Restrict discovery to specific players (identity, wildcard, or regex).
-# Matches player identity or bus-name "player" part (e.g. "vlc"), not full D-Bus name.
-# Empty = allow all.
+# Restrict discovery by stable player/site key, normalized identity, or canonical bus name.
+# Every selector accepts exact, wildcard, and re:regex patterns. Empty = allow all.
+# Unscoped legacy values still match either identity or bus, but are deprecated.
 # Examples:
-# allowed_players = ["vlc_media_player", "*mpd*", "re:.*youtube_music.*"]
+# allowed_players = ["player:vlc", "web_player:youtube_music", "bus:*mpdris2*"]
+# allowed_players = ["identity:vlc_media_player", 'identity:re:^music_.*$']
 # allowed_players = []
 
 # ------------------
@@ -197,6 +198,8 @@
 # Matched [player.*] entries start enabled unless some matched layer sets ignore = true.
 #
 # Fields:
+#   match_pattern / match_patterns: Match normalized MPRIS identity or canonical bus name.
+#       Prefix with identity: or bus: to restrict a pattern to one field.
 #   name: Display name override (replaces auto-detected identity in {{{player}}} variable)
 #   ignore: Don't show rich presence for this player
 #   ignore_unmatched: Only in [player.default]. Hide players with no matching [player.*] entry.
@@ -223,7 +226,8 @@
 # ignore = true
 #
 # Example: override VLC
-# [player.vlc_media_player]
+# [player.vlc]
+# match_patterns = ["vlc_media_player", "bus:vlc"]
 # app_id = "YOUR_DISCORD_APP_ID"
 # icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/VLC_Icon.svg/1200px-VLC_Icon.svg.png"
 # show_icon = true
@@ -231,9 +235,10 @@
 # status_display_type = "details"
 # override_activity_type = "watching"
 
-# Regex: prefix with re: or wrap in /.../ to match player name or bus name.
+# Regex: prefix the matcher with re: or wrap it in /.../.
 # Example: match multiple MPD bridges (mpdris2-rs variants)
-# [player."re:.*mpdris2.*"]
+# [player.my_mpd_bridge]
+# match_patterns = ['identity:re:.*mpdris2.*', "bus:*mpdris2*"]
 # app_id = "YOUR_DISCORD_APP_ID"
 # icon = "https://www.musicpd.org/logo.png"
 # allow_streaming = true
@@ -253,7 +258,7 @@
 # streaming by default, so you do not need to also enable the browser entry;
 # adding or overriding a `[web_player.*]` entry is enough.
 #
-# Pattern syntax (same as [player.*] keys):
+# URL pattern syntax (same exact/wildcard/regex forms as player match_patterns):
 #   bare        -> exact host match, with substring fallback against the host
 #   `*` / `?`   -> wildcards (e.g. "*.bandcamp.com")
 #   `re:` / `/.../` -> regex
@@ -264,15 +269,18 @@
 # auto-ignored, so unknown browser audio (ads, random tabs) stays out
 # of Discord. Opt back in by adding a matching `[web_player.*]` entry.
 #
-# Merge semantics: user entries are merged per-key with the bundled
-# entries — user fields win, and unset fields (including
-# `match_pattern` / `match_patterns`) fall through to the bundled
-# entry. So changing one field on a bundled site only takes one line.
+# Precedence: bundled default < bundled site < user default < user site.
+# User site entries inherit unset bundled fields, including match patterns,
+# so changing one field on a bundled site only takes one line.
 #
 # Most bundled web players are enabled (`ignore = false`). YouTube is ignored
-# by default, and unmatched http/https URLs are ignored by default.
+# by default, and unmatched http/https URLs are always ignored.
 
-# [web_player.default]
+# Turn website detection off entirely. Browser media then resolves through
+# [player.*] like any other player, and every [web_player.*] rule is inert.
+# Note: [player.default] has allow_streaming = false, so you also need a
+# [player.<browser>] entry with allow_streaming = true to see anything.
+# web_player_enabled = false
 
 # Example: enable YouTube video pages (bundled with `ignore = true`).
 # Patterns are inherited from the bundled entry — one line is all you need.

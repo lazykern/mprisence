@@ -5,132 +5,338 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>mprisence settings</title>
 <style>
-  :root { color-scheme: dark; }
+  /* OLED workspace */
+  :root {
+    color-scheme: dark;
+    --oled: #000000;
+    --base: #09090b;
+    --surface: #151518;
+    --surface-raised: #1b1b1f;
+    --hover: #232329;
+    --control: #2b2d31;
+    --line: #2a2a30;
+    --text: #f2f3f5;
+    --secondary: #b5bac1;
+    --muted: #949ba4;
+    --blurple: #5865f2;
+    --focus: #7289ff;
+    --success: #23a55a;
+    --warning: #f0b232;
+    --danger: #f23f42;
+  }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #17181d; color: #e8e8ee; }
-  .wrap { max-width: 640px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
-  h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-  .sub { color: #8b8fa3; font-size: .85rem; margin-bottom: 1.25rem; }
-  section { background: #1f2129; border: 1px solid #2b2d3a; border-radius: 10px;
-            padding: .25rem 1rem; margin-bottom: 1rem; }
-  section h2 { font-size: .75rem; text-transform: uppercase; letter-spacing: .05em;
-               color: #8b8fa3; margin: .9rem 0 .2rem; }
+  html { background: var(--oled); }
+  body { min-width: 320px; font: 16px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         margin: 0; background: var(--oled); color: var(--text); }
+  button, input, select, textarea { font: inherit; }
+  button, summary { cursor: pointer; }
+  button { border: 0; }
+  .settings-page > section:last-child { margin-bottom: 0; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-         padding: .65rem 0; border-top: 1px solid #262835; }
+         border-top: 1px solid var(--line); }
   .row:first-of-type { border-top: 0; }
-  .row .label { flex: 1; }
-  .hint { display: block; color: #8b8fa3; font-size: .8rem; }
-  .row.stack { flex-direction: column; align-items: stretch; gap: .35rem; }
-  input[type=text], input[type=password], input[type=number], select {
-    background: #17181d; color: #e8e8ee; border: 1px solid #33354a; border-radius: 6px;
-    padding: .4rem .6rem; font: inherit; }
-  input[type=text] { width: 100%; font-family: ui-monospace, monospace; font-size: .85rem; }
-  input[type=number] { width: 6.5rem; }
-  .switch { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
-  .switch input { opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
-  .switch span { position: absolute; inset: 0; background: #3a3d4d; border-radius: 12px;
-                 transition: .15s; pointer-events: none; }
-  .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px;
-                        height: 18px; background: #fff; border-radius: 50%; transition: .15s; }
-  .switch input:checked + span { background: #57cc7f; }
-  .switch input:checked + span::after { transform: translateX(18px); }
-  .chips { display: flex; flex-wrap: wrap; gap: .35rem; padding: .3rem 0 .5rem; }
-  .chip { background: #2b2d3a; color: #a9c1ff; border: 0; border-radius: 999px;
-          padding: .15rem .6rem; font-size: .75rem; cursor: pointer;
-          max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .chip .val { color: #8b8fa3; }
-  .chip:hover { background: #33364a; }
-  .discord { background: #111214; border-radius: 10px; padding: .8rem 1rem; margin: .6rem 0;
-             border-left: 4px solid #5865f2; }
-  .discord .kind { font-size: .7rem; text-transform: uppercase; color: #8b8fa3;
-                   letter-spacing: .04em; margin-bottom: .5rem; }
-  .discord .body { display: flex; gap: .8rem; align-items: center; }
-  .discord .art { position: relative; width: 64px; height: 64px; border-radius: 8px;
-                  background: #2b2d3a center / cover no-repeat; flex-shrink: 0; display: flex;
-                  align-items: center; justify-content: center; font-size: 1.6rem; color: #8b8fa3; }
-  .discord .badge { position: absolute; right: -5px; bottom: -5px; width: 22px; height: 22px;
-                    border-radius: 50%; background: #1f2129; border: 2px solid #111214;
-                    display: flex; align-items: center; justify-content: center; font-size: .7rem; }
+  .row .label { min-width: 0; flex: 1; }
+  .row.stack, .ovrow.stack { flex-direction: column; align-items: stretch; gap: .35rem; }
+  .field-label, .source-heading { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+  .hint, .source-meta { display: block; font-size: .78rem; font-weight: 400; }
+  .source-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  input:disabled, select:disabled, textarea:disabled { opacity: .45; cursor: not-allowed; }
+  input[type=text] { width: 100%; font: .85rem/1.4 ui-monospace, monospace; }
+  input[type=number] { width: 7rem; }
+  .switch { position: relative; display: block; flex: 0 0 auto; }
+  .switch input { width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+  .switch span { position: absolute; inset: 0; border-radius: 999px; pointer-events: none; transition: .15s; }
+  .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+                        border-radius: 50%; background: #fff; transition: .15s; }
+  .switch input:checked + span::after { transform: translateX(16px); }
+  .chips { display: flex; flex-wrap: wrap; }
+  .chip { max-width: 16rem; padding: .25rem .55rem; overflow: hidden; border: 0;
+          text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  .discord .kind { margin-bottom: .55rem; font-size: .7rem; letter-spacing: .04em; text-transform: uppercase; }
+  .discord .body { display: flex; align-items: center; gap: .8rem; }
+  .discord .art { position: relative; display: grid; place-items: center; flex: 0 0 auto; border-radius: 8px;
+                  background-position: center; background-size: cover; color: var(--muted); font-size: 1.6rem; }
+  .discord .badge { position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center;
+                    width: 22px; height: 22px; border: 2px solid; border-radius: 50%; }
   .discord .lines { min-width: 0; flex: 1; }
-  .discord .l1 { font-weight: 600; }
-  .discord .l1, .discord .l2, .discord .l3 { overflow: hidden; text-overflow: ellipsis;
-                                             white-space: nowrap; }
-  .discord .l2, .discord .l3 { color: #b8bccc; font-size: .9rem; }
-  .discord .bar { margin-top: .45rem; }
-  .discord .track { height: 4px; background: #3a3d4d; border-radius: 2px; overflow: hidden; }
-  .discord .fill { height: 100%; width: 0; background: #b8bccc; }
-  .discord .times { display: flex; justify-content: space-between; color: #8b8fa3;
-                    font-size: .7rem; margin-top: .2rem; }
-  .discord .hl { background: #2b2d4d; border-radius: 3px; }
-  .discord .err { color: #ff6b6b; font-size: .85rem; white-space: pre-wrap; }
-  .pvsource { color: #8b8fa3; font-size: .78rem; margin: .1rem 0 .2rem .2rem; }
-  .reset { background: none; border: 0; color: #8b8fa3; cursor: pointer; font-size: .9rem;
-           padding: 0 .2rem; line-height: 1; }
-  .reset:hover { color: #e8e8ee; }
-  .pvpick { flex: 1; text-align: left; background: none; border: 0; color: inherit; font: inherit;
-            cursor: pointer; padding: 0; overflow: hidden; text-overflow: ellipsis;
-            white-space: nowrap; }
-  .pvpick:hover { color: #a9c1ff; }
-  .selected .pvpick { color: #a9c1ff; font-weight: 600; }
-  .selected .pvpick::before { content: "▸ "; }
-  #offline { background: #5c2330; color: #ffd7dd; padding: .55rem 1rem; border-radius: 8px;
-             margin-bottom: 1rem; font-size: .85rem; }
-  .count { color: #8b8fa3; font-size: .72rem; }
-  .count.over { color: #ff6b6b; font-weight: 700; }
-  #toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
-           background: #2b2d3a; color: #e8e8ee; padding: .5rem 1rem; border-radius: 8px;
-           font-size: .85rem; opacity: 0; transition: opacity .2s; pointer-events: none; }
-  #toast.show { opacity: 1; }
-  #toast.err { background: #5c2330; }
+  .discord .l1 { font-weight: 650; }
+  .discord .l1, .discord .l2, .discord .l3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .discord .l2, .discord .l3 { font-size: .9rem; }
+  .discord .err { color: #ff9c9f; font-size: .82rem; white-space: pre-wrap; }
+  .pvsource, .warn, .progress-note { margin: .2rem 0; font-size: .76rem; }
+  .warn { color: #ffd37a; }
+  .count { font-size: .72rem; }
+  .count.over { color: var(--danger); font-weight: 700; }
+  .reset, .expand, .inherit-reset { padding: .25rem .4rem; background: transparent; }
   details { margin-top: .5rem; }
-  summary { cursor: pointer; color: #8b8fa3; padding: .5rem 0; }
-  #rawToml { width: 100%; height: 320px; resize: vertical; background: #17181d; color: #e8e8ee;
-             border: 1px solid #33354a; border-radius: 6px; padding: .6rem;
-             font: 12.5px/1.5 ui-monospace, monospace; }
-  .advBar { display: flex; gap: .75rem; align-items: center; margin: .5rem 0 1rem; }
-  .advBar button { background: #5865f2; color: #fff; border: 0; border-radius: 6px;
-                   padding: .4rem 1rem; font-weight: 600; cursor: pointer; }
-  #playersEmpty { color: #8b8fa3; padding: .65rem 0; }
-  .warn { color: #ffb454; font-size: .78rem; padding: .2rem 0; }
-  .ovpanel { padding: .1rem 0 .5rem 1.2rem; border-left: 2px solid #2b2d3a; margin: 0 0 .4rem; }
-  .ovrow { display: flex; align-items: center; justify-content: space-between; gap: .75rem;
-           padding: .3rem 0; }
-  .ovrow .lbl { color: #b8bccc; font-size: .82rem; flex-shrink: 0; }
-  .ovrow.stack { flex-direction: column; align-items: stretch; gap: .2rem; }
+  summary { padding: .5rem 0; }
+  .source-flow { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap;
+                 margin-top: .7rem; padding: .65rem .75rem; border: 1px solid; border-radius: 8px; font-size: .82rem; }
+  .source-flow .flow-note { flex-basis: 100%; color: var(--muted); }
+  .source-group { padding-bottom: .35rem; border-top: 1px solid; }
+  .source-group:first-of-type { border-top: 0; }
+  .player-tabs { display: flex; gap: .25rem; margin-top: 18px; padding: 4px;
+                 border-radius: 8px; background: var(--base); }
+  .player-tabs button { flex: 1; min-height: 38px; padding: .45rem .8rem; border-radius: 6px;
+                        background: transparent; color: var(--muted); cursor: pointer; }
+  .player-tabs button:hover { color: var(--text); background: var(--hover); }
+  .player-tabs button[aria-selected=true] { background: var(--control); color: var(--text); font-weight: 650; }
+  .player-panel { margin: 0 20px; }
+  .source-catalog { padding-bottom: .5rem; }
+  .source-catalog > .source-heading { padding-top: 14px; border-top: 1px solid var(--line); }
+  .source-advanced > summary { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+  .source-heading { align-items: baseline; }
+  .source-heading h3 { margin: 0; }
+  .source-heading .hint { text-align: right; }
+  .source-name { min-width: 0; flex: 1; }
+  .source-action { display: inline-flex; align-items: center; gap: .35rem; flex: 0 0 auto;
+                   color: var(--secondary); font-size: .78rem; font-weight: 550; }
+  .source-action::after { content: "›"; color: var(--muted); font-size: 1.15rem; line-height: 1; }
+  .pvpick { display: block; width: 100%; overflow: hidden; color: inherit; font: inherit;
+            text-overflow: ellipsis; white-space: nowrap; }
+  .source-status { flex: 0 0 auto; padding: .12rem .5rem; border-radius: 999px; font-size: .72rem; }
+  .source-badge { flex: 0 0 auto; padding: .12rem .5rem; border: 1px solid var(--line);
+                  border-radius: 999px; color: var(--secondary); font-size: .72rem; }
+  .source-badge.customized { border-color: #4c54a1; background: #252849; color: #c2c8ff; }
+  .source-empty { padding: .65rem 0; color: var(--muted); }
+  .source-filter-state { color: #ffd37a; font-size: .76rem; }
+  .source-filter-state.inactive { color: var(--muted); }
+  .policy-list { border-radius: 8px; }
+  .policy-heading { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem;
+                    margin-top: 14px; color: var(--text); font-size: .88rem; font-weight: 650; }
+  .policy-heading .hint { text-align: right; }
+  .ovrow { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+  .ovrow .lbl { flex: 0 1 48%; font-size: .82rem; }
   .ovrow input[type=text], .ovrow input[type=url] { width: 100%; }
-  .ovrow select { min-width: 8rem; }
-  .expand { background: none; border: 0; color: #8b8fa3; cursor: pointer; font-size: .85rem;
-            padding: 0 .3rem; flex-shrink: 0; }
-  .expand:hover { color: #e8e8ee; }
-  .expand::before { content: "▸"; display: inline-block; transition: transform .12s; }
-  .expand.open::before { transform: rotate(90deg); }
-  .ordbtn { background: #2b2d3a; border: 0; color: #a9c1ff; border-radius: 4px; cursor: pointer;
-            width: 1.5rem; height: 1.5rem; font-size: .8rem; }
-  .ordbtn:disabled { color: #4a4d5d; cursor: default; }
-  .provline { display: flex; align-items: center; gap: .4rem; padding: .3rem 0;
-              border-top: 1px solid #262835; }
+  .ovcontrol { display: flex; align-items: center; justify-content: flex-end; gap: .45rem; }
+  .inherit-state, .inherit-reset { font-size: .72rem; white-space: nowrap; }
+  .ordbtn { width: 1.65rem; height: 1.65rem; border-radius: 5px; }
+  .ordbtn:disabled { opacity: .35; cursor: default; }
+  .provline { display: flex; align-items: center; gap: .45rem; padding: .5rem 0; border-top: 1px solid var(--line); }
   .provline:first-child { border-top: 0; }
   .provline .pname { flex: 1; }
-  .addweb { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; padding: .5rem 0 .2rem; }
-  .addweb input { flex: 1; min-width: 7rem; }
-  .addweb button { background: #5865f2; color: #fff; border: 0; border-radius: 6px;
-                   padding: .4rem .9rem; font-weight: 600; cursor: pointer; }
-  textarea.list { width: 100%; height: 4.5rem; resize: vertical; background: #17181d; color: #e8e8ee;
-                  border: 1px solid #33354a; border-radius: 6px; padding: .5rem;
-                  font: 12.5px/1.5 ui-monospace, monospace; }
+  .addweb, .advBar { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: .5rem 0; }
+  .addweb input { min-width: 9rem; flex: 1; }
+  .addweb button, .advBar button { min-height: 38px; padding: .45rem .8rem; border-radius: 6px; font-weight: 650; }
+  .advBar button:disabled { opacity: .45; cursor: not-allowed; }
+  textarea.list { width: 100%; min-height: 5rem; resize: vertical; font: .8rem/1.5 ui-monospace, monospace; }
+  #rawToml { width: 100%; resize: vertical; font: .8rem/1.5 ui-monospace, monospace; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+             overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  #toast { position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%); padding: .55rem .9rem;
+           border-radius: 7px; opacity: 0; transition: opacity .15s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  .skip-link { position: fixed; z-index: 20; top: .5rem; left: .5rem; transform: translateY(-150%);
+               padding: .55rem .8rem; border-radius: 6px; background: var(--blurple); color: white; }
+  .skip-link:focus { transform: none; }
+  .wrap { width: min(1500px, 100%); max-width: none; min-height: 100vh; margin: 0 auto; padding: 0 28px 56px; }
+  .app-header { min-height: 72px; display: flex; align-items: center; justify-content: space-between;
+                gap: 1rem; border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: .75rem; }
+  .brand-mark { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px;
+                background: var(--blurple); font-weight: 800; color: #fff; }
+  h1 { margin: 0; font-size: 1.1rem; line-height: 1.15; letter-spacing: -.01em; }
+  .brand div > span { color: var(--muted); font-size: .78rem; }
+  #saveStatus { display: inline-flex; align-items: center; min-height: 28px; padding: .2rem .65rem;
+                border-radius: 999px; background: var(--surface); color: var(--secondary); font-size: .78rem; }
+  #saveStatus::before { content: ""; width: 7px; height: 7px; margin-right: .45rem; border-radius: 50%; background: var(--success); }
+  #saveStatus.error { color: #ffd5d6; background: #38181a; }
+  #saveStatus.error::before { background: var(--danger); }
+  #saveStatus.restart { color: #ffe0a3; background: #382c16; }
+  #saveStatus.restart::before { background: var(--warning); }
+  .settings-nav { display: flex; grid-template-columns: none; gap: .25rem; overflow-x: auto; margin: 0;
+                  padding: 10px 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+                  background: transparent; scrollbar-width: none; }
+  .settings-nav button { flex: 0 0 auto; min-height: 38px; padding: .45rem .8rem; border-radius: 7px;
+                         background: transparent; color: var(--muted); font-size: .88rem; cursor: pointer; }
+  .settings-nav button:hover { color: var(--text); background: var(--hover); }
+  .settings-nav button[aria-selected=true] { color: #fff; background: var(--control); font-weight: 650; }
+  .workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 390px); gap: 28px;
+               align-items: start; padding-top: 28px; }
+  main { min-width: 0; display: block; }
+  #previewColumn { position: sticky; top: 18px; min-width: 0; }
+  section { padding: 0; margin: 0 0 18px; overflow: hidden; border: 1px solid var(--line);
+            border-radius: 10px; background: var(--surface); }
+  section > h2, section > .section-intro, section > .variable-tools, section > .chips,
+  section > .source-search, section > .source-flow, section > .source-group, section > .source-empty, section > .player-tabs,
+  section > details, section > .row, #sourceDetailBody { margin-left: 20px; margin-right: 20px; }
+  section h2 { margin-top: 18px; margin-bottom: 4px; color: var(--text); font-size: 1rem;
+               font-weight: 650; letter-spacing: 0; text-transform: none; }
+  section h2 + .row { margin-top: 10px; }
+  .section-intro { color: var(--muted); font-size: .88rem; }
+  .row { min-height: 58px; padding: .65rem 0; border-color: var(--line); }
+  .row .label, .lbl { color: var(--text); font-weight: 520; }
+  .hint, .source-meta, .inherit-state, .count, .pvsource, .progress-note { color: var(--muted); }
+  input[type=text], input[type=password], input[type=number], input[type=url], input[type=search], select,
+  textarea.list, #rawToml { min-height: 40px; padding: .5rem .65rem; border: 1px solid #3a3a43;
+                            border-radius: 6px; background: var(--base); color: var(--text); }
+  input::placeholder, textarea::placeholder { color: #7f8490; }
+  input:hover, select:hover, textarea:hover { border-color: #4a4b55; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible,
+  summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .switch { width: 40px; height: 24px; }
+  .switch span { background: #4e5058; }
+  .switch input:checked + span { background: var(--blurple); }
+  .switch input:disabled + span { opacity: .45; }
+  .switch input:focus-visible + span { outline-color: var(--focus); }
+  .source-search { display: flex; align-items: center; gap: .5rem; margin-top: 16px; padding: 0 .7rem;
+                   border: 1px solid #3a3a43; border-radius: 7px; background: var(--base); color: var(--muted); }
+  .source-search:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .source-search input { width: 100%; min-height: 42px; padding: 0; border: 0; outline: 0; background: transparent; }
+  .source-flow { background: var(--base); border-color: var(--line); }
+  .source-flow strong, .inherit-state.custom, .inherit-reset, .chip, .pvpick:hover { color: #aeb8ff; }
+  .source-group { padding-top: 18px; border-color: var(--line); }
+  .source-heading { margin-bottom: 8px; }
+  .source-heading h3 { font-size: .95rem; }
+  .policy-list { margin: 0 0 8px; padding: 0 12px; background: var(--base); }
+  .is-inactive { opacity: .5; }
+  .source-card, #playingRows > .row, #playerPresetRows > div > .row,
+  #playerCustomRows > div > .row, #webPresetRows > div > .row, #webCustomRows > div > .row {
+    margin: 0 -8px; padding: .7rem 8px; border-radius: 7px; border-top-color: var(--line);
+  }
+  .source-card:hover, #playingRows > .row:hover, #playerPresetRows > div > .row:hover,
+  #playerCustomRows > div > .row:hover, #webPresetRows > div > .row:hover,
+  #webCustomRows > div > .row:hover { background: var(--hover); }
+  .source-open { display: flex; min-width: 0; flex: 1; align-items: center; gap: .7rem; padding: 0;
+                 border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
+  .source-icon { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 auto;
+                 overflow: hidden; border-radius: 9px; background: var(--control); color: var(--secondary); font-weight: 700; }
+  .source-icon-image { width: 100%; height: 100%; object-fit: cover; }
+  .source-status { background: #183623; color: #7edb9d; }
+  .source-status.blocked { background: #451f21; color: #ff9c9f; }
+  .source-status.inactive { background: var(--control); color: var(--secondary); }
+  .back-button { margin: 16px 20px 0; padding: .45rem .6rem; border: 0; border-radius: 6px;
+                 background: transparent; color: var(--secondary); cursor: pointer; }
+  .back-button:hover { color: var(--text); background: var(--hover); }
+  .detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+                 padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .detail-head h2 { margin: 0 0 .2rem; }
+  .detail-actions { display: flex; align-items: center; gap: .6rem; }
+  .detail-section { padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .detail-section:last-child { border-bottom: 0; }
+  .detail-section h3 { margin: 0 0 .65rem; font-size: .9rem; }
+  .ovpanel { padding: 0; margin: 0; }
+  .ovrow { min-height: 54px; padding: .45rem 0; border-top: 1px solid var(--line); }
+  .ovrow:first-child { border-top: 0; }
+  .inherit-reset { min-height: 32px; }
+  .resolution { margin-top: .65rem; padding-top: .2rem; border-top: 1px solid var(--line); }
+  .resolution summary { color: var(--secondary); font-size: .82rem; }
+  .resolution-list { padding: 0 0 .8rem; color: var(--muted); font-size: .78rem; }
+  .resolution-list div { display: flex; justify-content: space-between; gap: .8rem; padding: .22rem 0; }
+  .resolution-list strong { color: var(--secondary); font-weight: 550; text-align: right; }
+  #previewSection { padding: 0 16px 14px; background: var(--base); }
+  #previewSection > h2, #previewSection > .row, #previewSection > details { margin-inline: 0; }
+  #previewSection .row { min-height: 50px; }
+  .discord { margin: .55rem 0; padding: .8rem; border: 1px solid #303038; border-radius: 8px; background: var(--surface); }
+  .discord .kind { color: var(--muted); }
+  .discord .art { width: 72px; height: 72px; background-color: var(--control); }
+  .discord .badge { overflow: hidden; background: var(--surface); border-color: var(--surface); }
+  .discord .badge img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+  .discord .l2, .discord .l3 { color: var(--secondary); }
+  .discord .hl { background: #313454; }
+  .variable-tools { display: grid; grid-template-columns: auto minmax(180px, 320px); gap: .35rem .8rem;
+                    align-items: center; margin-top: 14px; }
+  .variable-tools label { font-size: .85rem; font-weight: 600; }
+  .variable-tools .hint { grid-column: 1 / -1; }
+  .chips { max-height: 210px; overflow-y: auto; gap: .35rem; padding: .55rem 0 .7rem; }
+  .chip { min-height: 30px; border-radius: 5px; background: var(--control); }
+  .chip:hover { background: #393b42; }
+  .chip .val { color: var(--muted); }
+  .variable-toggle { min-height: 32px; margin: 0 20px .7rem; padding: .3rem .55rem;
+                     border-radius: 5px; background: transparent; color: var(--secondary); }
+  .variable-toggle:hover { background: var(--hover); color: var(--text); }
+  .recipes { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; margin: 0 20px .7rem; }
+  .recipes > span { margin-right: .2rem; color: var(--muted); font-size: .76rem; }
+  .recipes button { min-height: 30px; padding: .25rem .55rem; border-radius: 5px;
+                    background: var(--base); color: var(--secondary); }
+  .recipes button:hover { background: var(--hover); color: var(--text); }
+  .ordbtn, .addweb button, .advBar button { background: var(--blurple); color: white; }
+  .reset, .expand, summary { color: var(--muted); }
+  details { border-color: var(--line); }
+  #rawEditor { padding: 0 20px 18px; margin: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  #rawEditor > summary { color: var(--text); font-weight: 650; }
+  #sourceFilter { margin: 0 0 18px; padding: 0 20px 18px; border: 1px solid var(--line);
+                  border-radius: 10px; background: var(--surface); }
+  #sourceFilter > summary { color: var(--text); font-weight: 650; }
+  #sourceFilter .row { margin: .4rem 0 0; }
+  #rawToml { height: min(55vh, 520px); }
+  #coverSection > .hint, #coverSection > .warn, #providerList { margin-left: 20px; margin-right: 20px; }
+  .raw-diagnostics { color: var(--muted); font-size: .82rem; white-space: pre-wrap; }
+  .raw-diagnostics.error { color: #ff9c9f; }
+  .raw-diagnostics.warning { color: #ffd37a; }
+  #offline { position: sticky; z-index: 10; top: 0; margin: 0 -28px; border-radius: 0;
+             background: #451f21; color: #ffd5d6; text-align: center; }
+  #toast { z-index: 30; background: var(--control); color: var(--text); }
+  #toast.err { background: #451f21; }
+
+  @media (max-width: 980px) {
+    .workspace { grid-template-columns: 1fr; }
+    #previewColumn { position: static; grid-row: auto; }
+    #previewSection { max-width: none; }
+  }
+  @media (max-width: 640px) {
+    .wrap { padding: 0 14px 40px; }
+    .app-header { min-height: 64px; }
+    .brand div > span { display: none; }
+    .workspace { gap: 16px; padding-top: 16px; }
+    section > h2, section > .section-intro, section > .variable-tools, section > .chips,
+    section > .source-search, section > .source-flow, section > .source-group, section > .source-empty, section > .player-tabs,
+    section > details, section > .row, #sourceDetailBody { margin-left: 14px; margin-right: 14px; }
+    .player-panel { margin-inline: 14px; }
+    #coverSection > .hint, #coverSection > .warn, #providerList { margin-left: 14px; margin-right: 14px; }
+    #sourceFilter { padding-inline: 14px; }
+    .recipes { margin-inline: 14px; }
+    .variable-toggle { margin-inline: 14px; }
+    .settings-nav button { min-height: 44px; }
+    .settings-nav { mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 26px), transparent); }
+    .row { gap: .65rem; }
+    .variable-tools { grid-template-columns: 1fr; }
+    .variable-tools .hint { grid-column: auto; }
+    .ovrow:not(.stack) { align-items: center; }
+    .detail-head { flex-direction: column; }
+    .source-flow { display: none; }
+    #offline { margin-inline: -14px; }
+  }
+  @media (pointer: coarse) {
+    button, summary, .switch { min-height: 44px; }
+    .switch { display: flex; align-items: center; }
+    .switch span { top: 10px; height: 24px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+  }
 </style>
 </head>
 <body>
+<a class="skip-link" href="#mainContent">Skip to settings</a>
 <div class="wrap">
-  <div id="offline" hidden>mprisence isn't responding — is it still running in your terminal?</div>
-  <h1>mprisence</h1>
-  <div class="sub">Saved and applied as you type. No save button.</div>
+  <div id="offline" role="alert" hidden>mprisence isn't responding. Is it still running in your terminal?</div>
+  <header class="app-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">♪</span><div><h1>mprisence</h1><span>Discord presence settings</span></div></div>
+    <span id="saveStatus" role="status" aria-live="polite">Loading…</span>
+  </header>
 
-  <section>
+  <nav class="settings-nav" aria-label="Settings sections" role="tablist">
+    <button type="button" role="tab" id="tab-players" data-page="players" aria-controls="settings-players" aria-selected="true">Players</button>
+    <button type="button" role="tab" id="tab-appearance" data-page="appearance" aria-controls="settings-appearance" aria-selected="false">Appearance</button>
+    <button type="button" role="tab" id="tab-artwork" data-page="artwork" aria-controls="settings-artwork" aria-selected="false">Artwork</button>
+    <button type="button" role="tab" id="tab-behavior" data-page="behavior" aria-controls="settings-behavior" aria-selected="false">Behavior</button>
+    <button type="button" role="tab" id="tab-advanced" data-page="advanced" aria-controls="settings-advanced" aria-selected="false">Advanced</button>
+  </nav>
+
+  <div class="workspace">
+  <main id="mainContent" tabindex="-1">
+  <div class="settings-page" id="settings-players" role="tabpanel" aria-labelledby="tab-players"></div>
+  <div class="settings-page" id="settings-appearance" role="tabpanel" aria-labelledby="tab-appearance" hidden></div>
+  <div class="settings-page" id="settings-artwork" role="tabpanel" aria-labelledby="tab-artwork" hidden></div>
+  <div class="settings-page" id="settings-behavior" role="tabpanel" aria-labelledby="tab-behavior" hidden></div>
+  <div class="settings-page" id="settings-advanced" role="tabpanel" aria-labelledby="tab-advanced" hidden></div>
+
+  <section id="previewSection">
     <h2 id="pvHeader">Now in Discord</h2>
     <div class="row" style="padding-top:.4rem">
-      <span class="label">Preview player</span>
+      <label class="label" for="pvPlayer">Preview player</label>
       <select id="pvPlayer"><option value="">Auto (playing player)</option></select>
     </div>
     <div class="discord">
@@ -141,50 +347,62 @@
           <div class="l1" id="pvDetails"></div>
           <div class="l2" id="pvState"></div>
           <div class="l3" id="pvLarge"></div>
-          <div class="bar" id="pvBar" hidden>
-            <div class="track"><div class="fill"></div></div>
-            <div class="times"><span>0:00</span><span id="pvDuration"></span></div>
-          </div>
+          <div class="progress-note" id="pvBar" hidden>Discord will show live progress · <span id="pvDuration"></span></div>
         </div>
       </div>
       <div class="err" id="pvError" hidden></div>
     </div>
     <div class="pvsource" id="pvSource">Previewing …</div>
     <div class="warn" id="pvNotLive" hidden>Preview only. This player is stopped, not live in Discord.</div>
+    <details class="resolution" open>
+      <summary>Why this result?</summary>
+      <div id="pvResolution" class="resolution-list">Resolving source settings…</div>
+    </details>
   </section>
 
-  <section>
+  <section id="statusSection">
     <h2>Status text</h2>
-    <div class="hint" style="padding:.2rem 0 .1rem">Click a value to insert it into the last field you edited.</div>
+    <div class="variable-tools">
+      <label for="variableSearch">Template values</label>
+      <input type="search" id="variableSearch" placeholder="Search title, album, player…" autocomplete="off">
+      <span class="hint">Choose a value to insert it into the last field you edited.</span>
+    </div>
     <div class="chips" id="chips"></div>
+    <button type="button" class="variable-toggle" id="variableToggle" aria-expanded="false">Show all template values</button>
+    <div class="recipes" aria-label="Template recipes">
+      <span>Recipes</span>
+      <button type="button" data-template="{{#if album}}{{album}}{{else}}{{title}}{{/if}}">Album or title</button>
+      <button type="button" data-template="{{#if artist_display}}{{artist_display}}{{else}}Unknown artist{{/if}}">Artist fallback</button>
+      <button type="button" data-template="{{status_icon}} {{status}}">Playback status</button>
+    </div>
     <div class="row stack">
-      <span class="label">Line 1 <span class="count" id="c-details"></span>
-        <button class="reset" id="r-details" title="Reset to default" hidden>↺</button></span>
+      <div class="field-label"><label class="label" for="t-details">Line 1 <span class="count" id="c-details"></span></label>
+        <button class="reset" id="r-details" title="Reset to default" aria-label="Reset Line 1 to default" hidden>↺</button></div>
       <input type="text" id="t-details" spellcheck="false">
     </div>
     <div class="row stack">
-      <span class="label">Line 2 <span class="count" id="c-state"></span>
-        <button class="reset" id="r-state" title="Reset to default" hidden>↺</button></span>
+      <div class="field-label"><label class="label" for="t-state">Line 2 <span class="count" id="c-state"></span></label>
+        <button class="reset" id="r-state" title="Reset to default" aria-label="Reset Line 2 to default" hidden>↺</button></div>
       <input type="text" id="t-state" spellcheck="false">
     </div>
     <div class="row stack">
-      <span class="label">Cover art hover text <span class="count" id="c-large_text"></span>
-        <button class="reset" id="r-large_text" title="Reset to default" hidden>↺</button></span>
+      <div class="field-label"><label class="label" for="t-large_text">Cover art hover text <span class="count" id="c-large_text"></span></label>
+        <button class="reset" id="r-large_text" title="Reset to default" aria-label="Reset cover art hover text to default" hidden>↺</button></div>
       <input type="text" id="t-large_text" spellcheck="false">
     </div>
     <div class="row stack">
-      <span class="label">Small icon hover text <span class="count" id="c-small_text"></span>
-        <button class="reset" id="r-small_text" title="Reset to default" hidden>↺</button></span>
+      <div class="field-label"><label class="label" for="t-small_text">Small icon hover text <span class="count" id="c-small_text"></span></label>
+        <button class="reset" id="r-small_text" title="Reset to default" aria-label="Reset small icon hover text to default" hidden>↺</button></div>
       <input type="text" id="t-small_text" spellcheck="false">
     </div>
-    <div class="hint" style="padding:0 0 .3rem">Small icon text only shows when a player has "Show player icon" on (expand a player below).</div>
+    <div class="hint" style="padding:0 0 .3rem">Small icon text only shows when a player has “Show player icon” enabled in Players.</div>
   </section>
 
-  <section>
+  <section id="activitySection">
     <h2>Activity</h2>
     <div class="row">
-      <span class="label">Activity type
-        <span class="hint">How Discord phrases it: "Listening to", "Watching"…</span></span>
+      <label class="label" for="activityType">Activity type
+        <span class="hint">How Discord phrases it: "Listening to", "Watching"…</span></label>
       <select id="activityType">
         <option value="listening">Listening</option>
         <option value="watching">Watching</option>
@@ -193,124 +411,202 @@
       </select>
     </div>
     <div class="row">
-      <span class="label">Detect from media type
-        <span class="hint">Videos show as Watching, music as Listening</span></span>
+      <label class="label" for="useContentType">Detect from media type
+        <span class="hint">Videos show as Watching, music as Listening</span></label>
       <label class="switch"><input type="checkbox" id="useContentType"><span></span></label>
     </div>
   </section>
 
-  <section>
+  <section id="timeSection">
     <h2>Time</h2>
     <div class="row">
-      <span class="label">Show progress</span>
+      <label class="label" for="timeShow">Show progress</label>
       <label class="switch"><input type="checkbox" id="timeShow"><span></span></label>
     </div>
     <div class="row">
-      <span class="label">Count up (elapsed) instead of down (remaining)</span>
+      <label class="label" for="timeElapsed">Count up (elapsed) instead of down (remaining)</label>
       <label class="switch"><input type="checkbox" id="timeElapsed"><span></span></label>
     </div>
   </section>
 
-  <section>
+  <section id="updatesSection">
     <h2>Updates &amp; discovery</h2>
     <div class="row">
-      <span class="label">Event-driven mode
-        <span class="hint">React to MPRIS signals live. Off = poll on a fixed interval. Restart mprisence to apply this one.</span></span>
+      <label class="label" for="eventDriven">Event-driven mode
+        <span class="hint">React to MPRIS signals live. Off = poll on a fixed interval. Restart mprisence to apply this one.</span></label>
       <label class="switch"><input type="checkbox" id="eventDriven"><span></span></label>
     </div>
     <div class="row">
-      <span class="label">Rediscover interval
-        <span class="hint">Seconds between scans for new players (event-driven mode)</span></span>
+      <label class="label" for="fallbackInterval">Rediscover interval
+        <span class="hint">Seconds between scans for new players (event-driven mode)</span></label>
       <input type="number" id="fallbackInterval" min="1" step="1">
     </div>
     <div class="row">
-      <span class="label">Poll interval
-        <span class="hint">Seconds between updates when event-driven is off</span></span>
+      <label class="label" for="interval">Poll interval
+        <span class="hint">Seconds between updates when event-driven is off</span></label>
       <input type="number" id="interval" min="0.5" step="0.5">
-    </div>
-    <div class="row stack">
-      <span class="label">Allowed players
-        <span class="hint">One pattern per line — identity, wildcard (*mpd*), or re:regex. Empty = allow all.</span></span>
-      <textarea class="list" id="allowedPlayers" spellcheck="false"></textarea>
     </div>
   </section>
 
-  <section>
+  <section id="coverSection">
     <h2>Cover art</h2>
     <div class="hint" style="padding:.2rem 0 .1rem">Sources tried top to bottom. Toggle to enable, arrows to reorder.</div>
     <div id="providerList"></div>
     <div class="row" id="imgbbKeyRow" hidden>
-      <span class="label">ImgBB API key</span>
+      <label class="label" for="imgbbKey">ImgBB API key</label>
       <input type="password" id="imgbbKey" placeholder="not set" autocomplete="off">
     </div>
     <div class="warn" id="imgbbWarn" hidden>ImgBB is enabled but has no API key, so it's skipped.</div>
     <details>
       <summary>Cover art details</summary>
       <div class="ovpanel">
-        <div class="ovrow"><span class="lbl">MusicBrainz min score
-          <span class="hint">0–100; higher = stricter match</span></span>
+        <div class="ovrow"><label class="lbl" for="mbMinScore">MusicBrainz min score
+          <span class="hint">0–100; higher = stricter match</span></label>
           <input type="number" id="mbMinScore" min="0" max="100" step="1"></div>
-        <div class="ovrow"><span class="lbl">Catbox: use Litterbox
-          <span class="hint">Temporary hosting instead of permanent</span></span>
+        <div class="ovrow"><label class="lbl" for="catboxLitter">Catbox: use Litterbox
+          <span class="hint">Temporary hosting instead of permanent</span></label>
           <label class="switch"><input type="checkbox" id="catboxLitter"><span></span></label></div>
-        <div class="ovrow"><span class="lbl">Litterbox hours
-          <span class="hint">1, 12, 24, or 72</span></span>
-          <input type="number" id="catboxHours" min="1" step="1"></div>
-        <div class="ovrow stack"><span class="lbl">Catbox user hash <span class="hint">optional, for deleting uploads later</span></span>
+        <div class="ovrow"><label class="lbl" for="catboxHours">Litterbox duration
+          <span class="hint">How long temporary uploads remain available</span></label>
+          <select id="catboxHours"><option value="1">1 hour</option><option value="12">12 hours</option><option value="24">24 hours</option><option value="72">72 hours</option></select></div>
+        <div class="ovrow stack"><label class="lbl" for="catboxHash">Catbox user hash <span class="hint">optional, for deleting uploads later</span></label>
           <input type="text" id="catboxHash" spellcheck="false" placeholder="not set"></div>
-        <div class="ovrow"><span class="lbl">ImgBB expiration (s)
-          <span class="hint">0 = never expires</span></span>
+        <div class="ovrow"><label class="lbl" for="imgbbExp">ImgBB expiration (s)
+          <span class="hint">0 = never expires</span></label>
           <input type="number" id="imgbbExp" min="0" step="1"></div>
-        <div class="ovrow"><span class="lbl">Local search depth
-          <span class="hint">parent dirs to scan for art files</span></span>
+        <div class="ovrow"><label class="lbl" for="coverDepth">Local search depth
+          <span class="hint">parent dirs to scan for art files</span></label>
           <input type="number" id="coverDepth" min="0" step="1"></div>
-        <div class="ovrow stack"><span class="lbl">Local art file names <span class="hint">comma separated, no extension</span></span>
+        <div class="ovrow stack"><label class="lbl" for="coverFiles">Local art file names <span class="hint">comma separated, no extension</span></label>
           <input type="text" id="coverFiles" spellcheck="false"></div>
       </div>
     </details>
   </section>
 
-  <section>
+  <section id="players">
     <h2>Players</h2>
-    <div class="hint" style="padding-bottom:.3rem">Switch a player off to hide it from Discord. Tap a running player to preview its track above. "Default (all players)" sets the baseline for every player and whether unconfigured ones show at all.</div>
-    <div id="playerRows"></div>
-    <div id="playersEmpty" hidden>No media players detected. Start one and it appears here.</div>
-    <div class="addweb">
-      <input type="text" id="playerNewKey" placeholder="key e.g. vlc_media_player or re:.*mpd.*" spellcheck="false">
-      <button id="playerAdd">Add player</button>
+    <p class="section-intro">Choose which local apps and web players can appear in Discord.</p>
+    <label class="source-search" for="playerSearch"><span aria-hidden="true">⌕</span><span class="sr-only" id="playerSearchLabel">Search local players</span><input type="search" id="playerSearch" placeholder="Search local players" autocomplete="off" aria-labelledby="playerSearchLabel"></label>
+
+    <div class="source-group" id="playingGroup">
+      <div class="source-heading"><h3>Playing now</h3><span class="hint">Select a source to open its Discord preview</span></div>
+      <div id="playingRows"></div>
+      <div class="source-empty" id="playingEmpty" hidden>Start playing media and it will appear here.</div>
     </div>
+
+    <div class="player-tabs" role="tablist" aria-label="Player types">
+      <button type="button" role="tab" id="tab-local-players" data-player-page="local" aria-controls="localPlayersPanel" aria-selected="true">Local players</button>
+      <button type="button" role="tab" id="tab-web-players" data-player-page="web" aria-controls="webPlayersPanel" aria-selected="false" tabindex="-1">Web players</button>
+    </div>
+
+    <div class="player-panel" id="localPlayersPanel" role="tabpanel" aria-labelledby="tab-local-players">
+      <div class="source-group">
+      <div class="source-heading"><h3>Local player rules</h3><span class="hint">Desktop media applications</span></div>
+      <div class="policy-heading"><span>Defaults</span><span class="hint">Used when a player rule does not override them</span></div>
+      <div class="policy-list" id="playerPolicyRows"></div>
+      <details class="source-advanced source-catalog" id="playerPresetCatalog" open>
+        <summary><span>Preconfigured players</span><span class="count" id="playerPresetCount"></span></summary>
+        <div id="playerPresetRows"></div>
+      </details>
+      <details class="source-advanced" id="playerCustomCatalog" open hidden>
+        <summary><span>Custom player rules</span><span class="count" id="playerCustomCount"></span></summary>
+        <div id="playerCustomRows"></div>
+      </details>
+      <details class="source-advanced">
+        <summary>Add a custom player rule</summary>
+        <div class="addweb">
+          <label class="sr-only" for="playerNewKey">Player key or identity pattern</label>
+          <input type="text" id="playerNewKey" placeholder="Identity, wildcard, or re:regular expression" spellcheck="false">
+          <button id="playerAdd">Add player rule</button>
+        </div>
+      </details>
+      </div>
+    </div>
+
+    <div class="player-panel" id="webPlayersPanel" role="tabpanel" aria-labelledby="tab-web-players" hidden>
+      <div class="source-group">
+      <div class="source-heading"><h3>Web player rules</h3><span class="hint">Media playing in a browser</span></div>
+      <div class="source-flow" aria-label="How web player settings are resolved">
+        <span>Browser tab</span><span class="flow-arrow" aria-hidden="true">→</span><strong>Matching web player rule</strong>
+        <span class="flow-note">A matching rule replaces the browser's own settings. Websites with no web player rule are never shown.</span>
+      </div>
+      <div class="policy-list" id="webPolicyRows"></div>
+      <p class="hint" id="webDisabledNote" hidden>
+        Web player detection is off. Browser media now follows the browser's entry
+        under Players — until you enable that browser there, nothing from it is shown.
+      </p>
+      <details class="source-advanced source-catalog" id="webCatalog" open>
+        <summary><span>Preconfigured web players</span><span class="count" id="webPresetCount"></span></summary>
+        <div id="webPresetRows"></div>
+      </details>
+      <details class="source-advanced" id="webCustomCatalog" open hidden>
+        <summary><span>Custom web player rules</span><span class="count" id="webCustomCount"></span></summary>
+        <div id="webCustomRows"></div>
+      </details>
+      <details class="source-advanced">
+        <summary>Add a web player rule</summary>
+        <div class="addweb">
+          <label class="sr-only" for="webNewKey">Site key</label>
+          <input type="text" id="webNewKey" placeholder="Name, for example last_fm" spellcheck="false">
+          <label class="sr-only" for="webNewHost">Site hostname</label>
+          <input type="text" id="webNewHost" placeholder="Hostname, for example last.fm" spellcheck="false">
+          <button id="webAdd">Add web player rule</button>
+        </div>
+      </details>
+      </div>
+    </div>
+
+    <div class="source-empty" id="playerSearchEmpty" role="status" hidden>No players match this search.</div>
+
+    <details class="source-advanced" id="sourceFilter">
+      <summary><span>Advanced source filter</span><span class="source-filter-state inactive" id="sourceFilterState">Not active</span></summary>
+      <div class="row stack">
+        <label class="label" for="allowedPlayers">Allow only matching sources
+          <span class="hint">This filter overrides the switches above. Use one rule per line: player:key, web_player:key, identity:pattern, or bus:pattern. Leave empty to use the switches only.</span></label>
+        <textarea class="list" id="allowedPlayers" spellcheck="false"></textarea>
+      </div>
+    </details>
   </section>
 
-  <section>
-    <h2>Web players</h2>
-    <div class="hint" style="padding-bottom:.3rem">Per-site presence for browser media (YouTube, Spotify Web…). Toggle a site off to hide it; expand to set its Discord app, icon, URL patterns, and activity. "Unknown / unmatched sites" controls whether browser media from unlisted sites shows at all.</div>
-    <div id="webRows"></div>
-    <div class="addweb">
-      <input type="text" id="webNewKey" placeholder="key e.g. last_fm" spellcheck="false">
-      <input type="text" id="webNewHost" placeholder="host e.g. last.fm" spellcheck="false">
-      <button id="webAdd">Add site</button>
-    </div>
+  <section id="sourceDetail" hidden>
+    <button type="button" class="back-button" id="sourceBack">← All players</button>
+    <div id="sourceDetailBody"></div>
   </section>
 
-  <details>
-    <summary>Advanced: edit raw config file</summary>
-    <textarea id="rawToml" spellcheck="false"></textarea>
+  </main>
+  <aside id="previewColumn" aria-label="Discord preview"></aside>
+  </div>
+
+  <details id="rawEditor">
+    <summary>Raw config file</summary>
+    <label class="sr-only" for="rawToml">TOML configuration</label>
+    <textarea id="rawToml" spellcheck="false" disabled></textarea>
     <div class="advBar">
-      <button id="rawSave">Save file</button>
-      <span class="count">Full config reference — everything not shown above lives here.</span>
+      <button id="rawReload" type="button" disabled>Reload file</button>
+      <button id="rawSave" disabled>Save file</button>
+      <span class="count">Full config reference. Everything not shown above lives here.</span>
     </div>
+    <div id="rawDiagnostics" class="raw-diagnostics" role="status" aria-live="polite"></div>
   </details>
 </div>
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 <script>
 const $ = id => document.getElementById(id);
+const SETTINGS_PAGES = {
+  players: ['players', 'sourceDetail'],
+  appearance: ['statusSection', 'activitySection', 'timeSection'],
+  artwork: ['coverSection'],
+  behavior: ['updatesSection'],
+  advanced: ['sourceFilter', 'rawEditor'],
+};
+for (const [page, ids] of Object.entries(SETTINGS_PAGES)) {
+  const target = $('settings-' + page);
+  for (const id of ids) target.appendChild($(id));
+}
+$('previewColumn').appendChild($('previewSection'));
 const TEMPLATE_FIELDS = ['details', 'state', 'large_text', 'small_text'];
+const COMMON_TEMPLATE_KEYS = ['title', 'artist_display', 'artists', 'album', 'player', 'status', 'duration_display'];
 const DISCORD_LIMIT = 128;
-const CHIPS = [
-  ['title', 'Title'], ['artist_display', 'Artist'], ['album', 'Album'], ['year', 'Year'],
-  ['duration_display', 'Duration'], ['player', 'Player'], ['status', 'Status'],
-  ['status_icon', 'Status icon'], ['genre_display', 'Genre'], ['track_display', 'Track #'],
-];
 const PREVIEW_LINE = { details: 'pvDetails', state: 'pvState', large_text: 'pvLarge' };
 const ACTIVITY_VERB = { listening: 'Listening to', watching: 'Watching',
                         playing: 'Playing', competing: 'Competing in' };
@@ -333,19 +629,51 @@ const OVERRIDE_FIELDS = [
 // Web-player-only extra fields, appended to OVERRIDE_FIELDS for site editors.
 const WEB_EXTRA_FIELDS = [
   { key: 'match_patterns', label: 'URL patterns', type: 'list',
-    hint: 'host, *.wildcard, or re:regex — comma separated' },
+    hint: 'host, *.wildcard, or re:regex; comma separated' },
   { key: 'title_suffix', label: 'Title suffix', type: 'text',
     hint: 'match by title when no URL, e.g. " | YouTube Music"' },
 ];
+const PLAYER_EXTRA_FIELDS = [
+  { key: 'match_patterns', label: 'Player match patterns', type: 'list',
+    hint: 'identity:name, bus:name, wildcard, or re:regex; comma separated' },
+];
 const isSet = v => v !== null && v !== undefined;
+const hasOverrides = entry => Object.values(entry.overrides ?? {}).some(isSet);
+const ruleState = entry => entry.bundled
+  ? (hasOverrides(entry) ? 'Customized' : 'Preconfigured')
+  : 'Custom';
+
+function sourceBadge(entry) {
+  const label = ruleState(entry);
+  const badge = document.createElement('span');
+  badge.className = 'source-badge' + (label === 'Customized' ? ' customized' : '');
+  badge.textContent = label;
+  return badge;
+}
 let providerOrder = [];      // enabled cover providers, in preference order
 let previewTimer = null;
 let toastTimer = null;
 let lastTemplateFocus = 't-details';
 let previewBus = '';        // '' = auto-pick
+let previewConfigSource = null;
 let defaults = {};          // default template strings, for per-field reset
 let rawDirty = false;       // unsaved edits sit in the raw textarea
+let rawWarningsAccepted = false;
+let restartRequired = false;
+let templateValuesExpanded = false;
 let lastPlayersJson = '';   // skip DOM rebuild when the player list is unchanged
+let lastWebPlayers = [];
+let webPlayerEnabled = true; // master switch: are browser URLs inspected at all
+let currentSource = null;
+let latestPreviewContext = {};
+
+function saveStatus(text, isError = false) {
+  const el = $('saveStatus');
+  const saved = text === 'Saved';
+  el.textContent = saved && restartRequired ? 'Saved · restart required' : text;
+  el.classList.toggle('error', isError);
+  el.classList.toggle('restart', saved && restartRequired);
+}
 
 function toast(text, isError) {
   const el = $('toast');
@@ -368,25 +696,62 @@ async function req(url, opts) {
   }
 }
 
-async function patch(path, value) {
+async function patch(path, value, also = []) {
   let res;
-  try { res = await req('/api/settings', { method: 'PATCH', body: JSON.stringify({ path, value }) }); }
-  catch { return; }
-  if (res.ok) { toast('Saved'); schedulePreview(); syncRawEditor(); }
-  else { toast('Rejected: ' + await res.text(), true); loadSettings(); }
+  saveStatus('Saving…');
+  try { res = await req('/api/settings', { method: 'PATCH', body: JSON.stringify({ path, value, also }) }); }
+  catch { saveStatus('Could not save', true); return false; }
+  if (res.ok) {
+    saveStatus('Saved');
+    schedulePreview();
+    syncRawEditor();
+    return true;
+  }
+  saveStatus('Could not save', true);
+  toast('Rejected: ' + await res.text(), true);
+  loadSettings();
+  return false;
 }
 
 // A patch just rewrote the file. If the raw editor is open on clean content,
 // refresh it silently; if it has unsaved edits, warn rather than clobber.
 function syncRawEditor() {
-  if (!document.querySelector('details').open) return;
-  if (rawDirty) toast('Raw editor is now out of date — reopen it to refresh', true);
-  else loadRaw();
+  if (rawDirty) {
+    $('rawSave').disabled = true;
+    saveStatus('Raw editor out of date', true);
+    if ($('rawEditor').open) toast('Reload the raw file before saving it.', true);
+    return;
+  }
+  if ($('rawEditor').open) loadRaw();
+}
+
+function syncDependentControls() {
+  $('fallbackInterval').disabled = !$('eventDriven').checked;
+  $('interval').disabled = $('eventDriven').checked;
+  $('timeElapsed').disabled = !$('timeShow').checked;
+  $('catboxHours').disabled = !$('catboxLitter').checked;
+}
+
+function syncSourceFilterState() {
+  const count = $('allowedPlayers').value.split('\n').map(s => s.trim()).filter(Boolean).length;
+  const state = $('sourceFilterState');
+  state.textContent = count ? count + (count === 1 ? ' rule active' : ' rules active') : 'Not active';
+  state.classList.toggle('inactive', count === 0);
 }
 
 async function loadSettings() {
   let s;
-  try { s = await (await req('/api/settings')).json(); } catch { return; }
+  try {
+    const res = await req('/api/settings');
+    if (!res.ok) throw new Error(await res.text());
+    s = await res.json();
+  } catch (error) {
+    saveStatus('Config needs attention', true);
+    toast('The config file has an error. Open Advanced to repair it.', true);
+    $('rawDiagnostics').textContent = String(error.message || error);
+    $('rawDiagnostics').className = 'raw-diagnostics error';
+    return;
+  }
   defaults = s.defaults;
   for (const f of TEMPLATE_FIELDS) $('t-' + f).value = s[f];
   $('activityType').value = s.activity_type;
@@ -397,6 +762,9 @@ async function loadSettings() {
   $('eventDriven').checked = s.event_driven;
   $('fallbackInterval').value = s.fallback_poll_interval / 1000;
   $('allowedPlayers').value = (s.allowed_players ?? []).join('\n');
+  webPlayerEnabled = s.web_player_enabled ?? true;
+  syncWebPlayerEnabled();
+  syncSourceFilterState();
   providerOrder = s.cover_providers.slice();
   $('imgbbKey').value = s.imgbb_api_key ?? '';
   $('mbMinScore').value = s.musicbrainz_min_score;
@@ -409,7 +777,9 @@ async function loadSettings() {
   renderProviders();
   syncResets();
   syncImgbbRow();
+  syncDependentControls();
   schedulePreview();
+  if ($('saveStatus').textContent === 'Loading…') saveStatus('Saved');
 }
 
 // Cover providers as an ordered, reorderable list. Enabled ones (in
@@ -425,10 +795,12 @@ function renderProviders() {
     line.className = 'provline';
     const up = document.createElement('button');
     up.className = 'ordbtn'; up.textContent = '↑';
+    up.type = 'button'; up.title = 'Move ' + meta[1] + ' up'; up.setAttribute('aria-label', up.title);
     up.disabled = !on || idx === 0;
     up.onclick = () => { [enabled[idx - 1], enabled[idx]] = [enabled[idx], enabled[idx - 1]]; saveProviders(enabled); };
     const down = document.createElement('button');
     down.className = 'ordbtn'; down.textContent = '↓';
+    down.type = 'button'; down.title = 'Move ' + meta[1] + ' down'; down.setAttribute('aria-label', down.title);
     down.disabled = !on || idx === enabled.length - 1;
     down.onclick = () => { [enabled[idx + 1], enabled[idx]] = [enabled[idx], enabled[idx + 1]]; saveProviders(enabled); };
     const name = document.createElement('span');
@@ -438,6 +810,7 @@ function renderProviders() {
     sw.className = 'switch';
     const box = document.createElement('input');
     box.type = 'checkbox'; box.checked = on;
+    box.setAttribute('aria-label', 'Enable ' + meta[1]);
     box.onchange = () => saveProviders(box.checked ? [...enabled, id] : enabled.filter(x => x !== id));
     sw.append(box, document.createElement('span'));
     line.append(up, down, name, sw);
@@ -475,37 +848,55 @@ function overrideEditor(scope, key, values, overrides, fields = OVERRIDE_FIELDS)
   for (const f of fields) {
     const cur = values[f.key];
     const overridden = isSet(overrides[f.key]);
-    const set = v => patch([scope, key, f.key], v);
+    const set = async (v, refresh = false) => {
+      if (!await patch([scope, key, f.key], v)) return false;
+      if (refresh) await refreshOverridePanel(scope, key);
+      return true;
+    };
     const row = document.createElement('div');
-    const lbl = document.createElement('span');
+    const lbl = document.createElement('label');
     lbl.className = 'lbl';
     lbl.textContent = f.label;
+    const controlId = ('ov-' + scope + '-' + key + '-' + f.key).replace(/[^a-zA-Z0-9_-]/g, '-');
+    lbl.htmlFor = controlId;
     if (f.hint) { const h = document.createElement('span'); h.className = 'hint';
       h.textContent = ' ' + f.hint; lbl.appendChild(h); }
     if (f.type === 'list') {
       row.className = 'ovrow stack';
       const inp = document.createElement('input');
-      inp.type = 'text'; inp.spellcheck = false;
+      inp.type = 'text'; inp.id = controlId; inp.spellcheck = false;
       const ov = overrides[f.key];
       inp.value = Array.isArray(ov) ? ov.join(', ') : '';
-      if (!Array.isArray(ov) && Array.isArray(cur) && cur.length) inp.placeholder = cur.join(', ');
-      inp.onchange = () => {
+      if (!Array.isArray(ov) && Array.isArray(cur) && cur.length) inp.placeholder = 'Inherited: ' + cur.join(', ');
+      inp.onchange = async () => {
         const arr = inp.value.split(',').map(s => s.trim()).filter(Boolean);
-        set(arr.length ? arr : null);
+        const singular = [scope, key, 'match_pattern'];
+        const plural = [scope, key, 'match_patterns'];
+        const also = f.key === 'match_patterns'
+          ? [{ path: singular, value: arr.length ? '' : null }]
+          : [];
+        if (!await patch(plural, arr.length ? arr : null, also)) return;
+        if (!arr.length) await refreshOverridePanel(scope, key);
       };
-      row.append(lbl, inp);
+      row.append(lbl, inp, overrideState(scope, key, f.key, overridden));
     } else if (f.type === 'bool') {
       row.className = 'ovrow';
       const sw = document.createElement('label');
       sw.className = 'switch';
       const box = document.createElement('input');
-      box.type = 'checkbox'; box.checked = !!cur;
-      box.onchange = () => set(box.checked);
+      box.type = 'checkbox'; box.id = controlId; box.checked = !!cur;
+      box.onchange = async () => {
+        if (await set(box.checked)) markOverrideCustom(row);
+      };
       sw.append(box, document.createElement('span'));
-      row.append(lbl, sw);
+      const controls = document.createElement('div');
+      controls.className = 'ovcontrol';
+      controls.append(sw, overrideState(scope, key, f.key, overridden));
+      row.append(lbl, controls);
     } else if (f.type === 'select' || f.type === 'act') {
       row.className = 'ovrow';
       const sel = document.createElement('select');
+      sel.id = controlId;
       const opts = f.type === 'act'
         ? [['', '(from Activity settings)'], ['listening', 'Listening'], ['watching', 'Watching'],
            ['playing', 'Playing'], ['competing', 'Competing']]
@@ -515,20 +906,68 @@ function overrideEditor(scope, key, values, overrides, fields = OVERRIDE_FIELDS)
         o.value = v; o.textContent = l; sel.appendChild(o);
       }
       sel.value = cur ?? '';
-      sel.onchange = () => set(sel.value === '' ? null : sel.value);
-      row.append(lbl, sel);
+      sel.onchange = async () => {
+        const inherited = sel.value === '';
+        if (await set(inherited ? null : sel.value, inherited) && !inherited) markOverrideCustom(row);
+      };
+      const controls = document.createElement('div');
+      controls.className = 'ovcontrol';
+      controls.append(sel, overrideState(scope, key, f.key, overridden));
+      row.append(lbl, controls);
     } else {
       row.className = 'ovrow stack';
       const inp = document.createElement('input');
-      inp.type = 'text'; inp.spellcheck = false;
+      inp.type = 'text'; inp.id = controlId; inp.spellcheck = false;
       inp.value = overridden ? (overrides[f.key] ?? '') : '';
-      if (!overridden && isSet(cur)) inp.placeholder = String(cur);
-      inp.onchange = () => set(inp.value === '' ? null : inp.value);
-      row.append(lbl, inp);
+      if (!overridden && isSet(cur)) inp.placeholder = 'Inherited: ' + String(cur);
+      inp.onchange = async () => {
+        const inherited = inp.value === '';
+        if (await set(inherited ? null : inp.value, inherited) && !inherited) markOverrideCustom(row);
+      };
+      row.append(lbl, inp, overrideState(scope, key, f.key, overridden));
     }
     panel.appendChild(row);
   }
   return panel;
+}
+
+function overrideState(scope, key, field, overridden) {
+  const state = document.createElement('span');
+  state.className = 'ovcontrol';
+  const label = document.createElement('span');
+  label.className = 'inherit-state' + (overridden ? ' custom' : '');
+  label.textContent = overridden ? 'Custom' : 'Inherited';
+  const reset = document.createElement('button');
+  reset.type = 'button'; reset.className = 'inherit-reset';
+  reset.textContent = 'Use inherited';
+  reset.hidden = !overridden;
+  reset.onclick = async () => {
+    if (await patch([scope, key, field], null)) await refreshOverridePanel(scope, key);
+  };
+  state.append(label, reset);
+  return state;
+}
+
+function markOverrideCustom(row) {
+  const label = row.querySelector('.inherit-state');
+  const reset = row.querySelector('.inherit-reset');
+  if (label) { label.textContent = 'Custom'; label.classList.add('custom'); }
+  if (reset) reset.hidden = false;
+}
+
+async function refreshOverridePanel(scope, key) {
+  const panelId = (scope === 'player' ? 'player-panel-' : 'web-panel-') + key;
+  if (scope === 'player') { lastPlayersJson = ''; await refreshPlayers(); }
+  else await refreshWebPlayers();
+  const panel = $(panelId.replace(/[^a-zA-Z0-9_-]/g, '-'));
+  if (!panel) return;
+  panel.hidden = false;
+  for (const button of document.querySelectorAll('.expand')) {
+    if (button.getAttribute('aria-controls') !== panel.id) continue;
+    button.classList.add('open');
+    button.setAttribute('aria-expanded', 'true');
+    break;
+  }
 }
 
 function schedulePreview() {
@@ -537,34 +976,46 @@ function schedulePreview() {
 }
 
 async function preview() {
-  const body = { player_bus_name: previewBus || null };
+  const body = {
+    player_bus_name: previewBus || null,
+    source_scope: previewConfigSource?.scope ?? null,
+    source_key: previewConfigSource?.key ?? null,
+  };
   for (const f of TEMPLATE_FIELDS) body[f] = $('t-' + f).value;
   let p;
   try { p = await (await req('/api/preview', { method: 'POST', body: JSON.stringify(body) })).json(); }
   catch { return; }
   $('pvError').hidden = !p.error;
   if (p.error) { $('pvError').textContent = p.error; return; }
-  $('pvKind').textContent = ACTIVITY_VERB[$('activityType').value] ?? 'Listening to';
+  $('pvKind').textContent = ACTIVITY_VERB[p.activity_type] ?? 'Listening to';
   $('pvSource').textContent = 'Previewing ' + (p.player ?? 'sample track');
   // When the previewed player isn't Playing, this is a template preview —
   // the daemon wouldn't be pushing it to Discord. Say so.
-  const playing = p.status === 'Playing';
+  const playing = p.live && p.status === 'Playing';
   $('pvHeader').textContent = playing ? 'Now in Discord' : 'Preview';
   $('pvNotLive').hidden = playing || !p.status;
-  if (!playing && p.status) $('pvNotLive').textContent =
-    'Preview only. This player is ' + p.status.toLowerCase() + ', not live in Discord.';
+  if (!playing && p.status) $('pvNotLive').textContent = p.live
+    ? 'Preview only. This player is ' + p.status.toLowerCase() + ', not live in Discord.'
+    : (p.config_key || p.web_player_key)
+      ? 'Sample metadata using this rule. Start the player to preview a live track.'
+      : 'Sample data only. Start a player to preview its live metadata.';
 
   const art = $('pvArt');
-  if (p.art_url) {
+  if (p.large_image_url) {
     const img = new Image();
-    img.onload = () => { art.style.backgroundImage = 'url("' + p.art_url + '")'; $('pvGlyph').hidden = true; };
+    img.onload = () => { art.style.backgroundImage = 'url("' + p.large_image_url + '")'; $('pvGlyph').hidden = true; };
     img.onerror = () => { art.style.backgroundImage = ''; $('pvGlyph').hidden = false; };
-    img.src = p.art_url;
+    img.src = p.large_image_url;
   } else { art.style.backgroundImage = ''; $('pvGlyph').hidden = false; }
 
   const badge = $('pvBadge');
-  badge.hidden = !p.status_icon;
-  if (p.status_icon) { badge.textContent = p.status_icon; badge.title = p.small_text ?? ''; }
+  badge.hidden = !p.small_image_url;
+  badge.textContent = '';
+  if (p.small_image_url) {
+    const img = document.createElement('img');
+    img.src = p.small_image_url; img.alt = ''; badge.appendChild(img);
+    badge.title = p.small_text ?? '';
+  }
 
   const bar = $('pvBar');
   bar.hidden = !($('timeShow').checked && p.duration);
@@ -573,6 +1024,24 @@ async function preview() {
   $('pvDetails').textContent = p.details ?? '';
   $('pvState').textContent = p.state ?? '';
   $('pvLarge').textContent = p.large_text ?? '';
+  latestPreviewContext = p.context ?? {};
+  renderChips();
+  const resolution = [
+    ['Source', p.web_player_key ? 'Website · ' + displayKey(p.web_player_key) : (p.config_key ? 'Player · ' + displayKey(p.config_key) : 'Sample data')],
+    ['Activity', displayKey(p.activity_type ?? 'listening')],
+    ['Discord status field', displayKey(p.status_display_type ?? 'name')],
+    ['Artwork', p.art_url ? 'Track cover' : (p.icon_url ? 'Player icon fallback' : 'No image')],
+    ['Player icon', p.show_icon ? 'Shown as small badge' : 'Not shown'],
+    ['Streaming URLs', p.allow_streaming ? 'Allowed' : 'Blocked'],
+    ['Eligibility', !p.allowed ? 'Blocked by source filter' : (p.ignored ? 'Hidden by source rule' : (p.live ? 'Live source' : 'Preview data'))],
+  ];
+  $('pvResolution').innerHTML = '';
+  for (const [label, value] of resolution) {
+    const line = document.createElement('div');
+    const key = document.createElement('span'); key.textContent = label;
+    const result = document.createElement('strong'); result.textContent = value;
+    line.append(key, result); $('pvResolution').appendChild(line);
+  }
   for (const f of TEMPLATE_FIELDS) {
     const len = (p[f] ?? '').length;
     const el = $('c-' + f);
@@ -592,25 +1061,100 @@ function pickPreview(players) {
 let lastPlayers = [];   // newest player list, for the top preview selector
 
 function markSelected() {
-  for (const w of $('playerRows').children)
+  for (const w of $('players').querySelectorAll('[data-bus]'))
     w.classList.toggle('selected', w.dataset.bus === previewBus);
 }
 
 // Single entry point for changing which player the preview renders.
 // Keeps the top dropdown, the Players-list highlight, chips, and the
 // rendered preview all in sync.
-function setPreview(bus) {
+function setPreview(bus, configSource = null) {
   previewBus = bus;
+  previewConfigSource = configSource;
+  if ($('pvPlayer').options.length) $('pvPlayer').options[0].textContent = configSource && !bus
+    ? 'Selected rule (sample data)'
+    : 'Auto (playing player)';
   if ($('pvPlayer').value !== bus) $('pvPlayer').value = bus;
   markSelected();
   renderChips(pickPreview(lastPlayers));
   preview();
 }
 
+function openPreview(bus) {
+  setPreview(bus);
+  selectSettingsPage('appearance');
+}
+
+function selectSettingsPage(page) {
+  if (page === 'sources') page = 'players';
+  if (!SETTINGS_PAGES[page]) page = 'players';
+  for (const name of Object.keys(SETTINGS_PAGES)) $('settings-' + name).hidden = name !== page;
+  for (const button of document.querySelectorAll('.settings-nav button')) {
+    const selected = button.dataset.page === page;
+    button.setAttribute('aria-selected', String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  }
+  try { sessionStorage.setItem('mprisence-settings-page', page); } catch {}
+}
+
+function applySourceSearch() {
+  const query = $('playerSearch').value.trim().toLowerCase();
+  const panel = activePlayerPage === 'web' ? $('webPlayersPanel') : $('localPlayersPanel');
+  const playingCards = [...$('playingRows').querySelectorAll('.source-card, .row')];
+  const panelCards = [...panel.querySelectorAll('.source-card')];
+  for (const card of $('players').querySelectorAll('.source-card')) card.hidden = false;
+  for (const card of [...playingCards, ...panelCards])
+    card.hidden = !!query && !card.textContent.toLowerCase().includes(query);
+
+  const policy = panel.querySelector('.policy-list');
+  if (policy) policy.hidden = !!query && !policy.textContent.toLowerCase().includes(query);
+
+  const playingMatches = playingCards.some(card => !card.hidden);
+  const panelMatches = panelCards.some(card => !card.hidden) || (policy && !policy.hidden);
+  $('playingGroup').hidden = !!query && !playingMatches;
+  panel.hidden = !!query && !panelMatches;
+  $('playerSearchEmpty').hidden = !query || playingMatches || panelMatches;
+
+  const catalogs = ['playerPresetCatalog', 'playerCustomCatalog', 'webCatalog', 'webCustomCatalog']
+    .map(id => $(id)).filter(Boolean);
+  if (query) {
+    for (const catalog of catalogs) {
+      if (!isSet(catalog.dataset.searchOpen)) catalog.dataset.searchOpen = String(catalog.open);
+      catalog.open = [...catalog.querySelectorAll('.source-card')].some(card => !card.hidden);
+    }
+  } else {
+    for (const catalog of catalogs) {
+      if (isSet(catalog.dataset.searchOpen)) catalog.open = catalog.dataset.searchOpen === 'true';
+      delete catalog.dataset.searchOpen;
+    }
+  }
+}
+
+let activePlayerPage = 'local';
+
+function selectPlayerPage(page, focus = false) {
+  activePlayerPage = page === 'web' ? 'web' : 'local';
+  $('localPlayersPanel').hidden = activePlayerPage !== 'local';
+  $('webPlayersPanel').hidden = activePlayerPage !== 'web';
+  $('playingGroup').hidden = false;
+  $('playerSearchEmpty').hidden = true;
+  for (const button of document.querySelectorAll('.player-tabs button')) {
+    const selected = button.dataset.playerPage === activePlayerPage;
+    button.setAttribute('aria-selected', String(selected));
+    button.tabIndex = selected ? 0 : -1;
+    if (selected && focus) button.focus();
+  }
+  const kind = activePlayerPage === 'web' ? 'web players' : 'local players';
+  $('playerSearchLabel').textContent = 'Search ' + kind;
+  $('playerSearch').placeholder = 'Search ' + kind;
+  applySourceSearch();
+}
+
 function populatePvSelect(players) {
   const sel = $('pvPlayer');
   const want = previewBus;
-  sel.innerHTML = '<option value="">Auto (playing player)</option>';
+  const autoLabel = previewConfigSource && !previewBus ? 'Selected rule (sample data)' : 'Auto (playing player)';
+  sel.innerHTML = '<option value="">' + autoLabel + '</option>';
   for (const p of players) {
     if (!p.live) continue;   // config-only rows can't be previewed
     const o = document.createElement('option');
@@ -623,78 +1167,235 @@ function populatePvSelect(players) {
   if (sel.value !== previewBus) previewBus = sel.value;
 }
 
-function playerRow(p, players) {
-  const wrap = document.createElement('div');
-  const bus = p ? p.player_bus_name : '';
-  // Only the Auto row and live players participate in preview selection;
-  // config-only rows (default layer, not-running entries) share an empty bus.
-  if (!p || p.live) {
-    wrap.dataset.bus = bus;
-    if (bus === previewBus) wrap.classList.add('selected');
+function displayKey(key) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function sourceIcon(url, fallback) {
+  const icon = document.createElement('span');
+  icon.className = 'source-icon'; icon.setAttribute('aria-hidden', 'true');
+  const glyph = document.createElement('span'); glyph.textContent = fallback;
+  icon.appendChild(glyph);
+  if (!url) return icon;
+
+  let parsed;
+  try { parsed = new URL(url); } catch { return icon; }
+  if (!['http:', 'https:'].includes(parsed.protocol)) return icon;
+  const image = new Image();
+  image.className = 'source-icon-image'; image.alt = ''; image.loading = 'lazy';
+  image.decoding = 'async'; image.referrerPolicy = 'no-referrer';
+  image.onload = () => { glyph.hidden = true; };
+  image.onerror = () => image.remove();
+  image.src = parsed.href;
+  icon.appendChild(image);
+  return icon;
+}
+
+function sourceOpenButton(title, meta, scope, key, bus = '', iconUrl = '', actionText = '') {
+  const button = document.createElement('button');
+  button.type = 'button'; button.className = 'source-open';
+  const name = document.createElement('span'); name.className = 'source-name';
+  const primary = document.createElement('span'); primary.className = 'pvpick'; primary.textContent = title;
+  const secondary = document.createElement('span'); secondary.className = 'source-meta'; secondary.textContent = meta;
+  name.append(primary, secondary);
+  button.append(sourceIcon(iconUrl, scope === 'web_player' ? '⌁' : '♪'), name);
+  if (actionText) {
+    const action = document.createElement('span'); action.className = 'source-action'; action.textContent = actionText;
+    action.setAttribute('aria-hidden', 'true'); button.appendChild(action);
+    button.setAttribute('aria-label', actionText + ' ' + title);
   }
-  const row = document.createElement('div');
-  row.className = 'row';
+  button.onclick = () => openSourceDetail(scope, key, bus);
+  return button;
+}
 
-  // The synthetic "Auto (playing player)" preview row.
-  if (!p) {
-    const pick = document.createElement('button');
-    pick.className = 'pvpick';
-    pick.textContent = 'Auto (playing player)';
-    pick.onclick = () => setPreview('');
-    row.appendChild(pick);
-    wrap.appendChild(row);
-    return wrap;
-  }
+function openSourceDetail(scope, key, bus = '') {
+  currentSource = { scope, key, bus };
+  selectPlayerPage(scope === 'web_player' ? 'web' : 'local');
+  setPreview(bus, { scope, key });
+  $('players').hidden = true;
+  $('sourceDetail').hidden = false;
+  renderSourceDetail();
+  $('sourceBack').focus();
+}
 
-  const isDefault = p.config_key === 'default';
-  // Live players are clickable to drive the preview; config-only rows aren't.
-  if (p.live) {
-    const pick = document.createElement('button');
-    pick.className = 'pvpick';
-    pick.textContent = p.identity + (p.status ? ' (' + p.status + ')' : '');
-    pick.onclick = () => setPreview(bus);
-    row.appendChild(pick);
-  } else {
-    const label = document.createElement('span');
-    label.className = 'label';
-    label.textContent = p.identity + (isDefault ? '' : ' (not running)');
-    row.appendChild(label);
-  }
+function closeSourceDetail() {
+  currentSource = null;
+  previewConfigSource = null;
+  $('sourceDetail').hidden = true;
+  $('players').hidden = false;
+  $('playerSearch').focus();
+  populatePvSelect(lastPlayers);
+  schedulePreview();
+}
 
-  const panel = overrideEditor('player', p.config_key, p.resolved, p.overrides);
-  panel.hidden = true;
-  const exp = document.createElement('button');
-  exp.className = 'expand'; exp.title = 'Per-player settings';
-  exp.onclick = () => { panel.hidden = !panel.hidden; exp.classList.toggle('open', !panel.hidden); };
-
-  // Delete a configured-but-not-running override (never the default layer).
-  if (!isDefault && !p.live) row.appendChild(deleteBtn('player', p.config_key));
-
-  const sw = document.createElement('label');
-  sw.className = 'switch';
-  const box = document.createElement('input');
-  box.type = 'checkbox';
+function renderSourceDetail() {
+  if (!currentSource) return;
+  const { scope, key } = currentSource;
+  const isPlayer = scope === 'player';
+  const entry = isPlayer
+    ? lastPlayers.find(p => p.config_key === key)
+    : lastWebPlayers.find(p => p.key === key);
+  if (!entry) { closeSourceDetail(); return; }
+  const body = $('sourceDetailBody'); body.innerHTML = '';
+  const effective = isPlayer ? entry.effective : entry.effective;
+  const resolved = isPlayer ? entry.resolved : effective;
+  const overrides = entry.overrides ?? {};
+  const isDefault = key === 'default';
+  const title = isPlayer
+    ? (isDefault ? 'Local player defaults' : entry.identity || displayKey(key))
+    : (effective.name || (isDefault ? 'Web player defaults' : displayKey(key)));
+  const head = document.createElement('div'); head.className = 'detail-head';
+  const names = document.createElement('div');
+  const heading = document.createElement('h2'); heading.textContent = title;
+  const meta = document.createElement('span'); meta.className = 'hint';
+  meta.textContent = isDefault
+    ? 'Fallback policy'
+    : (entry.live ? 'Running now · ' : '') + ruleState(entry) + ' · ' + scope + '.' + key;
+  names.append(heading, meta);
+  const actions = document.createElement('div'); actions.className = 'detail-actions';
+  // [web_player.default] is appearance-only: unmatched websites are always
+  // hidden, and the global switch lives on the Web players panel.
+  const hasVisibilitySwitch = !(isDefault && !isPlayer);
+  const shownLabel = document.createElement('span'); shownLabel.className = 'hint';
+  shownLabel.textContent = isDefault ? 'Show unmatched' : 'Show in Discord';
+  const sw = document.createElement('label'); sw.className = 'switch';
+  const box = document.createElement('input'); box.type = 'checkbox';
   if (isDefault) {
-    // The default layer's meaningful switch is "show unconfigured players".
-    box.checked = !(p.overrides.ignore_unmatched ?? true);
-    box.title = 'Show players with no matching entry';
-    box.onchange = () => patch(['player', 'default', 'ignore_unmatched'], !box.checked);
+    box.checked = !(effective.ignore_unmatched ?? true);
+    box.setAttribute('aria-label', 'Enable unmatched sources');
+    box.onchange = () => patch([scope, key, 'ignore_unmatched'], !box.checked);
   } else {
-    box.checked = p.allowed;
-    box.onchange = () => patch(['player', p.config_key, 'ignore'], !box.checked);
+    box.checked = !(resolved.ignore ?? false);
+    box.setAttribute('aria-label', 'Show ' + title + ' in Discord');
+    box.onchange = async () => {
+      if (await patch([scope, key, 'ignore'], !box.checked)) {
+        if (isPlayer) { lastPlayersJson = ''; await refreshPlayers(); }
+        else await refreshWebPlayers();
+      }
+    };
   }
   sw.append(box, document.createElement('span'));
-  row.append(exp, sw);
-  wrap.append(row, panel);
+  if (hasVisibilitySwitch) actions.append(shownLabel, sw);
+  if (!isDefault && !entry.bundled) actions.prepend(deleteBtn(scope, key));
+  head.append(names, actions); body.appendChild(head);
+
+  if (isPlayer && entry.matches?.length) {
+    const provenance = document.createElement('div'); provenance.className = 'detail-section';
+    const h = document.createElement('h3'); h.textContent = 'How it matched'; provenance.appendChild(h);
+    for (const match of entry.matches) {
+      const line = document.createElement('div'); line.className = 'hint';
+      line.textContent = `${displayKey(match.config_key)} matched ${match.target} “${match.matched_value}” via “${match.pattern}”`;
+      provenance.appendChild(line);
+    }
+    body.appendChild(provenance);
+  }
+
+  const settings = document.createElement('div'); settings.className = 'detail-section';
+  const h = document.createElement('h3'); h.textContent = 'Discord and matching settings'; settings.appendChild(h);
+  const pats = [];
+  if (effective.match_pattern) pats.push(effective.match_pattern);
+  if (effective.match_patterns) pats.push(...effective.match_patterns);
+  const values = isPlayer ? { ...resolved, match_patterns: pats } : { ...effective, match_patterns: pats };
+  const extras = isDefault ? [] : (isPlayer ? PLAYER_EXTRA_FIELDS : WEB_EXTRA_FIELDS);
+  settings.appendChild(overrideEditor(scope, key, values, overrides, [...OVERRIDE_FIELDS, ...extras]));
+  body.appendChild(settings);
+}
+
+function liveSourceRow(p) {
+  const row = document.createElement('div');
+  row.className = 'row source-card';
+  row.dataset.bus = p.player_bus_name;
+  const scope = p.web_player_key ? 'web_player' : 'player';
+  const key = p.web_player_key || p.config_key;
+  const meta = p.web_player_key
+    ? 'Uses web player rule: ' + displayKey(p.web_player_key)
+    : 'Uses local player rule: ' + displayKey(p.config_key);
+  row.appendChild(sourceOpenButton(
+    p.identity + (p.status ? ' · ' + p.status : ''), meta, scope, key, p.player_bus_name, p.resolved.icon,
+  ));
+  const shown = p.allowed && !p.resolved.ignore;
+  const status = document.createElement('span');
+  status.className = 'source-status' + (shown ? '' : ' blocked');
+  status.textContent = shown ? 'Shown' : (p.allowed ? 'Hidden by rule' : 'Blocked by filter');
+  row.append(status);
+  return row;
+}
+
+function playerListRow(p) {
+  const row = document.createElement('div'); row.className = 'row source-card';
+  if (p.player_bus_name) row.dataset.bus = p.player_bus_name;
+  const title = p.live ? p.identity : displayKey(p.config_key);
+  const patterns = p.effective.match_patterns ?? [];
+  const meta = (p.live ? (p.status || 'Running') + (patterns.length ? ' · ' : '') : '')
+    + (patterns.length ? 'Matches ' + patterns.join(', ') : 'Matches ' + p.config_key);
+  row.appendChild(sourceOpenButton(title, meta, 'player', p.config_key, p.player_bus_name, p.resolved.icon));
+  row.appendChild(sourceBadge(p));
+  const sw = document.createElement('label'); sw.className = 'switch';
+  const box = document.createElement('input'); box.type = 'checkbox';
+  box.checked = !p.resolved.ignore;
+  box.setAttribute('aria-label', 'Show ' + title + ' in Discord');
+  box.onchange = async () => {
+    if (await patch(['player', p.config_key, 'ignore'], !box.checked)) {
+      lastPlayersJson = ''; refreshPlayers();
+    }
+  };
+  sw.append(box, document.createElement('span'));
+  if (!p.allowed) {
+    const blocked = document.createElement('span'); blocked.className = 'source-status blocked';
+    blocked.textContent = 'Filtered'; row.appendChild(blocked);
+  }
+  row.appendChild(sw);
+  return row;
+}
+
+function playerDefaultPolicies(p) {
+  const wrap = document.createElement('div');
+  const refresh = async () => { lastPlayersJson = ''; await refreshPlayers(); };
+  wrap.appendChild(policyToggle(
+    'Players without a matching rule',
+    'Local media players that do not match a configured player rule',
+    !(p.effective.ignore_unmatched ?? true),
+    'Show local players without a matching rule',
+    async checked => {
+      if (await patch(['player', 'default', 'ignore_unmatched'], !checked)) await refresh();
+    },
+    ['player', 'default', 'ignore_unmatched'], isSet(p.overrides.ignore_unmatched), refresh,
+  ));
+  const row = document.createElement('div'); row.className = 'row source-card';
+  row.appendChild(sourceOpenButton(
+    'Default player appearance',
+    'Used when a player rule does not customize a field',
+    'player', 'default', '', p.resolved.icon, 'Configure',
+  ));
+  wrap.appendChild(row);
   return wrap;
 }
 
 // Trash button that removes an entire [scope.key] table, then refreshes.
 function deleteBtn(scope, key) {
   const btn = document.createElement('button');
-  btn.className = 'reset'; btn.textContent = '🗑'; btn.title = 'Delete this entry';
+  btn.type = 'button'; btn.className = 'reset'; btn.textContent = '🗑';
+  btn.title = 'Delete ' + key; btn.setAttribute('aria-label', btn.title);
+  let confirmTimer = null;
+  let armed = false;
+  const disarm = () => {
+    armed = false;
+    btn.textContent = '🗑';
+    btn.classList.remove('confirm');
+    btn.setAttribute('aria-label', btn.title);
+  };
   btn.onclick = async () => {
-    await patch([scope, key], null);
+    if (!armed) {
+      armed = true;
+      btn.textContent = 'Delete?';
+      btn.classList.add('confirm');
+      btn.setAttribute('aria-label', 'Confirm deletion of ' + key);
+      toast('Click Delete again to confirm');
+      confirmTimer = setTimeout(disarm, 4000);
+      return;
+    }
+    clearTimeout(confirmTimer);
+    if (!await patch([scope, key], null)) { disarm(); return; }
     if (scope === 'player') { lastPlayersJson = ''; refreshPlayers(); }
     else refreshWebPlayers();
   };
@@ -703,79 +1404,199 @@ function deleteBtn(scope, key) {
 
 async function refreshWebPlayers() {
   let list;
-  try { list = await (await req('/api/web_players')).json(); } catch { return; }
-  const rows = $('webRows');
-  rows.innerHTML = '';
-  for (const e of list) rows.appendChild(webRow(e));
+  try {
+    const response = await req('/api/web_players');
+    if (!response.ok) throw new Error(await response.text());
+    list = await response.json();
+  } catch (error) {
+    saveStatus('Config needs attention', true);
+    return;
+  }
+  lastWebPlayers = list;
+  const defaults = list.find(e => e.key === 'default');
+  const policies = $('webPolicyRows');
+  policies.innerHTML = '';
+  if (defaults) policies.appendChild(webDefaultPolicies(defaults));
+  syncWebPlayerEnabled();
+  const presets = list.filter(e => e.key !== 'default' && e.bundled);
+  const custom = list.filter(e => e.key !== 'default' && !e.bundled);
+  const presetRows = $('webPresetRows');
+  const customRows = $('webCustomRows');
+  presetRows.innerHTML = '';
+  customRows.innerHTML = '';
+  for (const e of presets) presetRows.appendChild(webListRow(e));
+  for (const e of custom) customRows.appendChild(webListRow(e));
+  $('webPresetCount').textContent = presets.length + (presets.length === 1 ? ' web player' : ' web players');
+  $('webCustomCount').textContent = custom.length + (custom.length === 1 ? ' rule' : ' rules');
+  $('webCustomCatalog').hidden = custom.length === 0;
+  applySourceSearch();
+  if (currentSource?.scope === 'web_player') renderSourceDetail();
 }
 
-function webRow(e) {
-  const isDefault = e.key === 'default';
-  const wrap = document.createElement('div');
+function policyToggle(
+  labelText, hintText, checked, ariaLabel, onchange, resetPath = null, overridden = false, afterReset = null,
+) {
   const row = document.createElement('div');
   row.className = 'row';
-  const title = document.createElement('span');
-  title.className = 'label';
-  title.textContent = isDefault ? 'Unknown / unmatched sites'
-    : (e.effective.name || e.key) + (e.bundled ? '' : ' (custom)');
-
-  // Show the merged patterns as the placeholder for the editable list field.
-  const pats = [];
-  if (e.effective.match_pattern) pats.push(e.effective.match_pattern);
-  if (e.effective.match_patterns) pats.push(...e.effective.match_patterns);
-  const vals = { ...e.effective, match_patterns: pats };
-  const fields = isDefault ? OVERRIDE_FIELDS : [...OVERRIDE_FIELDS, ...WEB_EXTRA_FIELDS];
-  const panel = overrideEditor('web_player', e.key, vals, e.overrides, fields);
-  panel.hidden = true;
-
-  const exp = document.createElement('button');
-  exp.className = 'expand'; exp.title = 'Per-site settings';
-  exp.onclick = () => { panel.hidden = !panel.hidden; exp.classList.toggle('open', !panel.hidden); };
-
-  if (!isDefault && !e.bundled) row.appendChild(deleteBtn('web_player', e.key));
-
+  const label = document.createElement('span');
+  label.className = 'label'; label.textContent = labelText;
+  const hint = document.createElement('span');
+  hint.className = 'hint'; hint.textContent = hintText;
+  label.appendChild(hint);
   const sw = document.createElement('label');
   sw.className = 'switch';
   const box = document.createElement('input');
-  box.type = 'checkbox';
-  if (isDefault) {
-    box.checked = !(e.effective.ignore_unmatched ?? true);
-    box.title = 'Show browser media from sites with no matching entry';
-    box.onchange = () => patch(['web_player', 'default', 'ignore_unmatched'], !box.checked);
-  } else {
-    box.checked = !e.effective.ignore;   // enabled = not ignored
-    box.onchange = () => patch(['web_player', e.key, 'ignore'], !box.checked);
-  }
+  box.type = 'checkbox'; box.checked = checked;
+  box.setAttribute('aria-label', ariaLabel);
+  box.onchange = () => onchange(box.checked);
   sw.append(box, document.createElement('span'));
-  row.append(title, exp, sw);
-  wrap.append(row, panel);
+  row.append(label);
+  if (resetPath && overridden) {
+    const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'inherit-reset';
+    reset.textContent = 'Use inherited'; reset.onclick = async () => {
+      if (await patch(resetPath, null) && afterReset) await afterReset();
+    };
+    row.appendChild(reset);
+  }
+  row.append(sw);
+  return row;
+}
+
+// Web player rules only mean anything while detection is on. Dim them and say so
+// rather than leaving switches that silently do nothing.
+function syncWebPlayerEnabled() {
+  // Settings and the web panel load independently — whichever lands second
+  // corrects the switch, so the rendered state can never disagree with config.
+  const box = $('webEnabledToggle');
+  if (box) box.checked = webPlayerEnabled;
+  const note = $('webDisabledNote');
+  if (note) note.hidden = webPlayerEnabled;
+  for (const id of ['webCatalog', 'webCustomCatalog']) {
+    const el = $(id);
+    if (el) el.classList.toggle('is-inactive', !webPlayerEnabled);
+  }
+}
+
+function webDefaultPolicies(e) {
+  const wrap = document.createElement('div');
+  const enabledRow = policyToggle(
+    'Recognize web players',
+    'Off: browser URLs are not inspected at all, and your browser is configured like any other player under Local players.',
+    webPlayerEnabled,
+    'Recognize web players in a browser',
+    async checked => {
+      if (!await patch(['web_player_enabled'], checked)) return false;
+      webPlayerEnabled = checked;
+      syncWebPlayerEnabled();
+      await refreshWebPlayers();
+      return true;
+    },
+  );
+  enabledRow.querySelector('input').id = 'webEnabledToggle';
+  wrap.appendChild(enabledRow);
+
+  const row = document.createElement('div'); row.className = 'row source-card';
+  row.appendChild(sourceOpenButton(
+    'Default web player appearance',
+    'Used when a web player rule does not customize a field',
+    'web_player', 'default', '', e.effective.icon, 'Configure',
+  ));
+  wrap.append(row);
   return wrap;
+}
+
+function webListRow(e) {
+  const row = document.createElement('div'); row.className = 'row source-card';
+  const title = e.effective.name || displayKey(e.key);
+  const patterns = [e.effective.match_pattern, ...(e.effective.match_patterns ?? [])].filter(Boolean);
+  row.appendChild(sourceOpenButton(
+    title,
+    patterns.length ? 'Matches ' + patterns.join(', ') : 'No hostname pattern',
+    'web_player', e.key, '', e.effective.icon,
+  ));
+  row.appendChild(sourceBadge(e));
+  const sw = document.createElement('label'); sw.className = 'switch';
+  const box = document.createElement('input'); box.type = 'checkbox'; box.checked = !e.effective.ignore;
+  box.setAttribute('aria-label', 'Show ' + title + ' in Discord');
+  box.onchange = async () => {
+    if (await patch(['web_player', e.key, 'ignore'], !box.checked)) refreshWebPlayers();
+  };
+  sw.append(box, document.createElement('span')); row.appendChild(sw);
+  return row;
 }
 
 async function refreshPlayers() {
   let text;
-  try { text = await (await req('/api/players')).text(); } catch { return; }
+  try {
+    const response = await req('/api/players');
+    if (!response.ok) throw new Error(await response.text());
+    text = await response.text();
+  } catch {
+    saveStatus('Config needs attention', true);
+    return;
+  }
   if (text === lastPlayersJson) return;
   lastPlayersJson = text;
   const players = JSON.parse(text);
   lastPlayers = players;
-  const rows = $('playerRows');
-  rows.innerHTML = '';
-  $('playersEmpty').hidden = players.length > 0;
-  rows.appendChild(playerRow(null, players));
-  for (const p of players) rows.appendChild(playerRow(p, players));
+  const live = players.filter(p => p.live);
+  const playingRows = $('playingRows');
+  playingRows.innerHTML = '';
+  for (const p of live) playingRows.appendChild(liveSourceRow(p));
+  $('playingEmpty').hidden = live.length > 0;
+
+  const defaults = players.find(p => p.config_key === 'default');
+  const policies = $('playerPolicyRows');
+  policies.innerHTML = '';
+  if (defaults) policies.appendChild(playerDefaultPolicies(defaults));
+
+  const local = players.filter(p => p.config_key !== 'default' && !p.web_player_key);
+  const byPlayerName = (a, b) => displayKey(a.config_key).localeCompare(displayKey(b.config_key));
+  const presets = local.filter(p => p.bundled).sort(byPlayerName);
+  const custom = local.filter(p => !p.bundled).sort(byPlayerName);
+  const presetRows = $('playerPresetRows');
+  const customRows = $('playerCustomRows');
+  presetRows.innerHTML = '';
+  customRows.innerHTML = '';
+  for (const p of presets) presetRows.appendChild(playerListRow(p));
+  for (const p of custom) customRows.appendChild(playerListRow(p));
+  $('playerPresetCount').textContent = presets.length + (presets.length === 1 ? ' player' : ' players');
+  $('playerCustomCount').textContent = custom.length + (custom.length === 1 ? ' rule' : ' rules');
+  $('playerCustomCatalog').hidden = custom.length === 0;
   populatePvSelect(players);
   renderChips(pickPreview(players));
   schedulePreview();
+  applySourceSearch();
+  if (currentSource?.scope === 'player') renderSourceDetail();
+}
+
+function insertTemplateText(text) {
+  const input = $(lastTemplateFocus);
+  input.setRangeText(text, input.selectionStart, input.selectionEnd, 'end');
+  input.focus();
+  input.dispatchEvent(new Event('input'));
+  input.dispatchEvent(new Event('change'));
 }
 
 function renderChips(player) {
   const chips = $('chips');
   chips.innerHTML = '';
-  const context = player?.context ?? {};
-  for (const [key, label] of CHIPS) {
+  const context = Object.keys(latestPreviewContext).length ? latestPreviewContext : (player?.context ?? {});
+  const query = $('variableSearch').value.trim().toLowerCase();
+  const allKeys = Object.keys(context).sort((a, b) => {
+    const ai = COMMON_TEMPLATE_KEYS.indexOf(a), bi = COMMON_TEMPLATE_KEYS.indexOf(b);
+    return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.localeCompare(b);
+  });
+  const keys = query || templateValuesExpanded
+    ? allKeys
+    : allKeys.filter(key => COMMON_TEMPLATE_KEYS.includes(key));
+  for (const key of keys) {
+    const label = displayKey(key);
     const value = context[key];
+    if (query && !key.toLowerCase().includes(query) && !label.toLowerCase().includes(query)
+        && !String(value ?? '').toLowerCase().includes(query)) continue;
     const button = document.createElement('button');
+    button.type = 'button';
     button.className = 'chip';
     button.textContent = label;
     if (value !== null && value !== undefined && value !== '') {
@@ -785,27 +1606,92 @@ function renderChips(player) {
       button.appendChild(val);
       button.title = 'Inserts {{' + key + '}}';
     }
-    button.onclick = () => {
-      const input = $(lastTemplateFocus);
-      input.setRangeText('{{' + key + '}}', input.selectionStart, input.selectionEnd, 'end');
-      input.focus();
-      input.dispatchEvent(new Event('change'));
-    };
+    button.onclick = () => insertTemplateText('{{' + key + '}}');
     chips.appendChild(button);
   }
+  if (!chips.children.length) {
+    const empty = document.createElement('span');
+    empty.className = 'hint'; empty.textContent = 'No template values match that search.';
+    chips.appendChild(empty);
+  }
+  const toggle = $('variableToggle');
+  toggle.hidden = !!query || allKeys.length <= COMMON_TEMPLATE_KEYS.length;
+  toggle.setAttribute('aria-expanded', String(templateValuesExpanded));
+  toggle.textContent = templateValuesExpanded ? 'Show common template values' : `Show all template values (${allKeys.length})`;
 }
 
 async function loadRaw() {
-  try { $('rawToml').value = await (await req('/api/config')).text(); rawDirty = false; }
-  catch {}
+  $('rawToml').disabled = true;
+  $('rawReload').disabled = true;
+  $('rawSave').disabled = true;
+  try {
+    const res = await req('/api/config');
+    if (!res.ok) throw new Error(await res.text());
+    $('rawToml').value = await res.text();
+    rawDirty = false;
+    $('rawToml').disabled = false;
+    $('rawReload').disabled = false;
+    saveStatus('Saved');
+  } catch {
+    saveStatus('Could not load config', true);
+    toast('Could not load the raw config. Save remains disabled.', true);
+  }
 }
 
 async function saveRaw() {
+  if ($('rawSave').disabled) return;
+  const validation = await validateRaw();
+  if (!validation || !validation.valid) return;
+  if (validation.warnings.length && !rawWarningsAccepted) {
+    rawWarningsAccepted = true;
+    $('rawSave').disabled = false;
+    $('rawSave').textContent = 'Save with warnings';
+    saveStatus('Review warnings', true);
+    return;
+  }
   let res;
+  saveStatus('Saving…');
+  $('rawSave').disabled = true;
   try { res = await req('/api/config', { method: 'PUT', body: $('rawToml').value }); }
-  catch { return; }
-  if (res.ok) { rawDirty = false; toast('Saved'); loadSettings(); }
-  else toast('Rejected: ' + await res.text(), true);
+  catch { saveStatus('Could not save', true); $('rawSave').disabled = false; return; }
+  if (res.ok) {
+    rawDirty = false;
+    rawWarningsAccepted = false;
+    $('rawSave').textContent = 'Save file';
+    $('rawDiagnostics').textContent = 'Config is valid.';
+    $('rawDiagnostics').className = 'raw-diagnostics';
+    saveStatus('Saved');
+    loadSettings();
+  } else {
+    saveStatus('Could not save', true);
+    toast('Rejected: ' + await res.text(), true);
+    $('rawSave').disabled = false;
+  }
+}
+
+async function validateRaw() {
+  let result;
+  try {
+    const response = await req('/api/config/validate', { method: 'POST', body: $('rawToml').value });
+    result = await response.json();
+  } catch {
+    saveStatus('Could not validate', true);
+    $('rawSave').disabled = false;
+    return null;
+  }
+  if (!result.valid) {
+    $('rawDiagnostics').textContent = result.error || 'Invalid TOML';
+    $('rawDiagnostics').className = 'raw-diagnostics error';
+    saveStatus('Fix config error', true);
+    $('rawSave').disabled = false;
+  } else if (result.warnings.length) {
+    $('rawDiagnostics').textContent = result.warnings.map(w => '⚠ ' + w).join('\n');
+    $('rawDiagnostics').className = 'raw-diagnostics warning';
+  } else {
+    $('rawDiagnostics').textContent = 'Config is valid.';
+    $('rawDiagnostics').className = 'raw-diagnostics';
+  }
+  return result;
 }
 
 for (const f of TEMPLATE_FIELDS) {
@@ -828,17 +1714,28 @@ for (const f of TEMPLATE_FIELDS) {
 }
 $('activityType').onchange = () => patch(['activity_type', 'default'], $('activityType').value);
 $('useContentType').onchange = () => patch(['activity_type', 'use_content_type'], $('useContentType').checked);
-$('timeShow').onchange = () => patch(['time', 'show'], $('timeShow').checked);
+$('timeShow').onchange = () => { syncDependentControls(); patch(['time', 'show'], $('timeShow').checked); };
 $('timeElapsed').onchange = () => patch(['time', 'as_elapsed'], $('timeElapsed').checked);
 $('interval').onchange = () => patch(['interval'], Math.round(Number($('interval').value) * 1000));
-$('eventDriven').onchange = () => patch(['event_driven'], $('eventDriven').checked);
+$('eventDriven').onchange = async () => {
+  syncDependentControls();
+  if (await patch(['event_driven'], $('eventDriven').checked)) {
+    restartRequired = true;
+    saveStatus('Saved');
+  }
+};
 $('fallbackInterval').onchange = () =>
   patch(['fallback_poll_interval'], Math.round(Number($('fallbackInterval').value) * 1000));
-$('allowedPlayers').onchange = () =>
-  patch(['allowed_players'], $('allowedPlayers').value.split('\n').map(s => s.trim()).filter(Boolean));
+$('allowedPlayers').addEventListener('input', syncSourceFilterState);
+$('allowedPlayers').onchange = async () => {
+  const rules = $('allowedPlayers').value.split('\n').map(s => s.trim()).filter(Boolean);
+  if (!await patch(['allowed_players'], rules)) return;
+  lastPlayersJson = '';
+  refreshPlayers();
+};
 $('mbMinScore').onchange = () =>
   patch(['cover', 'provider', 'musicbrainz', 'min_score'], Math.round(Number($('mbMinScore').value)));
-$('catboxLitter').onchange = () => patch(['cover', 'provider', 'catbox', 'use_litter'], $('catboxLitter').checked);
+$('catboxLitter').onchange = () => { syncDependentControls(); patch(['cover', 'provider', 'catbox', 'use_litter'], $('catboxLitter').checked); };
 $('catboxHours').onchange = () =>
   patch(['cover', 'provider', 'catbox', 'litter_hours'], Math.round(Number($('catboxHours').value)));
 $('catboxHash').onchange = () => patch(['cover', 'provider', 'catbox', 'user_hash'], $('catboxHash').value || null);
@@ -853,27 +1750,91 @@ $('imgbbKey').onchange = () => {
   syncImgbbRow();
 };
 $('pvPlayer').onchange = () => setPreview($('pvPlayer').value);
+$('variableSearch').addEventListener('input', () => renderChips());
+$('variableToggle').onclick = () => {
+  templateValuesExpanded = !templateValuesExpanded;
+  renderChips();
+};
+for (const button of document.querySelectorAll('.recipes button'))
+  button.onclick = () => insertTemplateText(button.dataset.template);
+$('playerSearch').addEventListener('input', applySourceSearch);
+$('sourceBack').onclick = closeSourceDetail;
 $('webAdd').onclick = async () => {
   const key = $('webNewKey').value.trim();
   const host = $('webNewHost').value.trim();
   if (!key || !host) { toast('Need a key and a host', true); return; }
-  await patch(['web_player', key, 'match_patterns'], [host]);
+  if (!await patch(['web_player', key, 'match_patterns'], [host])) return;
   $('webNewKey').value = ''; $('webNewHost').value = '';
   refreshWebPlayers();
 };
 $('playerAdd').onclick = async () => {
   const key = $('playerNewKey').value.trim();
   if (!key) { toast('Need a player key', true); return; }
-  // Seed with the (default) enabled state so the entry exists and shows a row
-  // to expand; the user then sets whatever they actually want to override.
-  await patch(['player', key, 'ignore'], false);
+  if (!await patch(['player', key, 'match_patterns'], [`identity:${key}`])) return;
   $('playerNewKey').value = '';
   lastPlayersJson = ''; refreshPlayers();
 };
-$('rawToml').addEventListener('input', () => rawDirty = true);
+$('rawToml').addEventListener('input', () => {
+  rawDirty = true;
+  rawWarningsAccepted = false;
+  $('rawSave').textContent = 'Save file';
+  $('rawSave').disabled = false;
+  saveStatus('Unsaved raw changes');
+});
+$('rawReload').onclick = () => {
+  if (rawDirty && !window.confirm('Discard unsaved raw changes and reload the file?')) return;
+  rawDirty = false;
+  loadRaw();
+};
 $('rawSave').onclick = saveRaw;
-document.querySelector('details').addEventListener('toggle', e => {
-  if (e.target.open) loadRaw();
+$('rawEditor').addEventListener('toggle', e => {
+  if (e.target.open && !rawDirty) loadRaw();
+});
+for (const button of document.querySelectorAll('.settings-nav button'))
+  button.onclick = () => selectSettingsPage(button.dataset.page);
+const navButtons = [...document.querySelectorAll('.settings-nav button')];
+for (const button of navButtons) button.addEventListener('keydown', event => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const index = navButtons.indexOf(button);
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? navButtons.length - 1
+    : (index + (event.key === 'ArrowRight' ? 1 : -1) + navButtons.length) % navButtons.length;
+  navButtons[next].focus();
+  selectSettingsPage(navButtons[next].dataset.page);
+});
+const playerTabButtons = [...document.querySelectorAll('.player-tabs button')];
+for (const button of playerTabButtons) {
+  button.onclick = () => selectPlayerPage(button.dataset.playerPage);
+  button.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const index = playerTabButtons.indexOf(button);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? playerTabButtons.length - 1
+      : (index + (event.key === 'ArrowRight' ? 1 : -1) + playerTabButtons.length) % playerTabButtons.length;
+    selectPlayerPage(playerTabButtons[next].dataset.playerPage, true);
+  });
+}
+document.addEventListener('keydown', event => {
+  const editing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+  if (event.key === 'Escape' && currentSource) { event.preventDefault(); closeSourceDetail(); return; }
+  if (event.key === '/' && !editing) {
+    const active = document.querySelector('.settings-nav button[aria-selected=true]')?.dataset.page;
+    if (active === 'players') { event.preventDefault(); $('playerSearch').focus(); }
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's'
+      && document.activeElement === $('rawToml') && rawDirty) {
+    event.preventDefault(); saveRaw();
+  }
+});
+let initialSettingsPage = 'players';
+try { initialSettingsPage = sessionStorage.getItem('mprisence-settings-page') || initialSettingsPage; } catch {}
+selectSettingsPage(initialSettingsPage);
+selectPlayerPage('local');
+if (window.matchMedia('(max-width: 980px)').matches) $('pvResolution').closest('details').open = false;
+window.addEventListener('beforeunload', e => {
+  if (!rawDirty) return;
+  e.preventDefault();
+  e.returnValue = '';
 });
 loadSettings();
 refreshPlayers();
