@@ -42,6 +42,27 @@ dist/firefox/
 dist/chromium/
 ```
 
+### Reproducing the store builds (AMO reviewers)
+
+The submitted packages are esbuild bundles of the TypeScript in `src/`. To reproduce byte-for-byte behaviour from the source archive:
+
+```bash
+# Environment: Linux, Node.js >= 20, npm >= 10
+npm ci                       # installs esbuild pinned by package-lock.json
+npm run build:firefox:store  # -> dist/firefox/ and dist/mprisence-firefox-store.zip
+```
+
+`build.mjs` merges `manifest.shared.json` into `manifest.firefox.json`, runs esbuild
+(`bundle`, `format: esm`, `target: es2022`, no minifier, no sourcemaps in store mode),
+copies `src/options.html` and `icons/`, and zips the result. Only the short git SHA
+(`__GIT_SHA__`) differs between builds from different checkouts; it is a log string only.
+
+Source archive for submission:
+
+```bash
+npm run package:source   # -> dist/mprisence-extension-source.zip
+```
+
 ## Chrome extension IDs
 
 - **Chrome Web Store:** `pnkkjbdopihogobhhjbgapbpfccinjjo` — matches `CHROME_EXTENSION_ID` in `src/web_bridge/mod.rs`
@@ -87,7 +108,7 @@ background.ts
   routes host commands back to tabs
 ```
 
-Both `content.js` and `page-world.js` are manifest-declared content scripts. No runtime script injection or dynamic eval is used.
+Both `content.js` and `page-world.js` are manifest-declared content scripts on the supported sites. The opt-in generic fallback registers the same two bundled files on `<all_urls>` via `chrome.scripting.registerContentScripts`. No remote code, no dynamic eval — only files shipped inside the package are ever executed.
 
 ## Providers
 

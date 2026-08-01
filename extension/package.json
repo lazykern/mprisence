@@ -1,6 +1,6 @@
 {
   "name": "mprisence-bridge",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Provides rich web media player metadata from your browser to MPRIS",
   "private": true,
   "type": "module",
@@ -13,6 +13,7 @@
     "build:firefox:store": "node build.mjs firefox --store",
     "build:store": "node build.mjs firefox --store && node build.mjs chromium --store",
     "package:store": "npm run build:store",
+    "package:source": "mkdir -p dist && rm -f dist/mprisence-extension-source.zip && zip -r dist/mprisence-extension-source.zip src icons manifest.shared.json manifest.firefox.json manifest.chromium.json build.mjs package.json package-lock.json tsconfig.json README.md",
     "watch:firefox": "node build.mjs firefox --watch",
     "watch:chromium": "node build.mjs chromium --watch"
   },
