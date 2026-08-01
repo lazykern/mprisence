@@ -34,7 +34,7 @@
   button { border: 0; }
   .settings-page > section:last-child { margin-bottom: 0; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-         border-top: 1px solid var(--line); }
+         min-height: 58px; padding: .65rem 0; border-top: 1px solid var(--line); }
   .row:first-of-type { border-top: 0; }
   .row .label { min-width: 0; flex: 1; }
   .row.stack, .ovrow.stack { flex-direction: column; align-items: stretch; gap: .35rem; }
@@ -44,37 +44,45 @@
   input:disabled, select:disabled, textarea:disabled { opacity: .45; cursor: not-allowed; }
   input[type=text] { width: 100%; font: .85rem/1.4 ui-monospace, monospace; }
   input[type=number] { width: 7rem; }
-  .switch { position: relative; display: block; flex: 0 0 auto; }
+  .switch { position: relative; display: block; flex: 0 0 auto; width: 40px; height: 24px; }
   .switch input { width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
-  .switch span { position: absolute; inset: 0; border-radius: 999px; pointer-events: none; transition: .15s; }
+  .switch span { position: absolute; inset: 0; border-radius: 999px; background: #4e5058;
+                 pointer-events: none; transition: .15s; }
   .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
                         border-radius: 50%; background: #fff; transition: .15s; }
   .switch input:checked + span::after { transform: translateX(16px); }
-  .chips { display: flex; flex-wrap: wrap; }
-  .chip { max-width: 16rem; padding: .25rem .55rem; overflow: hidden; border: 0;
+  .chips { display: flex; flex-wrap: wrap; max-height: 210px; overflow-y: auto;
+           gap: .35rem; padding: .55rem 0 .7rem; }
+  .chip { max-width: 16rem; min-height: 30px; padding: .25rem .55rem; overflow: hidden; border: 0;
+          border-radius: 5px; background: var(--control);
           text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-  .discord .kind { margin-bottom: .55rem; font-size: .7rem; letter-spacing: .04em; text-transform: uppercase; }
+  .discord .kind { margin-bottom: .55rem; color: var(--muted); font-size: .7rem;
+                   letter-spacing: .04em; text-transform: uppercase; }
   .discord .body { display: flex; align-items: center; gap: .8rem; }
-  .discord .art { position: relative; display: grid; place-items: center; flex: 0 0 auto; border-radius: 8px;
+  .discord .art { position: relative; display: grid; place-items: center; flex: 0 0 auto;
+                  width: 72px; height: 72px; border-radius: 8px; background-color: var(--control);
                   background-position: center; background-size: cover; color: var(--muted); font-size: 1.6rem; }
   .discord .badge { position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center;
-                    width: 22px; height: 22px; border: 2px solid; border-radius: 50%; }
+                    width: 22px; height: 22px; overflow: hidden; border: 2px solid var(--surface);
+                    border-radius: 50%; background: var(--surface); }
   .discord .lines { min-width: 0; flex: 1; }
   .discord .l1 { font-weight: 650; }
   .discord .l1, .discord .l2, .discord .l3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .discord .l2, .discord .l3 { font-size: .9rem; }
+  .discord .l2, .discord .l3 { color: var(--secondary); font-size: .9rem; }
   .discord .err { color: #ff9c9f; font-size: .82rem; white-space: pre-wrap; }
   .pvsource, .warn, .progress-note { margin: .2rem 0; font-size: .76rem; }
   .warn { color: #ffd37a; }
   .count { font-size: .72rem; }
   .count.over { color: var(--danger); font-weight: 700; }
-  .reset, .expand, .inherit-reset { padding: .25rem .4rem; background: transparent; }
-  details { margin-top: .5rem; }
+  .reset, .inherit-reset { padding: .25rem .4rem; background: transparent; }
+  .reset.confirm { color: #ff9c9f; font-weight: 650; }
+  details { margin-top: .5rem; border-color: var(--line); }
   summary { padding: .5rem 0; }
   .source-flow { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap;
-                 margin-top: .7rem; padding: .65rem .75rem; border: 1px solid; border-radius: 8px; font-size: .82rem; }
+                 margin-top: .7rem; padding: .65rem .75rem; border: 1px solid var(--line);
+                 border-radius: 8px; background: var(--base); font-size: .82rem; }
   .source-flow .flow-note { flex-basis: 100%; color: var(--muted); }
-  .source-group { padding-bottom: .35rem; border-top: 1px solid; }
+  .source-group { padding: 18px 0 .35rem; border-top: 1px solid var(--line); }
   .source-group:first-of-type { border-top: 0; }
   .player-tabs { display: flex; gap: .25rem; margin-top: 18px; padding: 4px;
                  border-radius: 8px; background: var(--base); }
@@ -86,8 +94,8 @@
   .source-catalog { padding-bottom: .5rem; }
   .source-catalog > .source-heading { padding-top: 14px; border-top: 1px solid var(--line); }
   .source-advanced > summary { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
-  .source-heading { align-items: baseline; }
-  .source-heading h3 { margin: 0; }
+  .source-heading { align-items: baseline; margin-bottom: 8px; }
+  .source-heading h3 { margin: 0; font-size: .95rem; }
   .source-heading .hint { text-align: right; }
   .source-name { min-width: 0; flex: 1; }
   .source-action { display: inline-flex; align-items: center; gap: .35rem; flex: 0 0 auto;
@@ -95,18 +103,20 @@
   .source-action::after { content: "›"; color: var(--muted); font-size: 1.15rem; line-height: 1; }
   .pvpick { display: block; width: 100%; overflow: hidden; color: inherit; font: inherit;
             text-overflow: ellipsis; white-space: nowrap; }
-  .source-status { flex: 0 0 auto; padding: .12rem .5rem; border-radius: 999px; font-size: .72rem; }
+  .source-status { flex: 0 0 auto; padding: .12rem .5rem; border-radius: 999px;
+                   background: #183623; color: #7edb9d; font-size: .72rem; }
   .source-badge { flex: 0 0 auto; padding: .12rem .5rem; border: 1px solid var(--line);
                   border-radius: 999px; color: var(--secondary); font-size: .72rem; }
   .source-badge.customized { border-color: #4c54a1; background: #252849; color: #c2c8ff; }
   .source-empty { padding: .65rem 0; color: var(--muted); }
   .source-filter-state { color: #ffd37a; font-size: .76rem; }
   .source-filter-state.inactive { color: var(--muted); }
-  .policy-list { border-radius: 8px; }
+  .policy-list { margin: 0 0 8px; padding: 0 12px; border-radius: 8px; background: var(--base); }
   .policy-heading { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem;
                     margin-top: 14px; color: var(--text); font-size: .88rem; font-weight: 650; }
   .policy-heading .hint { text-align: right; }
-  .ovrow { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+  .ovrow { display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+           min-height: 54px; padding: .45rem 0; border-top: 1px solid var(--line); }
   .ovrow .lbl { flex: 0 1 48%; font-size: .82rem; }
   .ovrow input[type=text], .ovrow input[type=url] { width: 100%; }
   .ovcontrol { display: flex; align-items: center; justify-content: flex-end; gap: .45rem; }
@@ -121,16 +131,18 @@
   .addweb button, .advBar button { min-height: 38px; padding: .45rem .8rem; border-radius: 6px; font-weight: 650; }
   .advBar button:disabled { opacity: .45; cursor: not-allowed; }
   textarea.list { width: 100%; min-height: 5rem; resize: vertical; font: .8rem/1.5 ui-monospace, monospace; }
-  #rawToml { width: 100%; resize: vertical; font: .8rem/1.5 ui-monospace, monospace; }
+  #rawToml { width: 100%; height: min(55vh, 520px); resize: vertical;
+             font: .8rem/1.5 ui-monospace, monospace; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
              overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-  #toast { position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%); padding: .55rem .9rem;
-           border-radius: 7px; opacity: 0; transition: opacity .15s; pointer-events: none; }
+  #toast { position: fixed; z-index: 30; left: 50%; bottom: 1rem; transform: translateX(-50%);
+           padding: .55rem .9rem; border-radius: 7px; background: var(--control); color: var(--text);
+           opacity: 0; transition: opacity .15s; pointer-events: none; }
   #toast.show { opacity: 1; }
   .skip-link { position: fixed; z-index: 20; top: .5rem; left: .5rem; transform: translateY(-150%);
                padding: .55rem .8rem; border-radius: 6px; background: var(--blurple); color: white; }
   .skip-link:focus { transform: none; }
-  .wrap { width: min(1500px, 100%); max-width: none; min-height: 100vh; margin: 0 auto; padding: 0 28px 56px; }
+  .wrap { width: min(1500px, 100%); min-height: 100vh; margin: 0 auto; padding: 0 28px 56px; }
   .app-header { min-height: 72px; display: flex; align-items: center; justify-content: space-between;
                 gap: 1rem; border-bottom: 1px solid var(--line); }
   .brand { display: flex; align-items: center; gap: .75rem; }
@@ -145,9 +157,8 @@
   #saveStatus.error::before { background: var(--danger); }
   #saveStatus.restart { color: #ffe0a3; background: #382c16; }
   #saveStatus.restart::before { background: var(--warning); }
-  .settings-nav { display: flex; grid-template-columns: none; gap: .25rem; overflow-x: auto; margin: 0;
-                  padding: 10px 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
-                  background: transparent; scrollbar-width: none; }
+  .settings-nav { display: flex; gap: .25rem; overflow-x: auto;
+                  padding: 10px 0; border-bottom: 1px solid var(--line); scrollbar-width: none; }
   .settings-nav button { flex: 0 0 auto; min-height: 38px; padding: .45rem .8rem; border-radius: 7px;
                          background: transparent; color: var(--muted); font-size: .88rem; cursor: pointer; }
   .settings-nav button:hover { color: var(--text); background: var(--hover); }
@@ -165,7 +176,6 @@
                font-weight: 650; letter-spacing: 0; text-transform: none; }
   section h2 + .row { margin-top: 10px; }
   .section-intro { color: var(--muted); font-size: .88rem; }
-  .row { min-height: 58px; padding: .65rem 0; border-color: var(--line); }
   .row .label, .lbl { color: var(--text); font-weight: 520; }
   .hint, .source-meta, .inherit-state, .count, .pvsource, .progress-note { color: var(--muted); }
   input[type=text], input[type=password], input[type=number], input[type=url], input[type=search], select,
@@ -175,8 +185,6 @@
   input:hover, select:hover, textarea:hover { border-color: #4a4b55; }
   input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible,
   summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-  .switch { width: 40px; height: 24px; }
-  .switch span { background: #4e5058; }
   .switch input:checked + span { background: var(--blurple); }
   .switch input:disabled + span { opacity: .45; }
   .switch input:focus-visible + span { outline-color: var(--focus); }
@@ -184,12 +192,7 @@
                    border: 1px solid #3a3a43; border-radius: 7px; background: var(--base); color: var(--muted); }
   .source-search:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
   .source-search input { width: 100%; min-height: 42px; padding: 0; border: 0; outline: 0; background: transparent; }
-  .source-flow { background: var(--base); border-color: var(--line); }
   .source-flow strong, .inherit-state.custom, .inherit-reset, .chip, .pvpick:hover { color: #aeb8ff; }
-  .source-group { padding-top: 18px; border-color: var(--line); }
-  .source-heading { margin-bottom: 8px; }
-  .source-heading h3 { font-size: .95rem; }
-  .policy-list { margin: 0 0 8px; padding: 0 12px; background: var(--base); }
   .is-inactive { opacity: .5; }
   .source-card, #playingRows > .row, #playerPresetRows > div > .row,
   #playerCustomRows > div > .row, #webPresetRows > div > .row, #webCustomRows > div > .row {
@@ -198,12 +201,12 @@
   .source-card:hover, #playingRows > .row:hover, #playerPresetRows > div > .row:hover,
   #playerCustomRows > div > .row:hover, #webPresetRows > div > .row:hover,
   #webCustomRows > div > .row:hover { background: var(--hover); }
+  .source-card.selected { background: var(--hover); box-shadow: inset 3px 0 0 var(--blurple); }
   .source-open { display: flex; min-width: 0; flex: 1; align-items: center; gap: .7rem; padding: 0;
                  border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
   .source-icon { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 auto;
                  overflow: hidden; border-radius: 9px; background: var(--control); color: var(--secondary); font-weight: 700; }
   .source-icon-image { width: 100%; height: 100%; object-fit: cover; }
-  .source-status { background: #183623; color: #7edb9d; }
   .source-status.blocked { background: #451f21; color: #ff9c9f; }
   .source-status.inactive { background: var(--control); color: var(--secondary); }
   .back-button { margin: 16px 20px 0; padding: .45rem .6rem; border: 0; border-radius: 6px;
@@ -217,7 +220,6 @@
   .detail-section:last-child { border-bottom: 0; }
   .detail-section h3 { margin: 0 0 .65rem; font-size: .9rem; }
   .ovpanel { padding: 0; margin: 0; }
-  .ovrow { min-height: 54px; padding: .45rem 0; border-top: 1px solid var(--line); }
   .ovrow:first-child { border-top: 0; }
   .inherit-reset { min-height: 32px; }
   .resolution { margin-top: .65rem; padding-top: .2rem; border-top: 1px solid var(--line); }
@@ -229,18 +231,12 @@
   #previewSection > h2, #previewSection > .row, #previewSection > details { margin-inline: 0; }
   #previewSection .row { min-height: 50px; }
   .discord { margin: .55rem 0; padding: .8rem; border: 1px solid #303038; border-radius: 8px; background: var(--surface); }
-  .discord .kind { color: var(--muted); }
-  .discord .art { width: 72px; height: 72px; background-color: var(--control); }
-  .discord .badge { overflow: hidden; background: var(--surface); border-color: var(--surface); }
   .discord .badge img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-  .discord .l2, .discord .l3 { color: var(--secondary); }
   .discord .hl { background: #313454; }
   .variable-tools { display: grid; grid-template-columns: auto minmax(180px, 320px); gap: .35rem .8rem;
                     align-items: center; margin-top: 14px; }
   .variable-tools label { font-size: .85rem; font-weight: 600; }
   .variable-tools .hint { grid-column: 1 / -1; }
-  .chips { max-height: 210px; overflow-y: auto; gap: .35rem; padding: .55rem 0 .7rem; }
-  .chip { min-height: 30px; border-radius: 5px; background: var(--control); }
   .chip:hover { background: #393b42; }
   .chip .val { color: var(--muted); }
   .variable-toggle { min-height: 32px; margin: 0 20px .7rem; padding: .3rem .55rem;
@@ -252,22 +248,19 @@
                     background: var(--base); color: var(--secondary); }
   .recipes button:hover { background: var(--hover); color: var(--text); }
   .ordbtn, .addweb button, .advBar button { background: var(--blurple); color: white; }
-  .reset, .expand, summary { color: var(--muted); }
-  details { border-color: var(--line); }
+  .reset, summary { color: var(--muted); }
   #rawEditor { padding: 0 20px 18px; margin: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
   #rawEditor > summary { color: var(--text); font-weight: 650; }
   #sourceFilter { margin: 0 0 18px; padding: 0 20px 18px; border: 1px solid var(--line);
                   border-radius: 10px; background: var(--surface); }
   #sourceFilter > summary { color: var(--text); font-weight: 650; }
   #sourceFilter .row { margin: .4rem 0 0; }
-  #rawToml { height: min(55vh, 520px); }
   #coverSection > .hint, #coverSection > .warn, #providerList { margin-left: 20px; margin-right: 20px; }
   .raw-diagnostics { color: var(--muted); font-size: .82rem; white-space: pre-wrap; }
   .raw-diagnostics.error { color: #ff9c9f; }
   .raw-diagnostics.warning { color: #ffd37a; }
   #offline { position: sticky; z-index: 10; top: 0; margin: 0 -28px; border-radius: 0;
              background: #451f21; color: #ffd5d6; text-align: center; }
-  #toast { z-index: 30; background: var(--control); color: var(--text); }
   #toast.err { background: #451f21; }
 
   @media (max-width: 980px) {
@@ -805,7 +798,9 @@ function renderProviders() {
     down.onclick = () => { [enabled[idx + 1], enabled[idx]] = [enabled[idx], enabled[idx + 1]]; saveProviders(enabled); };
     const name = document.createElement('span');
     name.className = 'pname';
-    name.innerHTML = meta[1] + ' <span class="hint">' + meta[2] + '</span>';
+    const hint = document.createElement('span');
+    hint.className = 'hint'; hint.textContent = ' ' + meta[2];
+    name.append(meta[1], hint);
     const sw = document.createElement('label');
     sw.className = 'switch';
     const box = document.createElement('input');
@@ -850,7 +845,7 @@ function overrideEditor(scope, key, values, overrides, fields = OVERRIDE_FIELDS)
     const overridden = isSet(overrides[f.key]);
     const set = async (v, refresh = false) => {
       if (!await patch([scope, key, f.key], v)) return false;
-      if (refresh) await refreshOverridePanel(scope, key);
+      if (refresh) await refreshOverridePanel(scope);
       return true;
     };
     const row = document.createElement('div');
@@ -876,7 +871,7 @@ function overrideEditor(scope, key, values, overrides, fields = OVERRIDE_FIELDS)
           ? [{ path: singular, value: arr.length ? '' : null }]
           : [];
         if (!await patch(plural, arr.length ? arr : null, also)) return;
-        if (!arr.length) await refreshOverridePanel(scope, key);
+        if (!arr.length) await refreshOverridePanel(scope);
       };
       row.append(lbl, inp, overrideState(scope, key, f.key, overridden));
     } else if (f.type === 'bool') {
@@ -942,7 +937,7 @@ function overrideState(scope, key, field, overridden) {
   reset.textContent = 'Use inherited';
   reset.hidden = !overridden;
   reset.onclick = async () => {
-    if (await patch([scope, key, field], null)) await refreshOverridePanel(scope, key);
+    if (await patch([scope, key, field], null)) await refreshOverridePanel(scope);
   };
   state.append(label, reset);
   return state;
@@ -955,19 +950,9 @@ function markOverrideCustom(row) {
   if (reset) reset.hidden = false;
 }
 
-async function refreshOverridePanel(scope, key) {
-  const panelId = (scope === 'player' ? 'player-panel-' : 'web-panel-') + key;
+async function refreshOverridePanel(scope) {
   if (scope === 'player') { lastPlayersJson = ''; await refreshPlayers(); }
   else await refreshWebPlayers();
-  const panel = $(panelId.replace(/[^a-zA-Z0-9_-]/g, '-'));
-  if (!panel) return;
-  panel.hidden = false;
-  for (const button of document.querySelectorAll('.expand')) {
-    if (button.getAttribute('aria-controls') !== panel.id) continue;
-    button.classList.add('open');
-    button.setAttribute('aria-expanded', 'true');
-    break;
-  }
 }
 
 function schedulePreview() {
@@ -1068,21 +1053,20 @@ function markSelected() {
 // Single entry point for changing which player the preview renders.
 // Keeps the top dropdown, the Players-list highlight, chips, and the
 // rendered preview all in sync.
+// Label for the preview dropdown's first entry: what "no explicit player"
+// resolves to right now.
+function autoPreviewLabel() {
+  return previewConfigSource && !previewBus ? 'Selected rule (sample data)' : 'Auto (playing player)';
+}
+
 function setPreview(bus, configSource = null) {
   previewBus = bus;
   previewConfigSource = configSource;
-  if ($('pvPlayer').options.length) $('pvPlayer').options[0].textContent = configSource && !bus
-    ? 'Selected rule (sample data)'
-    : 'Auto (playing player)';
+  if ($('pvPlayer').options.length) $('pvPlayer').options[0].textContent = autoPreviewLabel();
   if ($('pvPlayer').value !== bus) $('pvPlayer').value = bus;
   markSelected();
   renderChips(pickPreview(lastPlayers));
   preview();
-}
-
-function openPreview(bus) {
-  setPreview(bus);
-  selectSettingsPage('appearance');
 }
 
 function selectSettingsPage(page) {
@@ -1100,7 +1084,7 @@ function selectSettingsPage(page) {
 function applySourceSearch() {
   const query = $('playerSearch').value.trim().toLowerCase();
   const panel = activePlayerPage === 'web' ? $('webPlayersPanel') : $('localPlayersPanel');
-  const playingCards = [...$('playingRows').querySelectorAll('.source-card, .row')];
+  const playingCards = [...$('playingRows').querySelectorAll('.source-card')];
   const panelCards = [...panel.querySelectorAll('.source-card')];
   for (const card of $('players').querySelectorAll('.source-card')) card.hidden = false;
   for (const card of [...playingCards, ...panelCards])
@@ -1153,8 +1137,10 @@ function selectPlayerPage(page, focus = false) {
 function populatePvSelect(players) {
   const sel = $('pvPlayer');
   const want = previewBus;
-  const autoLabel = previewConfigSource && !previewBus ? 'Selected rule (sample data)' : 'Auto (playing player)';
-  sel.innerHTML = '<option value="">' + autoLabel + '</option>';
+  sel.textContent = '';
+  const auto = document.createElement('option');
+  auto.value = ''; auto.textContent = autoPreviewLabel();
+  sel.appendChild(auto);
   for (const p of players) {
     if (!p.live) continue;   // config-only rows can't be previewed
     const o = document.createElement('option');
@@ -1237,7 +1223,7 @@ function renderSourceDetail() {
     : lastWebPlayers.find(p => p.key === key);
   if (!entry) { closeSourceDetail(); return; }
   const body = $('sourceDetailBody'); body.innerHTML = '';
-  const effective = isPlayer ? entry.effective : entry.effective;
+  const effective = entry.effective;
   const resolved = isPlayer ? entry.resolved : effective;
   const overrides = entry.overrides ?? {};
   const isDefault = key === 'default';
@@ -1255,27 +1241,28 @@ function renderSourceDetail() {
   const actions = document.createElement('div'); actions.className = 'detail-actions';
   // [web_player.default] is appearance-only: unmatched websites are always
   // hidden, and the global switch lives on the Web players panel.
-  const hasVisibilitySwitch = !(isDefault && !isPlayer);
-  const shownLabel = document.createElement('span'); shownLabel.className = 'hint';
-  shownLabel.textContent = isDefault ? 'Show unmatched' : 'Show in Discord';
-  const sw = document.createElement('label'); sw.className = 'switch';
-  const box = document.createElement('input'); box.type = 'checkbox';
-  if (isDefault) {
-    box.checked = !(effective.ignore_unmatched ?? true);
-    box.setAttribute('aria-label', 'Enable unmatched sources');
-    box.onchange = () => patch([scope, key, 'ignore_unmatched'], !box.checked);
-  } else {
-    box.checked = !(resolved.ignore ?? false);
-    box.setAttribute('aria-label', 'Show ' + title + ' in Discord');
-    box.onchange = async () => {
-      if (await patch([scope, key, 'ignore'], !box.checked)) {
-        if (isPlayer) { lastPlayersJson = ''; await refreshPlayers(); }
-        else await refreshWebPlayers();
-      }
-    };
+  if (isPlayer || !isDefault) {
+    const shownLabel = document.createElement('span'); shownLabel.className = 'hint';
+    shownLabel.textContent = isDefault ? 'Show unmatched' : 'Show in Discord';
+    const sw = document.createElement('label'); sw.className = 'switch';
+    const box = document.createElement('input'); box.type = 'checkbox';
+    if (isDefault) {
+      box.checked = !(effective.ignore_unmatched ?? true);
+      box.setAttribute('aria-label', 'Enable unmatched sources');
+      box.onchange = () => patch([scope, key, 'ignore_unmatched'], !box.checked);
+    } else {
+      box.checked = !(resolved.ignore ?? false);
+      box.setAttribute('aria-label', 'Show ' + title + ' in Discord');
+      box.onchange = async () => {
+        if (await patch([scope, key, 'ignore'], !box.checked)) {
+          if (isPlayer) { lastPlayersJson = ''; await refreshPlayers(); }
+          else await refreshWebPlayers();
+        }
+      };
+    }
+    sw.append(box, document.createElement('span'));
+    actions.append(shownLabel, sw);
   }
-  sw.append(box, document.createElement('span'));
-  if (hasVisibilitySwitch) actions.append(shownLabel, sw);
   if (!isDefault && !entry.bundled) actions.prepend(deleteBtn(scope, key));
   head.append(names, actions); body.appendChild(head);
 
@@ -1297,7 +1284,16 @@ function renderSourceDetail() {
   if (effective.match_patterns) pats.push(...effective.match_patterns);
   const values = isPlayer ? { ...resolved, match_patterns: pats } : { ...effective, match_patterns: pats };
   const extras = isDefault ? [] : (isPlayer ? PLAYER_EXTRA_FIELDS : WEB_EXTRA_FIELDS);
-  settings.appendChild(overrideEditor(scope, key, values, overrides, [...OVERRIDE_FIELDS, ...extras]));
+  // Web players are matched *because* the URL is http(s), so blocking
+  // streaming there would just be "Show in Discord" off.
+  // On [web_player.default], identity is hidden rather than removed: every
+  // preconfigured site sets its own name/app_id/icon, so editing them here
+  // would appear to do nothing. Still honoured for hand-added sites.
+  const hidden = isPlayer ? [] : isDefault
+    ? ['allow_streaming', 'name', 'app_id', 'icon']
+    : ['allow_streaming'];
+  const base = OVERRIDE_FIELDS.filter(f => !hidden.includes(f.key));
+  settings.appendChild(overrideEditor(scope, key, values, overrides, [...base, ...extras]));
   body.appendChild(settings);
 }
 
@@ -1352,10 +1348,10 @@ function playerDefaultPolicies(p) {
   const wrap = document.createElement('div');
   const refresh = async () => { lastPlayersJson = ''; await refreshPlayers(); };
   wrap.appendChild(policyToggle(
-    'Players without a matching rule',
-    'Local media players that do not match a configured player rule',
+    'Unlisted apps',
+    "Show media apps that aren't in the list below, using the default look",
     !(p.effective.ignore_unmatched ?? true),
-    'Show local players without a matching rule',
+    'Show unlisted apps in Discord',
     async checked => {
       if (await patch(['player', 'default', 'ignore_unmatched'], !checked)) await refresh();
     },
@@ -1408,16 +1404,15 @@ async function refreshWebPlayers() {
     const response = await req('/api/web_players');
     if (!response.ok) throw new Error(await response.text());
     list = await response.json();
-  } catch (error) {
+  } catch {
     saveStatus('Config needs attention', true);
     return;
   }
   lastWebPlayers = list;
-  const defaults = list.find(e => e.key === 'default');
+  const fallbackRule = list.find(e => e.key === 'default');
   const policies = $('webPolicyRows');
   policies.innerHTML = '';
-  if (defaults) policies.appendChild(webDefaultPolicies(defaults));
-  syncWebPlayerEnabled();
+  if (fallbackRule) policies.appendChild(webDefaultPolicies(fallbackRule));
   const presets = list.filter(e => e.key !== 'default' && e.bundled);
   const custom = list.filter(e => e.key !== 'default' && !e.bundled);
   const presetRows = $('webPresetRows');
@@ -1429,6 +1424,7 @@ async function refreshWebPlayers() {
   $('webPresetCount').textContent = presets.length + (presets.length === 1 ? ' web player' : ' web players');
   $('webCustomCount').textContent = custom.length + (custom.length === 1 ? ' rule' : ' rules');
   $('webCustomCatalog').hidden = custom.length === 0;
+  syncWebPlayerEnabled();   // after rows render, so their switches get disabled too
   applySourceSearch();
   if (currentSource?.scope === 'web_player') renderSourceDetail();
 }
@@ -1473,7 +1469,12 @@ function syncWebPlayerEnabled() {
   if (note) note.hidden = webPlayerEnabled;
   for (const id of ['webCatalog', 'webCustomCatalog']) {
     const el = $(id);
-    if (el) el.classList.toggle('is-inactive', !webPlayerEnabled);
+    if (!el) continue;
+    el.classList.toggle('is-inactive', !webPlayerEnabled);
+    // Dimming alone would leave show/hide switches that write config nothing reads.
+    // Navigation stays live so rules can still be edited while detection is off.
+    for (const box of el.querySelectorAll('.switch input'))
+      box.disabled = !webPlayerEnabled;
   }
 }
 
@@ -1545,10 +1546,10 @@ async function refreshPlayers() {
   for (const p of live) playingRows.appendChild(liveSourceRow(p));
   $('playingEmpty').hidden = live.length > 0;
 
-  const defaults = players.find(p => p.config_key === 'default');
+  const fallbackRule = players.find(p => p.config_key === 'default');
   const policies = $('playerPolicyRows');
   policies.innerHTML = '';
-  if (defaults) policies.appendChild(playerDefaultPolicies(defaults));
+  if (fallbackRule) policies.appendChild(playerDefaultPolicies(fallbackRule));
 
   const local = players.filter(p => p.config_key !== 'default' && !p.web_player_key);
   const byPlayerName = (a, b) => displayKey(a.config_key).localeCompare(displayKey(b.config_key));
@@ -1564,6 +1565,7 @@ async function refreshPlayers() {
   $('playerCustomCount').textContent = custom.length + (custom.length === 1 ? ' rule' : ' rules');
   $('playerCustomCatalog').hidden = custom.length === 0;
   populatePvSelect(players);
+  markSelected();   // rows were just rebuilt, so re-apply the preview highlight
   renderChips(pickPreview(players));
   schedulePreview();
   applySourceSearch();
@@ -1587,9 +1589,8 @@ function renderChips(player) {
     const ai = COMMON_TEMPLATE_KEYS.indexOf(a), bi = COMMON_TEMPLATE_KEYS.indexOf(b);
     return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.localeCompare(b);
   });
-  const keys = query || templateValuesExpanded
-    ? allKeys
-    : allKeys.filter(key => COMMON_TEMPLATE_KEYS.includes(key));
+  const commonKeys = allKeys.filter(key => COMMON_TEMPLATE_KEYS.includes(key));
+  const keys = query || templateValuesExpanded ? allKeys : commonKeys;
   for (const key of keys) {
     const label = displayKey(key);
     const value = context[key];
@@ -1615,7 +1616,7 @@ function renderChips(player) {
     chips.appendChild(empty);
   }
   const toggle = $('variableToggle');
-  toggle.hidden = !!query || allKeys.length <= COMMON_TEMPLATE_KEYS.length;
+  toggle.hidden = !!query || allKeys.length <= commonKeys.length;
   toggle.setAttribute('aria-expanded', String(templateValuesExpanded));
   toggle.textContent = templateValuesExpanded ? 'Show common template values' : `Show all template values (${allKeys.length})`;
 }
@@ -1839,7 +1840,8 @@ window.addEventListener('beforeunload', e => {
 loadSettings();
 refreshPlayers();
 refreshWebPlayers();
-setInterval(refreshPlayers, 2000);
+setInterval(() => { if (!document.hidden) refreshPlayers(); }, 2000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPlayers(); });
 </script>
 </body>
 </html>

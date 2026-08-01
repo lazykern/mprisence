@@ -485,13 +485,6 @@ impl Command {
                             if let Some(icon) = cfg.icon.as_deref() {
                                 print_nested_key_value("icon", icon, 4);
                             }
-                            if let Some(allow_streaming) = cfg.allow_streaming {
-                                print_nested_key_value(
-                                    "allow_streaming",
-                                    format_bool(allow_streaming),
-                                    4,
-                                );
-                            }
                             if let Some(show_icon) = cfg.show_icon {
                                 print_nested_key_value("show_icon", format_bool(show_icon), 4);
                             }

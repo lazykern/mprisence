@@ -235,9 +235,12 @@ fn config_warnings(body: &str) -> Vec<String> {
     }
     // `ignore_unmatched` is a [player.default] concept only — web players hide
     // unmatched sites unconditionally.
+    // `allow_streaming` is a [player.*] concept only — a web player matches
+    // because its URL is http(s), so disabling streaming there is just
+    // `ignore = true`.
     for (section, extra) in [
-        ("player", Some("ignore_unmatched")),
-        ("web_player", Some("title_suffix")),
+        ("player", ["ignore_unmatched", "allow_streaming"].as_slice()),
+        ("web_player", ["title_suffix"].as_slice()),
     ] {
         if let Some(entries) = root.get(section).and_then(toml::Value::as_table) {
             for (key, value) in entries {
@@ -250,13 +253,10 @@ fn config_warnings(body: &str) -> Vec<String> {
                         "app_id",
                         "icon",
                         "show_icon",
-                        "allow_streaming",
                         "status_display_type",
                         "override_activity_type",
                     ];
-                    if let Some(extra) = extra {
-                        allowed.push(extra);
-                    }
+                    allowed.extend_from_slice(extra);
                     warn_unknown_keys(&format!("{section}.{key}"), layer, &allowed, &mut warnings);
                     if section == "web_player" && key == "default" && layer.contains_key("ignore") {
                         warnings.push(

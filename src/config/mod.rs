@@ -874,4 +874,19 @@ icon = "user-icon"
     fn parse_config_str_rejects_invalid_toml() {
         assert!(parse_config_str("[template\ndetails = ").is_err());
     }
+
+    #[test]
+    fn bundled_web_players_are_visible_by_default() {
+        let config = parse_config_str("").expect("bundled config parses");
+        for (url, expect_ignore) in [
+            ("https://music.youtube.com/watch?v=x", false),
+            ("https://soundcloud.com/a/b", false),
+            ("https://music.apple.com/us/album/x", false),
+            ("https://www.youtube.com/watch?v=x", true),
+            ("https://example.com/whatever", true),
+        ] {
+            let resolved = config.get_player_config_with_url("firefox", "firefox", Some(url));
+            assert_eq!(resolved.ignore, expect_ignore, "url {url}");
+        }
+    }
 }

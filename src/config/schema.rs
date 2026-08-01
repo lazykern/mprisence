@@ -1896,9 +1896,6 @@ pub struct WebPlayerConfigLayer {
     pub show_icon: Option<bool>,
 
     #[serde(default)]
-    pub allow_streaming: Option<bool>,
-
-    #[serde(default)]
     pub status_display_type: Option<StatusDisplayType>,
 
     #[serde(default)]
@@ -1945,7 +1942,6 @@ impl WebPlayerConfigLayer {
         self.app_id = other.app_id.or(self.app_id.take());
         self.icon = other.icon.or(self.icon.take());
         self.show_icon = other.show_icon.or(self.show_icon);
-        self.allow_streaming = other.allow_streaming.or(self.allow_streaming);
         self.status_display_type = other.status_display_type.or(self.status_display_type);
         self.override_activity_type = other.override_activity_type.or(self.override_activity_type);
     }
@@ -1972,9 +1968,6 @@ impl WebPlayerConfigLayer {
         }
         if let Some(value) = self.show_icon {
             base.show_icon = Some(value);
-        }
-        if let Some(value) = self.allow_streaming {
-            base.allow_streaming = Some(value);
         }
         if let Some(value) = self.status_display_type {
             base.status_display_type = Some(value);
@@ -2007,8 +2000,6 @@ pub struct WebPlayerConfig {
     #[serde(default)]
     pub show_icon: Option<bool>,
     #[serde(default)]
-    pub allow_streaming: Option<bool>,
-    #[serde(default)]
     pub status_display_type: Option<StatusDisplayType>,
     #[serde(default)]
     pub override_activity_type: Option<ActivityType>,
@@ -2018,8 +2009,9 @@ impl WebPlayerConfig {
     /// Project the web_player's resolved fields onto a fresh `PlayerConfig`.
     /// This is the authoritative-replace operation: every policy field
     /// either takes the web_player's explicit value or falls back to the
-    /// mprisence default. Matched web players implicitly allow streaming
-    /// unless `allow_streaming = false` is set explicitly. The browser's
+    /// mprisence default. Streaming is always allowed: a web player is
+    /// matched *because* its URL is http(s), so `allow_streaming = false`
+    /// would just be `ignore = true` with a worse name. The browser's
     /// `[player.*]` config does NOT contribute, which is the whole point
     /// of the web_player override.
     pub fn into_player_config(self) -> PlayerConfig {
@@ -2037,7 +2029,7 @@ impl WebPlayerConfig {
         if let Some(show_icon) = self.show_icon {
             p.show_icon = show_icon;
         }
-        p.allow_streaming = self.allow_streaming.unwrap_or(true);
+        p.allow_streaming = true;
         if let Some(sdt) = self.status_display_type {
             p.status_display_type = sdt;
         }
@@ -2099,16 +2091,17 @@ mod web_player_tests {
     }
 
     #[test]
-    fn website_into_player_config_can_explicitly_disable_streaming() {
+    fn website_into_player_config_always_allows_streaming() {
+        // A web player is matched because its URL is http(s), which is
+        // exactly what `is_streaming_url` tests. Blocking streaming here
+        // would hide the entry outright, which is what `ignore` is for.
         let layer = WebPlayerConfigLayer {
             match_pattern: Some("music.youtube.com".to_string()),
-            allow_streaming: Some(false),
             ..Default::default()
         };
         let resolved = layer.apply_into_web_player(WebPlayerConfig::default());
-        let player = resolved.into_player_config();
 
-        assert!(!player.allow_streaming);
+        assert!(resolved.into_player_config().allow_streaming);
     }
 
     fn build_cfg(setup: impl FnOnce(&mut Config)) -> Config {
