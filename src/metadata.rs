@@ -190,6 +190,7 @@ pub struct MetadataSource {
     /// Memoized cover-cache key. Computed once via `generate_cache_key()`
     /// and reused across fast-path and slow-path lookups on the same track.
     cache_key: std::sync::OnceLock<String>,
+    cover_cache_key: std::sync::OnceLock<String>,
 }
 
 impl MetadataSource {
@@ -199,6 +200,7 @@ impl MetadataSource {
             tagged_file: lofty_tagged_file,
             override_url: None,
             cache_key: std::sync::OnceLock::new(),
+            cover_cache_key: std::sync::OnceLock::new(),
         }
     }
 
@@ -469,6 +471,50 @@ impl MetadataSource {
         }
         let combined = key_components.join("||");
         hasher.update(combined.as_bytes());
+        hasher.finalize().to_hex().to_string()
+    }
+
+    pub fn cover_cache_key(&self) -> &str {
+        self.cover_cache_key
+            .get_or_init(|| self.generate_cover_cache_key())
+    }
+
+    fn generate_cover_cache_key(&self) -> String {
+        let mut components = Vec::new();
+
+        if let Some(id) = self
+            .musicbrainz_release_group_id()
+            .filter(|id| !id.is_empty())
+        {
+            components.push(format!("release_group:{id}"));
+        }
+        if let Some(id) = self.musicbrainz_album_id().filter(|id| !id.is_empty()) {
+            components.push(format!("release:{id}"));
+        }
+        if let Some(album) = self.album().filter(|album| !album.is_empty()) {
+            components.push(format!("album:{album}"));
+
+            let mut album_artists = self
+                .album_artists()
+                .filter(|artists| !artists.is_empty())
+                .or_else(|| self.artists().filter(|artists| !artists.is_empty()))
+                .unwrap_or_default();
+            album_artists.sort_unstable();
+            if !album_artists.is_empty() {
+                components.push(format!("album_artists:{}", album_artists.join("|")));
+            }
+        }
+        if let Some(barcode) = self.barcode().filter(|barcode| !barcode.is_empty()) {
+            components.push(format!("barcode:{barcode}"));
+        }
+
+        if components.is_empty() {
+            return self.cache_key().to_string();
+        }
+
+        let mut hasher = Hasher::new();
+        hasher.update(b"mprisence-cover-metadata-v1\0");
+        hasher.update(components.join("||").as_bytes());
         hasher.finalize().to_hex().to_string()
     }
 

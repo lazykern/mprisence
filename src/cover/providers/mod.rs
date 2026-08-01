@@ -28,6 +28,12 @@ pub struct CoverResult {
     pub expiration: Option<Duration>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheKeyScope {
+    Source,
+    Metadata,
+}
+
 pub fn create_shared_client() -> Client {
     let mut headers = header::HeaderMap::with_capacity(2);
     headers.insert(
@@ -56,6 +62,10 @@ pub fn create_shared_client() -> Client {
 #[async_trait]
 pub trait CoverArtProvider: Send + Sync {
     fn name(&self) -> &'static str;
+
+    fn cache_key_scope(&self) -> CacheKeyScope {
+        CacheKeyScope::Source
+    }
 
     fn supports_source_type(&self, source: &ArtSource) -> bool;
 

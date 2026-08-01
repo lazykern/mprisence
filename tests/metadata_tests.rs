@@ -262,3 +262,65 @@ fn test_extended_metadata_fields() {
 
     assert_eq!(media_metadata.use_count, Some(42));
 }
+
+fn album_track_metadata(title: &str, album: &str, url: &str, track_id: &str) -> Metadata {
+    let mut data = HashMap::new();
+    data.insert("xesam:title".to_string(), title.into());
+    data.insert("xesam:album".to_string(), album.into());
+    data.insert(
+        "xesam:albumArtist".to_string(),
+        vec!["Album Artist".into()].into(),
+    );
+    data.insert("xesam:url".to_string(), url.into());
+    data.insert("mpris:trackid".to_string(), track_id.into());
+    Metadata::from(data)
+}
+
+#[test]
+fn cover_metadata_key_is_shared_by_tracks_on_the_same_album() {
+    let first = MetadataSource::from_mpris_with_override(
+        album_track_metadata(
+            "First Track",
+            "Shared Album",
+            "https://music.example/first",
+            "/track/1",
+        ),
+        None,
+    );
+    let second = MetadataSource::from_mpris_with_override(
+        album_track_metadata(
+            "Second Track",
+            "Shared Album",
+            "https://music.example/second",
+            "/track/2",
+        ),
+        None,
+    );
+
+    assert_ne!(first.cache_key(), second.cache_key());
+    assert_eq!(first.cover_cache_key(), second.cover_cache_key());
+}
+
+#[test]
+fn cover_metadata_key_distinguishes_albums() {
+    let first = MetadataSource::from_mpris_with_override(
+        album_track_metadata(
+            "Track",
+            "First Album",
+            "https://music.example/track",
+            "/track/1",
+        ),
+        None,
+    );
+    let second = MetadataSource::from_mpris_with_override(
+        album_track_metadata(
+            "Track",
+            "Second Album",
+            "https://music.example/track",
+            "/track/1",
+        ),
+        None,
+    );
+
+    assert_ne!(first.cover_cache_key(), second.cover_cache_key());
+}

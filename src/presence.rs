@@ -1067,9 +1067,12 @@ impl Presence {
         // the player icon, then fetch the real cover in the background.
         let current_generation =
             generation.unwrap_or_else(|| self.update_generation.load(Ordering::Relaxed));
-        let cached_cover = self
-            .cover_manager
-            .try_cached_cover_art(&metadata_source, art_decision.read_cache);
+        let art_source = metadata_source.art_source_with_options(art_decision.source_options);
+        let cached_cover = self.cover_manager.try_cached_cover_art(
+            &metadata_source,
+            art_source.as_ref(),
+            art_decision.read_cache,
+        );
         if let Some(cover_url) = cached_cover.as_deref() {
             debug!("Serving cached cover art on fast path: {}", cover_url);
             *self.last_resolved_cover_art.lock() =
@@ -1232,7 +1235,7 @@ impl Presence {
             let player_config_for_task = player_config.clone();
             let identity_for_task = self.player.identity().to_string();
             let metadata_source_for_task = metadata_source;
-            let art_source_options_for_task = art_decision.source_options;
+            let art_source_for_task = art_source;
             let read_cache_for_task = art_decision.read_cache;
             let cover_fetch_gen = Arc::clone(&self.cover_fetch_generation);
             let discord_activity_is_set_for_task = Arc::clone(&self.discord_activity_is_set);
@@ -1259,11 +1262,9 @@ impl Presence {
                     gen: cover_fetch_gen,
                     expected: fetch_gen,
                 };
-                let art_source =
-                    metadata_source_for_task.art_source_with_options(art_source_options_for_task);
                 let cover_art_result = tokio::select! {
                     result = cover_manager.get_cover_art(
-                        art_source.clone(),
+                        art_source_for_task,
                         &metadata_source_for_task,
                         read_cache_for_task,
                         &cancel_token,

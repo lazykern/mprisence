@@ -1,7 +1,9 @@
 use crate::cover::error::CoverArtError;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use blake3::Hasher;
 use log::{debug, info, trace, warn};
 use std::collections::HashSet;
+use std::fs::File;
 use std::path::PathBuf;
 use walkdir::WalkDir;
 
@@ -63,6 +65,32 @@ impl ArtSource {
             },
             Self::Url(_) => Ok(None),
         }
+    }
+
+    pub fn cache_key(&self) -> Result<String, CoverArtError> {
+        let mut hasher = Hasher::new();
+        match self {
+            Self::Url(url) => {
+                hasher.update(b"mprisence-cover-url-v1\0");
+                hasher.update(url.as_bytes());
+            }
+            Self::File(path) => {
+                hasher.update(b"mprisence-cover-content-v1\0");
+                hasher.update_reader(File::open(path)?)?;
+            }
+            Self::Base64(data) => {
+                hasher.update(b"mprisence-cover-content-v1\0");
+                let bytes = STANDARD
+                    .decode(data.as_bytes())
+                    .map_err(|e| CoverArtError::other(format!("invalid base64 cover art: {e}")))?;
+                hasher.update(&bytes);
+            }
+            Self::Bytes(data) => {
+                hasher.update(b"mprisence-cover-content-v1\0");
+                hasher.update(data);
+            }
+        }
+        Ok(hasher.finalize().to_hex().to_string())
     }
 }
 
@@ -129,4 +157,53 @@ pub fn search_local_cover_art(
         directory
     );
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ArtSource;
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use std::{fs, time::SystemTime};
+
+    #[test]
+    fn identical_content_has_same_cache_key_across_source_types() {
+        let bytes = b"identical album cover".to_vec();
+        let path = std::env::temp_dir().join(format!(
+            "mprisence-cover-key-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::write(&path, &bytes).unwrap();
+
+        let bytes_key = ArtSource::Bytes(bytes.clone()).cache_key().unwrap();
+        let file_key = ArtSource::File(path.clone()).cache_key().unwrap();
+        let base64_key = ArtSource::Base64(STANDARD.encode(&bytes))
+            .cache_key()
+            .unwrap();
+
+        fs::remove_file(path).unwrap();
+        assert_eq!(bytes_key, file_key);
+        assert_eq!(bytes_key, base64_key);
+    }
+
+    #[test]
+    fn different_content_has_different_cache_keys() {
+        let first = ArtSource::Bytes(b"first".to_vec()).cache_key().unwrap();
+        let second = ArtSource::Bytes(b"second".to_vec()).cache_key().unwrap();
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn url_cache_keys_are_separate_from_content_keys() {
+        let url = ArtSource::Url("https://cdn.example.com/cover.jpg".to_string())
+            .cache_key()
+            .unwrap();
+        let content = ArtSource::Bytes(b"https://cdn.example.com/cover.jpg".to_vec())
+            .cache_key()
+            .unwrap();
+        assert_ne!(url, content);
+    }
 }

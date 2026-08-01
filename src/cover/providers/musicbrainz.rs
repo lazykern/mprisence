@@ -5,7 +5,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use std::sync::OnceLock;
 
-use super::{create_shared_client, CoverArtProvider, CoverResult};
+use super::{create_shared_client, CacheKeyScope, CoverArtProvider, CoverResult};
 use crate::config::schema::MusicbrainzConfig;
 use crate::cover::error::CoverArtError;
 use crate::cover::sources::ArtSource;
@@ -504,6 +504,10 @@ impl MusicbrainzProvider {
 impl CoverArtProvider for MusicbrainzProvider {
     fn name(&self) -> &'static str {
         "musicbrainz"
+    }
+
+    fn cache_key_scope(&self) -> CacheKeyScope {
+        CacheKeyScope::Metadata
     }
 
     fn supports_source_type(&self, _source: &ArtSource) -> bool {

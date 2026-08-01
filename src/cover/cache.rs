@@ -261,7 +261,9 @@ impl CoverCache {
                     let now = SystemTime::now();
                     if now > entry.expires_at {
                         debug!("Cache entry expired, removing file");
-                        let _ = fs::remove_file(&path);
+                        if let Err(err) = self.remove_entry_at_path(&path) {
+                            warn!("Failed to remove expired cache entry {:?}: {}", path, err);
+                        }
                         return Ok(None);
                     }
 
@@ -274,7 +276,9 @@ impl CoverCache {
                         "Failed to deserialize cache entry, removing corrupt file: {}",
                         e
                     );
-                    let _ = fs::remove_file(&path);
+                    if let Err(err) = self.remove_entry_at_path(&path) {
+                        warn!("Failed to remove corrupt cache entry {:?}: {}", path, err);
+                    }
                     Ok(None)
                 }
             },
@@ -302,6 +306,14 @@ impl CoverCache {
         } else {
             0
         };
+        let previous_data_file = self
+            .read_entry_from_path(&path)
+            .and_then(|entry| entry.data_file);
+        let previous_data_len = previous_data_file
+            .as_deref()
+            .and_then(|name| fs::metadata(self.data_path_from_name(name)).ok())
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
 
         let ttl = provider_ttl
             .map(|ttl| {
@@ -325,17 +337,29 @@ impl CoverCache {
         let data_file = if let Some(bytes) = cached_bytes {
             match self.persist_bytes(key, bytes)? {
                 Some((file_name, len)) => {
-                    self.adjust_usage(0, len as i64);
+                    if let Some(previous_name) = previous_data_file.as_deref() {
+                        if previous_name != file_name {
+                            self.remove_data_file(previous_name);
+                            self.adjust_usage(0, len as i64);
+                        } else {
+                            self.adjust_usage(0, len as i64 - previous_data_len as i64);
+                        }
+                    } else {
+                        self.adjust_usage(0, len as i64);
+                    }
                     Some(file_name)
                 }
-                None => None,
+                None => {
+                    if let Some(previous_name) = previous_data_file.as_deref() {
+                        self.remove_data_file(previous_name);
+                    }
+                    None
+                }
             }
-        } else if let Some(existing) = self.read_entry_from_path(&path) {
-            if let Some(name) = existing.data_file {
-                self.remove_data_file(&name);
-            }
-            None
         } else {
+            if let Some(previous_name) = previous_data_file.as_deref() {
+                self.remove_data_file(previous_name);
+            }
             None
         };
 
