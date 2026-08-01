@@ -4,7 +4,7 @@
 //   --store   store packaging (no sourcemaps; zips dist/*-store.zip)
 
 import * as esbuild from "esbuild";
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -116,6 +116,7 @@ async function build() {
       const { execSync } = await import("child_process");
       const zipName = target === "firefox" ? "mprisence-firefox-store.zip" : "mprisence-chrome-store.zip";
       const zipPath = join(__dirname, "dist", zipName);
+      rmSync(zipPath, { force: true }); // zip -r updates in place; stale entries would survive
       execSync(`cd "${outdir}" && zip -r "${zipPath}" . -x "*.map"`, { stdio: "inherit" });
       console.log(`  packaged: ${zipPath}`);
     }
