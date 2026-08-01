@@ -50,7 +50,7 @@ impl TrackFingerprint {
 }
 
 // ---------------------------------------------------------------------------
-// Art decision — returned alongside push outcomes
+// Art decision - returned alongside push outcomes
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,7 +79,7 @@ pub enum TransitionOutcome {
     Push { art_decision: ArtDecision },
     /// Clear Discord activity (stall detected or stopped/paused).
     Clear,
-    /// Nothing to do — state machine says skip this tick.
+    /// Nothing to do - state machine says skip this tick.
     Noop,
 }
 
@@ -119,7 +119,7 @@ pub enum PlayerHealth {
     /// position from a previous session being pushed on initial discovery.
     Confirming { generation: u64, since: Instant },
 
-    /// Fresh data — normal operation.
+    /// Fresh data - normal operation.
     Healthy {
         generation: u64,
         last_event: Instant,
@@ -464,7 +464,7 @@ impl PlayerHealth {
     }
 
     /// True if the player has been silent (no events) for the browser
-    /// silence timeout — catches backgrounded/hibernated tabs.
+    /// silence timeout - catches backgrounded/hibernated tabs.
     fn is_silent(last_event: Instant, now: Instant) -> bool {
         now.saturating_duration_since(last_event) >= BROWSER_SILENCE_TIMEOUT
     }
@@ -806,7 +806,7 @@ mod tests {
         let inp = make_input(
             PlaybackStatus::Playing,
             &t,
-            Duration::from_secs(42), // same position — no recovery
+            Duration::from_secs(42), // same position - no recovery
             false,
             1,
             now,

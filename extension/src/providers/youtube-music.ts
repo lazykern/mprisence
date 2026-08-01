@@ -19,12 +19,12 @@ import type { Provider, ProviderResult } from "./base";
  *   video:    video  (blob URL, has currentTime/duration)
  *
  * Key findings:
- *   - No MediaSession API — must use DOM scraping
- *   - Byline has NO album — only "Artist • views • likes"
- *   - Album art is HTTPS (i.ytimg.com) — no blob: issue
+ *   - No MediaSession API - must use DOM scraping
+ *   - Byline has NO album - only "Artist • views • likes"
+ *   - Album art is HTTPS (i.ytimg.com) - no blob: issue
  *   - Upgrade to /maxresdefault/ for 1280x720 clean art (no black bar)
  *   - videoId in thumbnail URL, not always in ?v= param
- *   - No <audio> — YTM uses <video>
+ *   - No <audio> - YTM uses <video>
  */
 export class YouTubeMusicProvider implements Provider {
   readonly siteKey = "youtube_music";
@@ -79,7 +79,7 @@ export class YouTubeMusicProvider implements Provider {
     let videoId = (thumbSrc.match(this.videoIdRegex) || [])[1] || "";
     // Fallback: extract videoId from page URL params.
     // YTM's <img> sometimes shows a channel avatar (yt3 URL) instead
-    // of a video thumbnail — the regex won't match, so we need the
+    // of a video thumbnail - the regex won't match, so we need the
     // page URL as a fallback to construct proper cover art.
     if (!videoId) {
       videoId = new URLSearchParams(window.location.search).get("v") || "";
@@ -93,7 +93,7 @@ export class YouTubeMusicProvider implements Provider {
 
     if (artUrl) {
       if (artUrl.includes("yt3.googleusercontent.com")) {
-        // Channel avatar — not the track's cover art.
+        // Channel avatar - not the track's cover art.
         // Prefer video thumbnail constructed from video ID.
         // Only keep channel avatar if we have no video ID.
         if (videoId) {
@@ -103,13 +103,13 @@ export class YouTubeMusicProvider implements Provider {
           artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
         }
       } else {
-        // i.ytimg.com thumbnail — upgrade to maxresdefault.
+        // i.ytimg.com thumbnail - upgrade to maxresdefault.
         // hqdefault/sddefault are 4:3 and often include top/bottom
         // black bars; maxresdefault is 16:9 and clean when available.
         artUrl = artUrl.replace(/\/[a-z]+default\./g, "/maxresdefault.");
       }
     } else if (videoId) {
-      // No img element src but we have a video ID — construct
+      // No img element src but we have a video ID - construct
       // thumbnail URL using maxresdefault to avoid black bars.
       artUrl = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
     }
@@ -185,7 +185,7 @@ export class YouTubeMusicProvider implements Provider {
   }
 
   async command(cmd: string, positionMs?: number): Promise<void> {
-    // Class-selector map (verified live — there are no #id selectors for prev/next)
+    // Class-selector map (verified live - there are no #id selectors for prev/next)
     if (cmd === "set_position") {
       const video = this.qs<HTMLVideoElement>("video");
       if (video && typeof positionMs === "number" && isFinite(positionMs)) {

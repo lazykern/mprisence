@@ -4,7 +4,7 @@
 
 ### Added
 
-- `mprisence config ui` — local settings page for configuring mprisence
+- `mprisence config ui` - local settings page for configuring mprisence
   without touching TOML: toggles and dropdowns for common options, live
   Discord-status preview, per-player show/hide switches, and a raw config
   editor under Advanced. Changes apply instantly via hot-reload.

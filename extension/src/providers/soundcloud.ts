@@ -2,10 +2,10 @@
  * SoundCloud provider for mprisence.
  *
  * Extracts metadata from:
- *   - MediaSession API (primary — always set on track pages)
+ *   - MediaSession API (primary - always set on track pages)
  *   - DOM selectors (fallback for playback state, controls)
  *
- * SoundCloud uses Web Audio API — NO `<audio>`/`<video>` element.
+ * SoundCloud uses Web Audio API - NO `<audio>`/`<video>` element.
  * Metadata comes from MediaSession API. Playback state from button UI.
  * Controls via DOM clicks on play/pause/next/prev buttons.
  *
@@ -14,7 +14,7 @@
  *   - Controls: `.playControls__play` (bottom bar, appears after first play)
  *   - Track page: `.soundTitle` area with `.sc-button-play` button
  *   - Artwork: `.soundTitle__artwork img` or `soundTitleArt__artwork img`
- *   - No audio/video DOM elements — Web Audio API only
+ *   - No audio/video DOM elements - Web Audio API only
  */
 
 import type {
@@ -106,7 +106,7 @@ export class SoundCloudProvider implements Provider {
     }
 
     // ── Playback state ─────────────────────────────────────────
-    // SoundCloud uses Web Audio — no `<audio>`/`<video>` DOM element.
+    // SoundCloud uses Web Audio - no `<audio>`/`<video>` DOM element.
     // Determine state from play button appearance.
     const playBtn = document.querySelector(".sc-button-play");
     const isPlaying = playBtn?.classList.contains("playing") ||
@@ -217,7 +217,7 @@ export class SoundCloudProvider implements Provider {
       }
       case "seek":
       case "set_position":
-        // SoundCloud uses Web Audio — no programmatic seek via DOM
+        // SoundCloud uses Web Audio - no programmatic seek via DOM
         break;
     }
   }
@@ -236,7 +236,7 @@ function resolveArtwork(url: string | undefined): string | undefined {
   // Upgrade to largest standard square size if on sndcdn.com
   if (url.includes("sndcdn.com") || url.includes("soundcloud")) {
     // Replace any size suffix (t500x500, t300x300, etc., or original)
-    // with t500x500 — the largest standard square size for album art
+    // with t500x500 - the largest standard square size for album art
     url = url.replace(/-t\d+x\d+(?=\.[a-z]+)/i, "-t500x500");
     url = url.replace(/-original(?=\.[a-z]+)/i, "-t500x500");
     url = url.replace(/-crop-[a-z]+(?=\.[a-z]+)/i, "");

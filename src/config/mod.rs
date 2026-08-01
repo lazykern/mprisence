@@ -471,7 +471,7 @@ pub(crate) fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> 
 /// Parse a candidate user config from a TOML string (defaults merged in).
 /// Used by the config UI for validation and template preview. Unlike
 /// `load_config_from_file` it skips legacy-key handling and sibling
-/// player-config files — those don't affect template preview.
+/// player-config files - those don't affect template preview.
 pub(crate) fn parse_config_str(user_toml: &str) -> Result<Config, ConfigError> {
     let figment = Figment::new()
         .merge(Toml::string(include_str!(

@@ -5,13 +5,13 @@
  *
  * 1. Carousel player (collection pages: bandcamp.com/<username>)
  *    .carousel-player.show
- *      .now-playing         — artwork, album/collection title, artist
- *      .progress-transport  — controls, track title, position/duration
+ *      .now-playing         - artwork, album/collection title, artist
+ *      .progress-transport  - controls, track title, position/duration
  *        .playpause          (click: playPauseClick)
  *          .play              (visible: showPlay)
  *          .pause             (visible: showPause) → visible = playing
- *        .info-progress .info .title span  — current TRACK title
- *        .pos-dur            — "00:53 / 02:28"
+ *        .info-progress .info .title span  - current TRACK title
+ *        .pos-dur            - "00:53 / 02:28"
  *          span (positionStr)
  *          span (durationStr)
  *        .transport
@@ -20,16 +20,16 @@
  *
  * 2. Inline player (album/track pages: <artist>.bandcamp.com/album/...)
  *    .inline_player
- *      .playbutton           — .playing class when playing
- *      .title                — current track title
- *      .time_elapsed / .time_total  — "mm:ss" format
- *      .progbar_fill         — width% progress
+ *      .playbutton           - .playing class when playing
+ *      .title                - current track title
+ *      .time_elapsed / .time_total  - "mm:ss" format
+ *      .progbar_fill         - width% progress
  *      .prevbutton / .nextbutton
  *
  * Page-level metadata (album pages):
- *   .trackTitle / h2.trackTitle  — album title
- *   #name-section h3 a            — artist name
- *   #tralbumArt img               — album artwork
+ *   .trackTitle / h2.trackTitle  - album title
+ *   #name-section h3 a            - artist name
+ *   #tralbumArt img               - album artwork
  */
 
 import type {

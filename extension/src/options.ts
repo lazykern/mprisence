@@ -20,7 +20,7 @@ async function refresh(): Promise<void> {
   const hasPerm = await chrome.permissions.contains(ALL_URLS).catch(() => false);
   checkbox.checked = enabled && hasPerm;
   if (enabled && !hasPerm) {
-    setStatus("Permission was revoked — re-enable to grant access again.");
+    setStatus("Permission was revoked - re-enable to grant access again.");
     // Storage says on but permission gone: normalize to off.
     await chrome.storage.local.set({ genericEnabled: false });
   } else {
@@ -33,7 +33,7 @@ checkbox.addEventListener("change", async () => {
     const granted = await chrome.permissions.request(ALL_URLS).catch(() => false);
     if (!granted) {
       checkbox.checked = false;
-      setStatus("Permission denied — the generic fallback stays off.");
+      setStatus("Permission denied - the generic fallback stays off.");
       return;
     }
     await chrome.storage.local.set({ genericEnabled: true });

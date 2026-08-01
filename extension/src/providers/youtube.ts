@@ -8,7 +8,7 @@ import type { Provider, ProviderResult } from "./base";
 /**
  * YouTube provider (regular youtube.com, not music.youtube.com).
  *
- * Watches the main video player (#movie_player video) — works on
+ * Watches the main video player (#movie_player video) - works on
  * /watch pages and with the persistent mini player (homepage etc).
  * Ignores preview popups in recommendation thumbnails.
  *
@@ -28,7 +28,7 @@ export class YouTubeProvider implements Provider {
   }
 
   extract(): ProviderResult | null {
-    // Skip extraction during YouTube ads — the DOM still shows the real
+    // Skip extraction during YouTube ads - the DOM still shows the real
     // video title/channel but MediaSession is overridden with ad metadata
     // and the <video> element reflects ad position/duration.
     if (document.querySelector('.ad-showing')) return null;
@@ -113,7 +113,7 @@ export class YouTubeProvider implements Provider {
     // ── Album art ───────────────────────────────────────────────
     let artUrl = msArtwork;
     // Fallback: construct from video ID
-    // Use hqdefault (always exists) — maxresdefault 404s for <720p uploads.
+    // Use hqdefault (always exists) - maxresdefault 404s for <720p uploads.
     if (!artUrl) {
       const urlParams = new URLSearchParams(window.location.search);
       const vid = urlParams.get("v") || videoId;
@@ -123,7 +123,7 @@ export class YouTubeProvider implements Provider {
     }
 
     // Channel avatar: strip size params for 512x512 default.
-    // Do NOT upgrade ytimg thumbnails to maxresdefault — YouTube's
+    // Do NOT upgrade ytimg thumbnails to maxresdefault - YouTube's
     // MediaSession already provides the best available size, and
     // maxresdefault.jpg 404s for many uploads.
     if (artUrl) {
@@ -194,6 +194,6 @@ export class YouTubeProvider implements Provider {
     }
 
     // YouTube doesn't have prev/next for regular videos beyond
-    // playlist navigation — not implemented in MVP.
+    // playlist navigation - not implemented in MVP.
   }
 }

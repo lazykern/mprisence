@@ -4,7 +4,7 @@
  * Apple Music web player (music.apple.com) is a React SPA using MusicKit JS.
  *
  * Key observations:
- *   - Reliable MediaSession API — always set on track/album pages
+ *   - Reliable MediaSession API - always set on track/album pages
  *   - Uses <audio> element for streaming playback
  *   - Controls: aria-label buttons (Play/Pause/Next/Previous)
  *   - Progress: <audio>.currentTime / <audio>.duration (track-specific)

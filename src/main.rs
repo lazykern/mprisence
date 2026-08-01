@@ -403,7 +403,7 @@ impl Mprisence {
                 match self.dedup_selection.get(&norm_id) {
                     None => {
                         warn!(
-                            "Duplicate MPRIS bus names detected for '{}': [{}] — selecting '{}'",
+                            "Duplicate MPRIS bus names detected for '{}': [{}] - selecting '{}'",
                             ids[0].identity, buses_signature, winner_bus
                         );
                         self.dedup_selection.insert(norm_id.clone(), next);
@@ -413,7 +413,7 @@ impl Mprisence {
                             || prev.winner_bus != winner_bus =>
                     {
                         warn!(
-                            "Dedup selection changed for '{}': [{}] — now selecting '{}'",
+                            "Dedup selection changed for '{}': [{}] - now selecting '{}'",
                             ids[0].identity, buses_signature, winner_bus
                         );
                         self.dedup_selection.insert(norm_id.clone(), next);
@@ -460,7 +460,7 @@ impl Mprisence {
                     );
                 }
                 // Always do the initial Discord push when a new player is discovered,
-                // even in event-driven mode — signals only fire on *changes*, so the
+                // even in event-driven mode - signals only fire on *changes*, so the
                 // current state must be pushed once at creation time.
                 if let Err(e) = presence.update_from_current_state().await {
                     warn!(
@@ -644,14 +644,14 @@ impl Mprisence {
                     for deferred_evt in deferred {
                         self.handle_player_event(deferred_evt, &event_tx).await;
                     }
-                    // Don't reset the fallback poll timer here — doing so starves
+                    // Don't reset the fallback poll timer here - doing so starves
                     // the discovery poll when events arrive faster than the poll
                     // interval (e.g. every 1s from YT/SC). Without a self-healing
                     // poll, players whose listeners die (PlayerShutDown from bridge
                     // pruning stale sources) are never re-discovered and disappear
                     // from Discord until a service restart.
                     // The fallback poll fires every fallback_poll_interval ms
-                    // regardless of event flow — this is intentional.
+                    // regardless of event flow - this is intentional.
                     // fallback_poll_interval.reset();
                 },
                 _ = fallback_poll_interval.tick() => {
@@ -739,7 +739,7 @@ impl Mprisence {
             // That second connection interferes with Discord's activity cleanup
             // from the first connection, leaving a stale rich presence.
             // Instead, let the normal fallback_poll_interval tick (default 5s)
-            // handle re-detection — by then the name will be fully gone, or
+            // handle re-detection - by then the name will be fully gone, or
             // if the player genuinely restarted it will be picked up cleanly.
             self.ensure_listeners(tx);
         }

@@ -67,7 +67,7 @@
 <body>
 <div class="wrap">
   <h1>mprisence</h1>
-  <div class="sub">Changes apply instantly — no save button. Discord updates within a couple of seconds.</div>
+  <div class="sub">Changes apply instantly - no save button. Discord updates within a couple of seconds.</div>
 
   <section>
     <h2>Now in Discord</h2>
@@ -173,7 +173,7 @@
     <textarea id="rawToml" spellcheck="false"></textarea>
     <div class="advBar">
       <button id="rawSave">Save file</button>
-      <span class="count">Full config reference — everything not shown above lives here.</span>
+      <span class="count">Full config reference - everything not shown above lives here.</span>
     </div>
   </details>
 </div>
@@ -233,7 +233,7 @@ async function preview() {
   $('pvError').hidden = p.valid;
   if (!p.valid) { $('pvError').textContent = p.error; return; }
   $('pvKind').textContent = (ACTIVITY_VERB[$('activityType').value] ?? 'Listening to')
-    + (p.player ? ' — via ' + p.player : '');
+    + (p.player ? ' - via ' + p.player : '');
   $('pvDetails').textContent = p.details ?? '';
   $('pvState').textContent = p.state ?? '';
   $('pvLarge').textContent = p.large_text ?? '';

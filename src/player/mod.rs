@@ -330,7 +330,7 @@ pub fn select_richest_player(players: &[Player], current_bus: Option<&str>) -> u
 /// returns the index of the preferred ("winner") entry.
 ///
 /// Selection priority:
-/// 1. The currently-tracked bus name (stability — avoid unnecessary switching).
+/// 1. The currently-tracked bus name (stability - avoid unnecessary switching).
 /// 2. A non-proxy bus name (prefer the real player over a proxy like playerctld).
 /// 3. The first candidate in the slice (fallback).
 pub fn select_winner_idx(candidates: &[PlayerIdentifier], current_bus: Option<&str>) -> usize {
@@ -473,7 +473,7 @@ fn is_origin_only(url_str: &str) -> bool {
 }
 
 /// Pure: given a per-group snapshot, return the (from, into) merges to apply.
-/// Iteration order is deterministic — richer metadata first, then norm_id asc —
+/// Iteration order is deterministic - richer metadata first, then norm_id asc -
 /// so the merge target is stable across ticks regardless of `HashMap` order.
 ///
 /// In addition to exact URL matches, this merges groups where one reports only
@@ -523,7 +523,7 @@ fn compute_url_merges(groups: &[GroupSnapshot]) -> Vec<(SmolStr, SmolStr)> {
                         }
                     }
                     // A richer group with a specific URL on this origin was
-                    // registered before us — merge into it.
+                    // registered before us - merge into it.
                     if let Some(existing) = url_to_norm
                         .iter()
                         .find(|(k, v)| {
@@ -563,7 +563,7 @@ fn compute_url_merges(groups: &[GroupSnapshot]) -> Vec<(SmolStr, SmolStr)> {
 ///
 /// Handles plasma-browser-integration and the native browser MPRIS endpoint
 /// both exposing the same tab. Bridge players are one-per-tab and are never
-/// merged — they pass through untouched.
+/// merged - they pass through untouched.
 pub fn merge_url_duplicates(
     mut candidates: HashMap<SmolStr, Vec<Player>>,
 ) -> HashMap<SmolStr, Vec<Player>> {
@@ -846,7 +846,7 @@ mod tests {
         assert_eq!(order1[0].0.as_str(), "zen_browser");
     }
 
-    // Two different specific URLs on the same origin must NOT merge — they are
+    // Two different specific URLs on the same origin must NOT merge - they are
     // different tabs/tracks on the same site.
     #[test]
     fn two_specific_urls_same_origin_no_merge() {

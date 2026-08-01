@@ -225,18 +225,18 @@ allow_streaming = true
 # Unknown browsers (Zen, Vivaldi, LibreWolf, etc.) work without per-app config.
 
 # ------------------------------------------------------------------
-# Web Player overrides — applied when xesam:url host matches the pattern.
+# Web Player overrides - applied when xesam:url host matches the pattern.
 # Patterns use the same syntax as [player.*] keys:
 #   bare = exact host match (or substring fallback against the host)
 #   `*`/`?` wildcards, `re:`/`/.../` for regex
 # Match runs against the URL host (e.g. `music.youtube.com`).
 # When matched, the web_player entry is the *authoritative* config for the
-# player — it fully replaces the browser's [player.*] config (ignore,
+# player - it fully replaces the browser's [player.*] config (ignore,
 # app_id, icon, name, activity type). Matched web_player entries allow
 # streaming by default unless `allow_streaming = false` is set explicitly.
 # The browser does not need to be enabled or unhidden separately. User
 # entries are merged per-key with bundled entries (user fields win, unset
-# fields fall back to bundled — including match patterns) so flipping
+# fields fall back to bundled - including match patterns) so flipping
 # `ignore` on a bundled site only takes one TOML line in the user config.
 # ------------------------------------------------------------------
 

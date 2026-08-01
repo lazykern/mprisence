@@ -1,4 +1,4 @@
-# Privacy Policy — mprisence Bridge Extension
+# Privacy Policy - mprisence Bridge Extension
 
 **Last updated:** 2026-06-01
 
@@ -44,7 +44,7 @@ All data is sent via **native messaging** to the `mprisence` binary on your mach
 
 The extension itself transmits nothing to the network. All communication stays on your machine.
 
-### Example — actual JSON message the extension sends
+### Example - actual JSON message the extension sends
 
 When you play music on YouTube Music, the extension sends a message like this to the bridge binary:
 

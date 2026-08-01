@@ -150,7 +150,7 @@ pub struct Presence {
     /// Monotonically increasing counter, incremented on every TrackChanged event
     /// (event-driven mode) AND on every polling-mode track change detected inside
     /// `update_activity`. Background cover-art tasks capture this value at spawn
-    /// time and abort if it has changed when their fetch completes — that's what
+    /// time and abort if it has changed when their fetch completes - that's what
     /// prevents a slow cover from overwriting a newer track's activity.
     update_generation: Arc<AtomicU64>,
     update_notify: Arc<Notify>,
@@ -534,7 +534,7 @@ impl Presence {
     }
 
     /// Push current player state to Discord without consuming the player.
-    /// Used on initial discovery in event-driven mode — signals only fire on changes,
+    /// Used on initial discovery in event-driven mode - signals only fire on changes,
     /// so the current state must be pushed once when a new player is first seen.
     pub async fn update_from_current_state(&mut self) -> Result<(), DiscordError> {
         let Some(_) = &self.discord_client else {
@@ -719,7 +719,7 @@ impl Presence {
     }
 
     fn clear_discord_activity_with_reason(&self, reason: &str) -> Result<(), DiscordError> {
-        // Skip redundant clears — prevents log spam from duplicate MPRIS
+        // Skip redundant clears - prevents log spam from duplicate MPRIS
         // players (e.g. firefox + plasma-browser-integration) both emitting
         // frozen-position events for the same stopped track.
         if !self.discord_activity_is_set.load(Ordering::Relaxed) {
@@ -821,7 +821,7 @@ impl Presence {
             let url_changed = match (last_url.as_deref(), track_url.as_deref()) {
                 (Some(last), Some(current)) => last != current,
                 (None, Some(_)) => true,  // first URL seen
-                (Some(_), None) => false, // URL disappeared — keep last
+                (Some(_), None) => false, // URL disappeared - keep last
                 (None, None) => false,
             };
 
@@ -833,7 +833,7 @@ impl Presence {
                     utils::normalize_art_url(last) != utils::normalize_art_url(&current)
                 }
                 (None, Some(_)) => true,  // first art URL seen
-                (Some(_), None) => false, // art URL disappeared — keep last
+                (Some(_), None) => false, // art URL disappeared - keep last
                 (None, None) => false,
             };
 
@@ -865,7 +865,7 @@ impl Presence {
             let new_gen = self.update_generation.fetch_add(1, Ordering::Relaxed) + 1;
             self.update_notify.notify_waiters();
             // Allow the new track to spawn its own cover-art background task.
-            // Setting to 0 means "no fetch in flight" — a new track can always spawn.
+            // Setting to 0 means "no fetch in flight" - a new track can always spawn.
             self.cover_fetch_generation.store(0, Ordering::Release);
             // Cancel any in-flight provider job (MusicBrainz, uploads) so
             // bandwidth and API quota aren't wasted on a stale track.
@@ -951,10 +951,10 @@ impl Presence {
 
         let activity_texts = if snapshot_matches && volume == self.last_rendered_volume {
             // Fast path: nothing that affects template output has changed.
-            // Reuse the previously rendered texts — saves 4 Handlebars renders.
+            // Reuse the previously rendered texts - saves 4 Handlebars renders.
             if let Some(ref cached) = self.last_activity_texts {
                 trace!(
-                    "Skipping template rendering — snapshot and volume unchanged for {}",
+                    "Skipping template rendering - snapshot and volume unchanged for {}",
                     self.player.identity()
                 );
                 cached.clone()
@@ -1251,7 +1251,7 @@ impl Presence {
                         self.gen
                             .compare_exchange(self.expected, 0, Ordering::AcqRel, Ordering::Acquire)
                             .ok();
-                        // If CAS fails, a newer generation is already in flight —
+                        // If CAS fails, a newer generation is already in flight -
                         // leave it alone.
                     }
                 }
@@ -1348,7 +1348,7 @@ impl Presence {
         volume: Option<f64>,
     ) -> Result<ActivityTexts, DiscordError> {
         trace!(
-            "Rendering templates — snapshot or volume changed for {}",
+            "Rendering templates - snapshot or volume changed for {}",
             self.player.identity()
         );
         let texts = self.template_manager.render_activity_texts(
@@ -1365,7 +1365,7 @@ impl Presence {
 
     /// Build a Discord `Activity` and push it. Callable from both the fast
     /// path (event handler) and the slow path (background cover fetch task)
-    /// because it captures no `&self` state — all inputs are owned or
+    /// because it captures no `&self` state - all inputs are owned or
     /// `Arc`-shared.
     fn build_and_push_activity(
         discord_client: &Arc<Mutex<DiscordIpcClient>>,
@@ -1658,7 +1658,7 @@ impl Presence {
             self.stop_listener();
         }
         let cancel = Arc::new(AtomicBool::new(false));
-        // The JoinHandle is intentionally dropped — the listener thread blocks
+        // The JoinHandle is intentionally dropped - the listener thread blocks
         // on a D-Bus call we can't interrupt, so it's detached and exits on its
         // own once `cancel` flips or the player disappears.
         let _ = events::spawn_listener(
@@ -1673,7 +1673,7 @@ impl Presence {
         self.listener_bus = Some(current_bus);
     }
 
-    /// Cancel the listener thread. NOTE: cancellation is best-effort — the
+    /// Cancel the listener thread. NOTE: cancellation is best-effort - the
     /// thread blocks on `mpris::Player::events()` and only checks the cancel
     /// flag on the next D-Bus event, so it may live on briefly after this
     /// returns. The trailing `ListenerExited` event is dropped silently by

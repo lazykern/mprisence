@@ -64,7 +64,7 @@ export function isNotificationSound(durationSec: number): boolean {
 /**
  * Whether we have enough to publish a generic source: some title, from any
  * fallback tier. Empty title + empty artist means we'd publish a blank
- * player — skip it.
+ * player - skip it.
  */
 export function hasPublishableIdentity(title: string | undefined, artist: string[]): boolean {
   return !!(title && title.trim()) || artist.length > 0;

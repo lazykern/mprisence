@@ -1,5 +1,5 @@
 /**
- * Page-world script — runs in the page's JavaScript context, not the
+ * Page-world script - runs in the page's JavaScript context, not the
  * extension's isolated world. This allows direct access to page DOM,
  * Media Session API, and JavaScript variables without CSP issues.
  *
@@ -141,7 +141,7 @@ import {
   // ─── Observers ──────────────────────────────────────────────
 
   // Track last METADATA identity so we only dispatch on actual
-  // track/metadata changes — NOT on position updates. The isolated
+  // track/metadata changes - NOT on position updates. The isolated
   // world (content.ts) handles position updates via timeupdate.
   //
   // We DO the periodic poll here (Metadata identity comparison)
@@ -230,7 +230,7 @@ import {
   /** Fetch square cover art for a YTM video ID via InnerTube API */
   async function fetchSquareArt(videoId: string): Promise<string | null> {
     if (cachedSquareArt[videoId]) {
-      // Already fetched — just dispatch the cached art
+      // Already fetched - just dispatch the cached art
       dispatchSquareArt(videoId, cachedSquareArt[videoId]);
       return cachedSquareArt[videoId];
     }
@@ -282,7 +282,7 @@ import {
 
   /** Dispatch square art to content script via CustomEvent */
   function dispatchSquareArt(videoId: string, artUrl: string): void {
-    // Only dispatch once per video — prevents flapping with the YTM
+    // Only dispatch once per video - prevents flapping with the YTM
     // provider's DOM poll (which keeps sending maxresdefault from the
     // img element every second).
     if (dispatchedVideos[videoId]) return;
@@ -321,7 +321,7 @@ import {
     if (videoId !== lastYtmVideoId) {
       lastYtmVideoId = videoId;
       delete dispatchedVideos[videoId]; // Allow dispatch for new track
-      // Kick off InnerTube fetch — dispatches on resolve
+      // Kick off InnerTube fetch - dispatches on resolve
       fetchSquareArt(videoId);
     }
   }
@@ -363,7 +363,7 @@ import {
         return origPlay.apply(this, arguments as any);
       };
     } catch {
-      // ignore — fall back to event-based detection below
+      // ignore - fall back to event-based detection below
     }
 
     // Backup: catch elements that started without our wrapped play()

@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn test_normalize_art_url() {
-        // YouTube cache-busting variants — same path, different query params
+        // YouTube cache-busting variants - same path, different query params
         let a = "https://i.ytimg.com/vi/abc123/maxresdefault.jpg?sqp=-oaymwE&rs=AMzJL3kGjx6";
         let b = "https://i.ytimg.com/vi/abc123/maxresdefault.jpg?sqp=-other&rs=AOn4CLCGDr8";
         assert_eq!(normalize_art_url(a), normalize_art_url(b));

@@ -59,7 +59,7 @@ export class NativeMessagingPort {
   /** Send a message to the native host. */
   send(msg: ExtMessage): void {
     if (!this.port) {
-      console.warn("[mprisence] Cannot send — no native host connection");
+      console.warn("[mprisence] Cannot send - no native host connection");
       return;
     }
     try {

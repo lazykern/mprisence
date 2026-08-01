@@ -129,7 +129,7 @@ pub enum MprisCommand {
 /// A command from a specific MPRIS player, tagged with its source_id.
 pub type TaggedCommand = (String, MprisCommand);
 
-/// Manages multiple MPRIS players — one per browser source (tab + browser combo).
+/// Manages multiple MPRIS players - one per browser source (tab + browser combo).
 ///
 /// Each source gets its own `org.mpris.MediaPlayer2.mprisence_<hash>` player
 /// so `playerctl -l` shows all active tabs/browsers simultaneously.
@@ -199,7 +199,7 @@ impl PlayerManager {
     /// Aborts the D-Bus run task so the player bus name is unregistered.
     pub fn remove_player(&mut self, source_id: &str) {
         if let Some(entry) = self.players.remove(source_id) {
-            // Abort the spawned run() task — without this the D-Bus server
+            // Abort the spawned run() task - without this the D-Bus server
             // keeps running even after the Publisher is dropped, leaving a
             // stale player visible to playerctl and Discord presence.
             entry._handle.abort();

@@ -609,10 +609,10 @@ impl Default for ArtSourceOptions {
 /// Pick the best art source from the available inputs.
 ///
 /// Priority:
-/// 1. `mpris:artUrl` if it is an `http(s)://` URL — Discord can consume it
+/// 1. `mpris:artUrl` if it is an `http(s)://` URL - Discord can consume it
 ///    directly without a provider upload.
 /// 2. `mpris:artUrl` for any other scheme (`data:image/...;base64,...`,
-///    `file://`, bare path) — needs upload via the provider chain.
+///    `file://`, bare path) - needs upload via the provider chain.
 /// 3. Embedded picture from the local file's tag.
 fn select_art_source(art_url: Option<&str>, embedded_bytes: Option<Vec<u8>>) -> Option<ArtSource> {
     if let Some(url) = art_url {

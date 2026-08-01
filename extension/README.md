@@ -65,8 +65,8 @@ npm run package:source   # -> dist/mprisence-extension-source.zip
 
 ## Chrome extension IDs
 
-- **Chrome Web Store:** `pnkkjbdopihogobhhjbgapbpfccinjjo` — matches `CHROME_EXTENSION_ID` in `src/web_bridge/mod.rs`
-- **Dev sideload (keyed build):** `pphdmbejbipjlocngoefnmjoijcbdejf` — pinned by the `key` field in `manifest.chromium.json`
+- **Chrome Web Store:** `pnkkjbdopihogobhhjbgapbpfccinjjo` - matches `CHROME_EXTENSION_ID` in `src/web_bridge/mod.rs`
+- **Dev sideload (keyed build):** `pphdmbejbipjlocngoefnmjoijcbdejf` - pinned by the `key` field in `manifest.chromium.json`
 
 Store builds strip `key` so CWS assigns the store ID. `mprisence web install` allows both origins. If either ID changes, update the Rust constants and release a new `mprisence` build; users must re-run `mprisence web install`.
 
@@ -108,7 +108,7 @@ background.ts
   routes host commands back to tabs
 ```
 
-Both `content.js` and `page-world.js` are manifest-declared content scripts on the supported sites. The opt-in generic fallback registers the same two bundled files on `<all_urls>` via `chrome.scripting.registerContentScripts`. No remote code, no dynamic eval — only files shipped inside the package are ever executed.
+Both `content.js` and `page-world.js` are manifest-declared content scripts on the supported sites. The opt-in generic fallback registers the same two bundled files on `<all_urls>` via `chrome.scripting.registerContentScripts`. No remote code, no dynamic eval - only files shipped inside the package are ever executed.
 
 ## Providers
 
@@ -139,7 +139,7 @@ and drops the permission. Collection runs in `page-world.ts`
 `navigator.mediaSession`.
 
 > Enable this only if you have disabled your browser's built-in MPRIS/media
-> integration — otherwise you get duplicate players. Firefox:
+> integration - otherwise you get duplicate players. Firefox:
 > `media.hardwaremediakeys.enabled = false`. Chromium:
 > `--disable-features=HardwareMediaKeyHandling,MediaSessionService`.
 > `mprisence web doctor` warns when a competing browser player is on the bus.

@@ -157,7 +157,7 @@ impl CatboxProvider {
         const MAX_BYTES: usize = 256 * 1024;
 
         if bytes.len() <= MAX_BYTES {
-            // Cheap path: trust small files — quick check would have to decode
+            // Cheap path: trust small files - quick check would have to decode
             // anyway, and album cover thumbnails are commonly already small.
             return Ok(bytes);
         }

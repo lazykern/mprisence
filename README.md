@@ -37,7 +37,7 @@ local player or browser tab
   → Discord Rich Presence
 ```
 
-Browser bridge path (optional — see [Web players](#web-players)):
+Browser bridge path (optional - see [Web players](#web-players)):
 
 ```text
 supported website
@@ -58,7 +58,7 @@ supported website
 
 ## Supported players
 
-Bundled presets in [`config/config.default.toml`](./config/config.default.toml). No setup needed — start `mprisence` and these appear in Discord automatically.
+Bundled presets in [`config/config.default.toml`](./config/config.default.toml). No setup needed - start `mprisence` and these appear in Discord automatically.
 
 **Local players (MPRIS):** Audacious, Amberol, Clementine, CMUS, Elisa, Euphonica, Feishin, Fooyin, Gapless, Gelly, Haruna, Harmony Music, Kew, Lollypop, Media Player Classic Qute Theater, MPV, MPD, Musikcube, MusicBee, QMMP, Quod Libet, Quester, Rhythmbox, AmpCast, SMPlayer, Spotify (legacy), Strawberry, Supersonic, VLC.
 
@@ -185,22 +185,22 @@ Prefer a GUI? Run:
 mprisence config ui
 ```
 
-This opens a local settings page (localhost only) — toggles and dropdowns for
+This opens a local settings page (localhost only) - toggles and dropdowns for
 the common options, live preview of your Discord status against the currently
 playing track, per-player show/hide switches, and a raw-file editor under
 Advanced. Changes apply instantly; the running daemon hot-reloads the file.
 
 Reference files:
-- [`config/config.example.toml`](./config/config.example.toml) — documented example
-- [`config/config.default.toml`](./config/config.default.toml) — bundled player and web-player presets
-- [`src/metadata.rs`](./src/metadata.rs) — template variable reference
+- [`config/config.example.toml`](./config/config.example.toml) - documented example
+- [`config/config.default.toml`](./config/config.default.toml) - bundled player and web-player presets
+- [`src/metadata.rs`](./src/metadata.rs) - template variable reference
 
 ### Common knobs
 
 - `template.details`, `template.state`, `template.large_text`, `template.small_text`
-- `[player.*]` — overrides for specific local players
-- `[activity_type]` and `[time]` — Discord display behavior
-- `[cover.provider]` — cover-art sources
+- `[player.*]` - overrides for specific local players
+- `[activity_type]` and `[time]` - Discord display behavior
+- `[cover.provider]` - cover-art sources
 
 Example: show track title in Discord status instead of player name:
 
@@ -215,9 +215,9 @@ status_display_type = "details"
 
 | Mode | Preview |
 |------|---------|
-| `name` — player/app name | ![status_name](assets/status_name.png) |
-| `state` — `template.state` render (default: artists) | ![status_state](assets/status_state.png) |
-| `details` — `template.details` render (default: title) | ![status_details](assets/status_details.png) |
+| `name` - player/app name | ![status_name](assets/status_name.png) |
+| `state` - `template.state` render (default: artists) | ![status_state](assets/status_state.png) |
+| `details` - `template.details` render (default: title) | ![status_details](assets/status_details.png) |
 
 ### Inspect resolved config
 
@@ -298,14 +298,14 @@ mprisence players list --detailed
 
 Enable specific sites via config.
 
-Bundled site (patterns inherited from bundled entry — un-ignore to activate):
+Bundled site (patterns inherited from bundled entry - un-ignore to activate):
 
 ```toml
 [web_player.youtube]
 ignore = false
 ```
 
-Custom site (not in bundle — provide match_pattern and app_id):
+Custom site (not in bundle - provide match_pattern and app_id):
 
 ```toml
 [web_player.my_site]

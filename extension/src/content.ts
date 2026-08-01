@@ -65,7 +65,7 @@ function normalizeStringList(value: unknown): string[] {
 function getTabId(): number | undefined {
   // In content scripts, we can get tab ID from the runtime
   try {
-    // Chromium: chrome.devtools.inspectedWindow.tabId — not applicable
+    // Chromium: chrome.devtools.inspectedWindow.tabId - not applicable
     // Firefox: tabId is available via browser.runtime
     // Best effort: Content scripts don't have direct tab ID access
     // We use 0 as fallback
@@ -80,7 +80,7 @@ function getTabId(): number | undefined {
 
 // Listen for CustomEvent from page-world script.
 // The page-world only dispatches when MediaSession metadata identity
-// (title, artist, album, artwork src) changes — NOT on every position
+// (title, artist, album, artwork src) changes - NOT on every position
 // update. The isolated world handles position updates via timeupdate.
 //
 // It does NOT supply track_id, canonical_url or pageUrl fields.
@@ -89,7 +89,7 @@ function getTabId(): number | undefined {
 //
 // Art-only events: page-world also dispatches YTM square cover art
 // (yt3.googleusercontent.com) fetched via InnerTube API. These have
-// empty title/artist — merge art_url into last provider metadata.
+// empty title/artist - merge art_url into last provider metadata.
 window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
   const data = event.detail;
   if (data?.type === "media-state") {
@@ -143,7 +143,7 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
     //
     // BUT: when the page-world fires on a GENUINE track change (title
     // or artist differs from last page-world send), DON'T carry over
-    // the old track_id — let the next isolated-world update supply the
+    // the old track_id - let the next isolated-world update supply the
     // correct one instead of sending stale data.
     const isNewTrack =
       lastPageWorldMeta !== null &&
@@ -281,7 +281,7 @@ let keepaliveInterval: ReturnType<typeof setInterval> | null = null;
 
 function startObserving(): void {
   // Capture-phase listeners on `document` catch media events from every
-  // element — including ones added later — and catch non-bubbling events
+  // element - including ones added later - and catch non-bubbling events
   // such as `timeupdate`. These fire even while the tab is backgrounded.
   for (const ev of MEDIA_EVENTS) {
     document.addEventListener(ev, () => triggerUpdate(), true);
@@ -289,7 +289,7 @@ function startObserving(): void {
   document.addEventListener("timeupdate", onTimeupdate, true);
 
   // SPA player-bar DOM changes (e.g. YouTube Music switching track without a
-  // media-element event) fire no media events — observe the DOM too.
+  // media-element event) fire no media events - observe the DOM too.
   const onMutation = debounce(() => triggerUpdate(), 500);
   const observer = new MutationObserver(() => onMutation());
   observer.observe(document.documentElement, { childList: true, subtree: true });
@@ -297,8 +297,8 @@ function startObserving(): void {
   // Keepalive: force-resend the current state so a paused, backgrounded tab is
   // not stale-pruned by the bridge. The browser throttles this to ~1/min in
   // background tabs; the bridge STALE_TIMEOUT (90s) tolerates that. An
-  // unchanged re-send emits no D-Bus signal — the bridge's diffing publisher
-  // drops it — it only refreshes the source's last_seen.
+  // unchanged re-send emits no D-Bus signal - the bridge's diffing publisher
+  // drops it - it only refreshes the source's last_seen.
   keepaliveInterval = setInterval(() => triggerUpdate(true), 30_000);
 }
 
@@ -307,7 +307,7 @@ function startObserving(): void {
 function sendUpdate(result: ProviderResult, force = false): void {
   const sourceId = `${sourceIdBase}:frame`;
   // Prefer provider-supplied URL. When the update source provides no
-  // URL fields (e.g. page-world script), reuse last known good URL —
+  // URL fields (e.g. page-world script), reuse last known good URL -
   // but only if the content identity (title + artist) hasn't changed.
   // If identity changed and we still have no fresh URL, fall back to
   // window.location.href so the bridge sees the new page.

@@ -217,7 +217,7 @@ impl CoverManager {
     /// Synchronous, in-process cache-only lookup. No HTTP, no validation.
     /// Used by the presence fast path so Discord receives a track update
     /// without waiting for slow providers when a usable cached URL exists.
-    /// Returns `None` on miss, deserialize error, or expired entry — the
+    /// Returns `None` on miss, deserialize error, or expired entry - the
     /// async `get_cover_art` path will revalidate / re-fetch as needed.
     /// Pass `read_cache: false` to skip lookup.
     pub fn try_cached_cover_art(

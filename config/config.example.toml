@@ -265,7 +265,7 @@
 # of Discord. Opt back in by adding a matching `[web_player.*]` entry.
 #
 # Merge semantics: user entries are merged per-key with the bundled
-# entries — user fields win, and unset fields (including
+# entries - user fields win, and unset fields (including
 # `match_pattern` / `match_patterns`) fall through to the bundled
 # entry. So changing one field on a bundled site only takes one line.
 #
@@ -275,7 +275,7 @@
 # [web_player.default]
 
 # Example: enable YouTube video pages (bundled with `ignore = true`).
-# Patterns are inherited from the bundled entry — one line is all you need.
+# Patterns are inherited from the bundled entry - one line is all you need.
 # [web_player.youtube]
 # ignore = false
 

@@ -316,7 +316,7 @@ fn install_firefox_manifest(binary: &Path) {
 
     let manifest = serde_json::json!({
         "name": HOST_NAME,
-        "description": "mprisence — sends browser media to MPRIS",
+        "description": "mprisence - sends browser media to MPRIS",
         "path": binary.to_str().expect("binary path is not UTF-8"),
         "type": "stdio",
         "allowed_extensions": [EXTENSION_ID],
@@ -332,7 +332,7 @@ fn install_firefox_manifest(binary: &Path) {
 fn install_chromium_manifest(binary: &Path) {
     let manifest = serde_json::json!({
         "name": HOST_NAME,
-        "description": "mprisence — sends browser media to MPRIS",
+        "description": "mprisence - sends browser media to MPRIS",
         "path": binary.to_str().expect("binary path is not UTF-8"),
         "type": "stdio",
         "allowed_origins": [

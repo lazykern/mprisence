@@ -625,11 +625,11 @@ fn format_cell(value: &str, width: usize) -> String {
 fn format_summary_title(entry: &PlayerDisplay) -> String {
     match (&entry.title, &entry.album) {
         (Some(title), Some(album)) if !title.is_empty() && !album.is_empty() => {
-            format!("{} — {}", title, album)
+            format!("{} - {}", title, album)
         }
         (Some(title), _) if !title.is_empty() => title.clone(),
         (None, Some(album)) if !album.is_empty() => album.clone(),
-        _ => "—".to_string(),
+        _ => "-".to_string(),
     }
 }
 
@@ -722,7 +722,7 @@ fn format_vector(values: &[String]) -> String {
 fn format_activity_type(activity: Option<ActivityType>) -> String {
     activity
         .map(|value| format!("{:?}", value).to_lowercase())
-        .unwrap_or_else(|| "—".to_string())
+        .unwrap_or_else(|| "-".to_string())
 }
 
 fn format_status_display_type(display_type: StatusDisplayType) -> String {

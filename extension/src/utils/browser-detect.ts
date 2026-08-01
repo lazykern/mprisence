@@ -7,14 +7,14 @@ import type { BrowserKind } from "../types";
 export function detectBrowser(): BrowserKind {
   const ua = navigator.userAgent.toLowerCase();
 
-  // Check order matters — Edge contains "chrome", Firefox doesn't
+  // Check order matters - Edge contains "chrome", Firefox doesn't
   if (ua.includes("firefox")) return "firefox";
   if (ua.includes("edg")) return "edge";
   if (ua.includes("vivaldi")) return "vivaldi";
   if (ua.includes("brave")) return "brave";
   if (ua.includes("chrome")) return "chromium";
 
-  // Fallback — should not happen on known browsers
+  // Fallback - should not happen on known browsers
   console.warn("[mprisence] Unknown browser, assuming chromium");
   return "chromium";
 }
