@@ -14,7 +14,7 @@ flamegraph*
 *.tar.gz
 
 extension/chrome-key.pem
-extension/dist/*.zip
+extension/dist/
 /release-artifacts/
 
 extension/node_modules/
@@ -25,4 +25,4 @@ extension/node_modules/
 .wrangler/
 
 # Build artifacts
-extension/dist/*.zip
+extension/dist/
