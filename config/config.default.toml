@@ -3,6 +3,11 @@ event_driven = true
 fallback_poll_interval = 5000
 allowed_players = []
 
+# Master switch for website detection. Set false to stop inspecting browser
+# URLs and title suffixes entirely - browsers then resolve through [player.*]
+# like any other player, and [web_player.*] rules are inert.
+web_player_enabled = true
+
 [template]
 details = "{{{title}}}"
 state = "{{{artist_display}}}"
@@ -40,139 +45,164 @@ use_litter = true
 litter_hours = 24
 
 [player]
-# Priority: user entries override bundled ones. Fields left unset in a higher-priority entry fall back to lower matches, then [player.default], then built-in defaults. If identity and bus-name differ, an exact user bus-name entry wins.
+# Keys are stable preset names. match_patterns are tested against normalized identity and canonical bus name; use identity:/bus: when a pattern must target only one field.
+# Priority: user entries override bundled ones. Fields left unset in a higher-priority entry fall back to lower matches, then [player.default], then built-in defaults.
 # [player.default].ignore_unmatched controls unknown players. Matched [player.*] entries start enabled unless some matched layer sets ignore = true.
 # Bundled app ID would show "mprisence", so "name" maps to "state".
 default = { ignore_unmatched = true, app_id = "1121632048155742288", icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png", show_icon = false, allow_streaming = false, status_display_type = "name" }
 
 [player.audacious]
+match_patterns = ["audacious"]
 ignore = false
 app_id = "1125084572166656031"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Audacious-2.4-logo.svg/1200px-Audacious-2.4-logo.svg.png"
 
 [player.elisa]
+match_patterns = ["elisa"]
 ignore = false
 app_id = "1125089232776601761"
 icon = "https://store-images.s-microsoft.com/image/apps.47778.14129707655588863.dafceb08-f3ca-4e43-974e-9776c934976c.b69f75ea-0df1-4e00-9289-d11d9ac5a0f0"
 
 [player.lollypop]
+match_patterns = ["lollypop"]
 ignore = false
 app_id = "1124183825489068103"
-icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Lollypop_icon_2019.svg/640px-Lollypop_icon_2019.svg.png"
+icon = "https://upload.wikimedia.org/wikipedia/commons/1/1a/Lollypop_icon_2019.svg"
 allow_streaming = true
 
 [player.rhythmbox]
+match_patterns = ["rhythmbox"]
 ignore = false
 app_id = "1124770552754733056"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/Rhythmbox_logo_3.4.4.svg/1200px-Rhythmbox_logo_3.4.4.svg.png"
 allow_streaming = true
 
 [player.cmus]
+match_patterns = ["cmus"]
 ignore = false
 app_id = "1124777797722853476"
 
-[player.vlc_media_player]
+[player.vlc]
+match_patterns = ["vlc_media_player"]
 ignore = false
 app_id = "1124968989538402334"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/VLC_Icon.svg/1200px-VLC_Icon.svg.png"
 allow_streaming = true
 
 [player.mpv]
+match_patterns = ["mpv"]
 ignore = false
 app_id = "1125075797942734928"
 icon = "https://upload.wikimedia.org/wikipedia/commons/7/73/Mpv_logo_%28official%29.png"
 allow_streaming = true
 
 [player.mpd]
+match_patterns = ["mpd"]
 ignore = false
 app_id = "1126153268486213672"
 icon = "https://www.musicpd.org/logo.png"
 allow_streaming = true
 
 [player.musikcube]
+match_patterns = ["musikcube"]
 ignore = false
 app_id = "1127548029294084147"
 icon = "https://dashboard.snapcraft.io/site_media/appmedia/2020/04/ic_launcher_square.png"
 allow_streaming = true
 
 [player.clementine]
+match_patterns = ["clementine"]
 ignore = false
 app_id = "1125075725473562735"
 icon = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRYiUYLmMQwsDaNqu6eg5I4aB1vyy_uptN34eouN7XxA5eFZTAV8RISZHCsn_M6-iQc-Pw&usqp=CAU"
 allow_streaming = true
 
 [player.strawberry]
+match_patterns = ["strawberry"]
 ignore = false
 app_id = "1126197744512536647"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Strawberry-icon-1000px.png/800px-Strawberry-icon-1000px.png"
 allow_streaming = true
 
 [player.amberol]
+match_patterns = ["amberol"]
 ignore = false
 app_id = "1125077658192056431"
 icon = "https://dashboard.snapcraft.io/site_media/appmedia/2022/09/io.bassi.Amberol.svg.png"
 
 [player.smplayer]
+match_patterns = ["smplayer"]
 ignore = false
 app_id = "1125077752756834314"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/SMPlayer_icon.svg/1200px-SMPlayer_icon.svg.png"
 
 [player.fooyin]
+match_patterns = ["fooyin"]
 ignore = false
 app_id = "1396689706246209606"
 icon = "https://dl.flathub.org/media/org/fooyin/fooyin/ef334d703743511632d5c616bea80c43/icons/128x128@2/org.fooyin.fooyin.png"
 
 [player.finamp]
+match_patterns = ["finamp"]
 ignore = false
 app_id = "1397542416201945221"
 icon = "https://raw.githubusercontent.com/UnicornsOnLSD/finamp/refs/heads/main/assets/icon/icon_foreground.png"
 allow_streaming = true
 
 [player.supersonic]
+match_patterns = ["supersonic"]
 ignore = false
 app_id = "1404479711106568202"
 icon = "https://github.com/dweymouth/supersonic/blob/main/res/appicon-256.png?raw=true"
 allow_streaming = true
 
 [player.feishin]
+match_patterns = ["feishin"]
 ignore = false
 app_id = "1404479248428826645"
 icon = "https://github.com/jeffvli/feishin/blob/development/assets/icons/256x256.png?raw=true"
 allow_streaming = true
 
-[player."io.m51.Gelly"]
+[player.gelly]
+match_patterns = ["io.m51.Gelly"]
 ignore = false
 app_id = "1485187543506096158"
 icon = "https://raw.githubusercontent.com/Fingel/gelly/main/resources/io.m51.Gelly.svg"
 allow_streaming = true
 
 [player.kew]
+match_patterns = ["kew"]
 ignore = false
 app_id = "1408882241198620782"
 show_icon = false
 
 [player.tomu]
+match_patterns = ["tomu"]
 ignore = false
 app_id = "1503183287235903521"
 icon = "https://upload.wikimedia.org/wikipedia/commons/6/6d/Tomu-chan-iconnn.png"
 
 [player.gapless]
+match_patterns = ["gapless"]
 ignore = false
 app_id = "1425518060688769146"
 icon = "https://res.cloudinary.com/canonical/image/fetch/f_auto,q_auto,fl_sanitize,w_256/https%3A%2F%2Fdashboard.snapcraft.io%2Fsite_media%2Fappmedia%2F2023%2F07%2Fapp.svg.png"
 
 [player.harmony_music_notification]
+match_patterns = ["harmony_music_notification"]
 ignore = false
 app_id = "1425521209633669242"
 icon = "https://raw.githubusercontent.com/anandnet/Harmony-Music/refs/heads/main/assets/icons/icon.png"
 allow_streaming = true
 
 [player.haruna]
+match_patterns = ["haruna"]
 ignore = false
 app_id = "1476992012132679751"
 icon = "https://apps.kde.org/app-icons/org.kde.haruna.svg"
 
-[player."io.github.htkhiem.Euphonica"]
+[player.euphonica]
+match_patterns = ["io.github.htkhiem.Euphonica"]
 ignore = false
 app_id = "1435313000612630709"
 icon = "https://raw.githubusercontent.com/htkhiem/euphonica/refs/heads/main/data/icons/euphonica-hicolor.png"
@@ -180,12 +210,14 @@ icon = "https://raw.githubusercontent.com/htkhiem/euphonica/refs/heads/main/data
 # new icon
 
 [player.quod_libet]
+match_patterns = ["quod_libet"]
 ignore = false
 app_id = "1265388809860677632"
 icon = "https://raw.githubusercontent.com/quodlibet/quodlibet/refs/heads/main/quodlibet/images/hicolor/256x256/apps/io.github.quodlibet.QuodLibet.png"
 # icon = "https://i.ibb.co/vvxWfTvd/io-github-quodlibet-Quod-Libet.png" # Icon by Blackstar1069
 
-[player.MusicBee]
+[player.musicbee]
+match_patterns = ["MusicBee"]
 ignore = false
 app_id = "904523292491255838"
 # app id from this project: https://github.com/sll552/DiscordBee
@@ -193,23 +225,27 @@ icon = "https://i.ibb.co/BKrwxCG2/musicbee-3.png"
 # icon also modified from this source: https://getmusicbee.com/addons/misc/548/simple-icon/
 
 [player.qmmp]
+match_patterns = ["qmmp"]
 ignore = false
 app_id = "1442356186052563016"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Qmmp_logo.svg/960px-Qmmp_logo.svg.png"
 
 [player.quester]
+match_patterns = ["quester"]
 ignore = false
 app_id = "1471745674960830494"
 icon = "https://codeberg.org/anoraktrend/quester/raw/branch/main/resources/Quester512.png"
 allow_streaming = true
 
 [player.ampcast]
+match_patterns = ["ampcast"]
 ignore = false
 app_id = "1480174380997808301"
 icon = "https://raw.githubusercontent.com/rekkyrosso/ampcast/refs/heads/main/app/assets/icons/ampcast.png"
 allow_streaming = true
 
-[player.Media_Player_Classic_Qute_Theater]
+[player.mpc_qt]
+match_patterns = ["Media_Player_Classic_Qute_Theater"]
 ignore = false
 app_id = "1480176739014672517"
 icon = "https://raw.githubusercontent.com/tag27/icon-res/refs/heads/main/res/mpc_qt.png"
@@ -217,9 +253,12 @@ icon = "https://raw.githubusercontent.com/tag27/icon-res/refs/heads/main/res/mpc
 allow_streaming = true
 
 [player.spotify]
+match_patterns = ["spotify"]
 ignore = true
+icon = "https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg"
 
-[player."*youtube_music*"]
+[player.youtube_music]
+match_patterns = ["*youtube_music*"]
 ignore = false
 app_id = "1125082278339559505"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/768px-Youtube_Music_icon.svg.png"
@@ -231,64 +270,63 @@ allow_streaming = true
 
 # ------------------------------------------------------------------
 # Web Player overrides - applied when xesam:url host matches the pattern.
-# Patterns use the same syntax as [player.*] keys:
+# Patterns use the same exact/wildcard/regex syntax as player match_patterns:
 #   bare = exact host match (or substring fallback against the host)
 #   `*`/`?` wildcards, `re:`/`/.../` for regex
 # Match runs against the URL host (e.g. `music.youtube.com`).
 # When matched, the web_player entry is the *authoritative* config for the
 # player - it fully replaces the browser's [player.*] config (ignore,
-# app_id, icon, name, activity type). Matched web_player entries allow
-# streaming by default unless `allow_streaming = false` is set explicitly.
-# The browser does not need to be enabled or unhidden separately. User
-# entries are merged per-key with bundled entries (user fields win, unset
-# fields fall back to bundled - including match patterns) so flipping
-# `ignore` on a bundled site only takes one TOML line in the user config.
+# app_id, icon, name, activity type). Matched web_player entries always allow
+# streaming - the URL is http(s) by definition, so blocking it would just be
+# `ignore = true`. `allow_streaming` is a `[player.*]`-only key.
+# The browser does not need to be enabled or unhidden separately. Precedence is
+# bundled default < bundled site < user default < user site. Unset user site
+# fields inherit bundled fields, including match patterns.
+# An http/https URL with no matching entry is always hidden.
+# To turn websites off entirely, use top-level `web_player_enabled = false`.
 # ------------------------------------------------------------------
 
 [web_player.default]
+# Shared base for every site entry. `ignore` is not inherited; hiding is
+# per-site, and `web_player_enabled`
+# is the global switch.
 
 [web_player.youtube_music]
 match_pattern = "music.youtube.com"
 name = "YouTube Music"
 title_suffix = " | YouTube Music"
-app_id = "1125082278339559505" # shared with [player."*youtube_music*"]
+app_id = "1125082278339559505" # shared with [player.youtube_music]
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/youtube-music.png"
-ignore = false
 
 [web_player.soundcloud]
 match_patterns = ["soundcloud.com", "snd.sc"]
 name = "SoundCloud"
 app_id = "1505610509406437446"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/soundcloud.png"
-ignore = false
 
 [web_player.qobuz]
 match_patterns = ["qobuz.com", "play.qobuz.com", "open.qobuz.com"]
 name = "Qobuz"
 app_id = "1247655024637513778"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/qobuz.png"
-ignore = false
 
 [web_player.apple_music]
 match_pattern = "music.apple.com"
 name = "Apple Music"
 app_id = "1505611096273457192"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/apple-music.png"
-ignore = false
 
 [web_player.bandcamp]
 match_pattern = "bandcamp.com"
 name = "Bandcamp"
 app_id = "1505611276917669908"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/bandcamp.png"
-ignore = false
 
 [web_player.tidal]
 match_patterns = ["tidal.com", "listen.tidal.com", "listen.stage.tidal.com"]
 name = "Tidal"
 app_id = "1505610940488486912"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/tidal.png"
-ignore = false
 
 [web_player.amazon_music]
 match_patterns = [
@@ -320,21 +358,18 @@ match_patterns = [
 name = "Amazon Music"
 app_id = "1247654006587789363"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/amazon-music.png"
-ignore = false
 
 [web_player.deezer]
 match_pattern = "deezer.com"
 name = "Deezer"
 app_id = "1247654082215284847"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/deezer.png"
-ignore = false
 
 [web_player.yandex_music]
 match_patterns = ["music.yandex.com", "music.yandex.ru"]
 name = "Yandex Music"
 app_id = "1295649755535511592"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/yandex-music.png"
-ignore = false
 
 [web_player.youtube]
 match_patterns = ["youtube.com", "youtu.be"]

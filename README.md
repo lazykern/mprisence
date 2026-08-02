@@ -189,6 +189,22 @@ Reference files:
 - `[activity_type]` and `[time]` - Discord display behavior
 - `[cover.provider]` - cover-art sources
 
+Player preset keys are stable names. `match_patterns` selects the MPRIS
+sources they apply to. Unscoped patterns match either normalized identity or
+canonical bus name; `identity:` and `bus:` restrict the target:
+
+```toml
+[player.vlc]
+match_patterns = ["vlc_media_player", "bus:vlc"]
+show_icon = true
+```
+
+Restrict discovery with the same selectors, or by resolved preset/site key:
+
+```toml
+allowed_players = ["player:vlc", "web_player:youtube_music", "bus:*mpdris2*"]
+```
+
 Example: show track title in Discord status instead of player name:
 
 ```toml
@@ -215,6 +231,28 @@ mprisence config
 Web-player config options (`[web_player.*]`) are documented in the [Web players](#web-players) section.
 
 ## Web players
+
+To run with local players only, turn website detection off:
+
+```toml
+web_player_enabled = false
+```
+
+With this off, `xesam:url` and title suffixes are not inspected. Browsers
+resolve through `[player.*]` like any other player and `[web_player.*]` rules
+are inert. Because `[player.default]` has `allow_streaming = false`, a native
+browser needs an explicit player entry to remain visible:
+
+```toml
+[player.firefox]
+match_patterns = ["firefox"]
+ignore = false
+allow_streaming = true
+```
+
+To hide one site instead of all websites, set `ignore = true` on that site's
+entry. A website without a matching `[web_player.*]` entry is always hidden.
+Matched web players always allow streaming.
 
 mprisence supports two paths for browser media. Try Browser MPRIS first; switch to the bridge if metadata or controls are lacking.
 

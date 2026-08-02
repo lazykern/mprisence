@@ -1,7 +1,9 @@
 use crate::{
     config::{
         get_config,
-        schema::{ActivityType, PlayerConfig, StatusDisplayType, WebPlayerConfig},
+        schema::{
+            ActivityType, PlayerConfig, PlayerConfigMatch, StatusDisplayType, WebPlayerConfig,
+        },
     },
     error::Error,
     player::{
@@ -124,7 +126,6 @@ impl Command {
                         let identity = player.identity().to_string();
                         let player_bus_name = canonical_player_bus_name(player.bus_name());
                         let id = normalize_player_identity(&identity);
-                        let allowed = config.is_player_allowed(&identity, &player_bus_name);
                         let status = player.get_playback_status().ok();
 
                         let (title, artists, album, length, url) = match player.get_metadata() {
@@ -150,13 +151,14 @@ impl Command {
                         // Resolve URL-aware config so the CLI reflects what
                         // the runtime would actually push (web_player overrides
                         // can fully replace the browser's player config).
-                        let (player_config, _suffix) = config
-                            .get_player_config_with_title_fallback(
-                                &identity,
-                                &player_bus_name,
-                                url.as_deref(),
-                                title.as_deref(),
-                            );
+                        let resolution = config.resolve_source(
+                            &identity,
+                            &player_bus_name,
+                            url.as_deref(),
+                            title.as_deref(),
+                        );
+                        let allowed =
+                            config.is_source_allowed(&identity, &player_bus_name, &resolution);
                         let web_player_match = config.matched_web_player_for_url(url.as_deref());
 
                         entries.push(PlayerDisplay {
@@ -170,7 +172,8 @@ impl Command {
                             length,
                             url,
                             web_player_match,
-                            config: player_config,
+                            player_matches: resolution.player_matches,
+                            config: resolution.config,
                             allowed,
                             is_duplicate: false,
                         });
@@ -319,6 +322,20 @@ impl Command {
                             if let Some((key, wp)) = &entry.web_player_match {
                                 println!("  Web Player: {}", format_web_player_match(key, wp));
                             }
+                            if let Some(matched) = entry.player_matches.last() {
+                                println!("  Config   : {}", matched.config_key);
+                                println!(
+                                    "  Matched  : {:?} \"{}\" via \"{}\"{}",
+                                    matched.target,
+                                    matched.matched_value,
+                                    matched.pattern,
+                                    if matched.legacy {
+                                        " (deprecated implicit match)"
+                                    } else {
+                                        ""
+                                    }
+                                );
+                            }
                             println!(
                                 "  Presence : {}",
                                 format_presence(&entry.config, entry.allowed, entry.is_duplicate)
@@ -345,6 +362,7 @@ impl Command {
                     print_key_value("interval", format!("{} ms", config.interval()));
                     print_key_value("config_path", config_path.display());
                     print_key_value("allowed_players", format_vector(&config.allowed_players()));
+                    print_key_value("web_player_enabled", config.web_player_enabled());
 
                     let activity_config = config.activity_type_config();
                     println!("\nActivity");
@@ -394,6 +412,7 @@ impl Command {
 
                     let mut player_configs: Vec<(String, PlayerConfig)> =
                         config.player_configs().into_iter().collect();
+                    let player_patterns = config.player_match_patterns();
                     player_configs.sort_by(|a, b| compare_player_keys(a.0.as_str(), b.0.as_str()));
 
                     println!("\nOverrides Detail");
@@ -404,6 +423,9 @@ impl Command {
                         for (index, (identity, cfg)) in player_configs.iter().enumerate() {
                             let display = player_config_display_name(identity);
                             println!("{} {}", player_config_icon(cfg.ignore), display);
+                            if let Some(patterns) = player_patterns.get(identity) {
+                                print_nested_key_value("match_patterns", patterns.join(", "), 4);
+                            }
                             if let Some(name) = cfg.name.as_deref() {
                                 print_nested_key_value("name", name, 4);
                             }
@@ -465,13 +487,6 @@ impl Command {
                             }
                             if let Some(icon) = cfg.icon.as_deref() {
                                 print_nested_key_value("icon", icon, 4);
-                            }
-                            if let Some(allow_streaming) = cfg.allow_streaming {
-                                print_nested_key_value(
-                                    "allow_streaming",
-                                    format_bool(allow_streaming),
-                                    4,
-                                );
                             }
                             if let Some(show_icon) = cfg.show_icon {
                                 print_nested_key_value("show_icon", format_bool(show_icon), 4);
@@ -551,6 +566,7 @@ struct PlayerDisplay {
     /// (key, resolved config) of the `[web_player.*]` entry that the runtime
     /// would project onto this player. None when no web_player matches.
     web_player_match: Option<(String, WebPlayerConfig)>,
+    player_matches: Vec<PlayerConfigMatch>,
     config: PlayerConfig,
     allowed: bool,
     /// True when another bus name for the same identity was chosen as the

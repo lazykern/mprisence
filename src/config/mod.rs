@@ -53,6 +53,8 @@ impl ConfigManager {
     /// and the production binary build sees no caller.
     #[allow(dead_code)]
     pub fn new_with_config(mut config: Config) -> Self {
+        config.rebuild_merged_player();
+        config.rebuild_merged_web_player();
         config.precompile_patterns();
         let (tx, _) = broadcast::channel(16);
 
@@ -111,11 +113,52 @@ impl ConfigManager {
             .clone()
     }
 
-    pub fn is_player_allowed(&self, identity: &str, player_bus_name: &str) -> bool {
+    pub fn web_player_enabled(&self) -> bool {
         self.config
             .read()
             .expect("Failed to read config: RwLock poisoned")
-            .is_player_allowed(identity, player_bus_name)
+            .web_player_enabled
+    }
+
+    pub fn resolve_source(
+        &self,
+        identity: &str,
+        player_bus_name: &str,
+        url: Option<&str>,
+        title: Option<&str>,
+    ) -> schema::SourceResolution {
+        let guard = self
+            .config
+            .read()
+            .expect("Failed to read config: RwLock poisoned");
+        let (config_identity, config_bus) = if is_mprisence_web_bridge_bus(player_bus_name) {
+            (BRIDGE_CONFIG_KEY, BRIDGE_CONFIG_KEY)
+        } else {
+            (identity, player_bus_name)
+        };
+        guard.resolve_source(config_identity, config_bus, url, title)
+    }
+
+    pub fn is_source_allowed(
+        &self,
+        identity: &str,
+        player_bus_name: &str,
+        resolution: &schema::SourceResolution,
+    ) -> bool {
+        let keys: Vec<String> = resolution
+            .player_matches
+            .iter()
+            .map(|matched| matched.config_key.clone())
+            .collect();
+        self.config
+            .read()
+            .expect("Failed to read config: RwLock poisoned")
+            .is_source_allowed(
+                identity,
+                player_bus_name,
+                &keys,
+                resolution.web_player_key.as_deref(),
+            )
     }
 
     pub fn activity_type_config(&self) -> schema::ActivityTypesConfig {
@@ -142,28 +185,8 @@ impl ConfigManager {
         url: Option<&str>,
         title: Option<&str>,
     ) -> (schema::PlayerConfig, Option<String>) {
-        let guard = self
-            .config
-            .read()
-            .expect("Failed to read config: RwLock poisoned");
-
-        // Bridge players all resolve to the stable [player.mprisence_web] config key.
-        // This allows a single config entry to set ignore=true for all bridge players,
-        // with individual sites un-ignored by [web_player.*] overrides.
-        let (config_identity, config_bus) = if is_mprisence_web_bridge_bus(player_bus_name) {
-            (BRIDGE_CONFIG_KEY, BRIDGE_CONFIG_KEY)
-        } else {
-            (identity, player_bus_name)
-        };
-
-        if url.is_some() {
-            return (
-                guard.get_player_config_with_url(config_identity, config_bus, url),
-                None,
-            );
-        }
-        let base = guard.get_player_config(config_identity, config_bus);
-        guard.apply_web_player_overrides_by_title(base, title)
+        let resolution = self.resolve_source(identity, player_bus_name, url, title);
+        (resolution.config, resolution.title_suffix)
     }
 
     pub fn web_player_configs(&self) -> HashMap<String, schema::WebPlayerConfig> {
@@ -215,6 +238,13 @@ impl ConfigManager {
             .read()
             .expect("Failed to read config: RwLock poisoned")
             .effective_player_configs()
+    }
+
+    pub fn player_match_patterns(&self) -> HashMap<String, Vec<String>> {
+        self.config
+            .read()
+            .expect("Failed to read config: RwLock poisoned")
+            .effective_player_patterns()
     }
 
     pub fn config_path(&self) -> PathBuf {
@@ -448,6 +478,7 @@ pub(crate) fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> 
 
     if path.exists() {
         warn_deprecated_template_config(path);
+        warn_deprecated_player_matching(path, &bundled.player);
         legacy_template_detail_override = read_legacy_template_detail_override(path);
         log::debug!("Merging user config from {}", path.display());
         let user_config = Figment::new().merge(Toml::file(path));
@@ -463,15 +494,13 @@ pub(crate) fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> 
     config.user_player_patterns = collect_user_player_patterns(path)?;
     config.bundled_web_player = bundled.web_player;
     config.user_web_player = load_user_web_player_configs(path)?;
+    config.rebuild_merged_player();
     config.rebuild_merged_web_player();
     config.precompile_patterns();
     Ok(config)
 }
 
-/// Parse a candidate user config from a TOML string (defaults merged in).
-/// Used by the config UI for validation and template preview. Unlike
-/// `load_config_from_file` it skips legacy-key handling and sibling
-/// player-config files - those don't affect template preview.
+/// Parse a candidate user config from a TOML string with defaults merged in.
 #[cfg(test)]
 pub(crate) fn parse_config_str(user_toml: &str) -> Result<Config, ConfigError> {
     let figment = Figment::new()
@@ -480,6 +509,10 @@ pub(crate) fn parse_config_str(user_toml: &str) -> Result<Config, ConfigError> {
         )))
         .merge(Toml::string(user_toml));
     let mut config: Config = figment.extract().map_err(ConfigError::from)?;
+    config.bundled_player = config.player.clone();
+    config.bundled_web_player = config.web_player.clone();
+    config.rebuild_merged_player();
+    config.rebuild_merged_web_player();
     config.precompile_patterns();
     Ok(config)
 }
@@ -526,6 +559,79 @@ fn warn_deprecated_template_config(path: &Path) {
         log::warn!(
             "[template].detail is deprecated and will be removed in a future release. Use [template].details instead."
         );
+    }
+}
+
+fn warn_deprecated_player_matching(
+    path: &Path,
+    bundled_players: &HashMap<String, schema::PlayerConfigLayer>,
+) {
+    let Ok(contents) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let Ok(parsed) = toml::from_str::<toml::Value>(&contents) else {
+        return;
+    };
+
+    if let Some(players) = parsed.get("player").and_then(toml::Value::as_table) {
+        for (key, value) in players {
+            if key == "default" {
+                continue;
+            }
+            let has_patterns = value.as_table().is_some_and(|table| {
+                table.contains_key("match_pattern") || table.contains_key("match_patterns")
+            });
+            let inherits_bundled_patterns =
+                bundled_players.contains_key(&normalize_player_identity(key));
+            if !has_patterns && !inherits_bundled_patterns {
+                log::warn!(
+                    "[player.{}] uses its table key as a deprecated implicit match pattern; add match_patterns",
+                    key
+                );
+            }
+        }
+    }
+
+    if let Some(web_players) = parsed.get("web_player").and_then(toml::Value::as_table) {
+        for (key, entry) in web_players {
+            let Some(table) = entry.as_table() else {
+                continue;
+            };
+            if table.contains_key("ignore_unmatched") {
+                log::warn!(
+                    "[web_player.{}] ignore_unmatched is no longer supported; web players with no matching rule are always hidden",
+                    key
+                );
+            }
+            if table.contains_key("allow_streaming") {
+                log::warn!(
+                    "[web_player.{}] allow_streaming is no longer supported; matched web players always allow streaming, so use ignore to hide the site",
+                    key
+                );
+            }
+            if key == "default" && table.contains_key("ignore") {
+                log::warn!(
+                    "[web_player.default] ignore is no longer supported; use top-level web_player_enabled = false to turn web players off"
+                );
+            }
+        }
+    }
+
+    if let Some(entries) = parsed
+        .get("allowed_players")
+        .and_then(toml::Value::as_array)
+    {
+        for entry in entries.iter().filter_map(toml::Value::as_str) {
+            let scoped = ["player:", "web_player:", "identity:", "bus:"]
+                .iter()
+                .any(|prefix| entry.starts_with(prefix));
+            if !scoped {
+                log::warn!(
+                    "allowed_players entry '{}' uses deprecated unscoped matching; add player:, web_player:, identity:, or bus:",
+                    entry
+                );
+            }
+        }
     }
 }
 
@@ -693,6 +799,53 @@ ttl_hours = 72
     }
 
     #[test]
+    fn bundled_player_presets_use_stable_keys_with_explicit_patterns() {
+        let temp_dir = temp_config_dir();
+        let config_path = temp_dir.join("missing-config.toml");
+        let config = load_config_from_file(&config_path).expect("config should load");
+
+        assert!(config.merged_player.contains_key("vlc"));
+        assert!(!config.merged_player.contains_key("vlc_media_player"));
+        let resolution = config.resolve_player_config("VLC Media Player", "vlc");
+        assert_eq!(resolution.matches.last().unwrap().config_key, "vlc");
+        assert!(!resolution.matches.last().unwrap().legacy);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn legacy_player_key_override_still_layers_over_renamed_bundle() {
+        let temp_dir = temp_config_dir();
+        let config_path = temp_dir.join("config.toml");
+        fs::write(
+            &config_path,
+            "[player.vlc_media_player]\nshow_icon = true\n",
+        )
+        .expect("failed to write config");
+
+        let config = load_config_from_file(&config_path).expect("config should load");
+        let resolved = config.get_player_config("VLC Media Player", "vlc");
+        assert_eq!(resolved.app_id, "1124968989538402334");
+        assert!(resolved.show_icon);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    /// A native browser with no URL and no title match is not a website -
+    /// it resolves through `[player.*]`, where the default is to hide
+    /// unmatched players. `[web_player.default] ignore` no longer applies.
+    #[test]
+    fn unclassified_native_browser_follows_player_rules() {
+        let config = parse_config_str("").expect("bundled default config is valid");
+        let manager = ConfigManager::new_with_config(config);
+
+        let resolution = manager.resolve_source("Firefox", "firefox", None, None);
+        assert!(resolution.web_player_key.is_none());
+        // Hidden by [player.default].ignore_unmatched, not by any web rule.
+        assert!(resolution.config.ignore);
+    }
+
+    #[test]
     fn legacy_template_detail_overrides_bundled_details() {
         let temp_dir = temp_config_dir();
         let config_path = temp_dir.join("config.toml");
@@ -761,5 +914,20 @@ icon = "user-icon"
     #[test]
     fn parse_config_str_rejects_invalid_toml() {
         assert!(parse_config_str("[template\ndetails = ").is_err());
+    }
+
+    #[test]
+    fn bundled_web_players_are_visible_by_default() {
+        let config = parse_config_str("").expect("bundled config parses");
+        for (url, expect_ignore) in [
+            ("https://music.youtube.com/watch?v=x", false),
+            ("https://soundcloud.com/a/b", false),
+            ("https://music.apple.com/us/album/x", false),
+            ("https://www.youtube.com/watch?v=x", true),
+            ("https://example.com/whatever", true),
+        ] {
+            let resolved = config.get_player_config_with_url("firefox", "firefox", Some(url));
+            assert_eq!(resolved.ignore, expect_ignore, "url {url}");
+        }
     }
 }

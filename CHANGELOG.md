@@ -30,6 +30,18 @@ ttl_hours = 24
 
 **Also**
 
+- Native-player presets now use stable keys with explicit
+  `match_pattern` / `match_patterns`, including optional `identity:` and
+  `bus:` selectors. Existing implicit table-key patterns still work with a
+  deprecation warning.
+- `allowed_players` now accepts source-aware `player:`, `web_player:`,
+  `identity:`, and `bus:` selectors. Existing unscoped entries still work
+  with a deprecation warning.
+- Added `web_player_enabled` (default: `true`). Setting it to `false` stops
+  URL and title-suffix website detection so browsers use `[player.*]` rules.
+- Removed `[web_player.default].ignore`, web-player `ignore_unmatched`, and
+  web-player `allow_streaming`. Unmatched websites are always hidden,
+  matched websites always allow streaming, and per-site `ignore` remains.
 - Added bundled player configs for Finamp and tomu.
 - `mprisence web doctor` now warns when your browser's own media
   integration is running alongside the extension, which makes the same
