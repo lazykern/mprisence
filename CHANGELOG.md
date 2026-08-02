@@ -2,12 +2,44 @@
 
 ## [Unreleased]
 
-### Added
+**Any site can now show up in Discord, and cover art is faster.**
 
-- `mprisence config ui` - local settings page for configuring mprisence
-  without touching TOML: toggles and dropdowns for common options, live
-  Discord-status preview, per-player show/hide switches, and a raw config
-  editor under Advanced. Changes apply instantly via hot-reload.
+**Media from unsupported sites**
+
+The mprisence bridge browser extension can now pick up media from sites it has no
+dedicated support for, reading whatever the page reports plus its
+video/audio player. It's off by default: click the extension's toolbar
+icon to open its settings and turn it on. Enabling it asks for access to
+all sites, which is what makes it work everywhere.
+
+**Faster, tidier cover art**
+
+- The same artwork arriving from different places now reuses one cached
+  upload instead of being uploaded again, so covers appear sooner.
+- Embedded artwork in local files is only read when it's actually
+  needed. Large libraries use noticeably less memory and CPU.
+- Cache size limits are configurable, and the cache no longer holds on
+  to space it should have freed:
+
+```toml
+[cover.cache]
+max_size_mb = 32
+max_entries = 1024
+ttl_hours = 24
+```
+
+**Also**
+
+- Added bundled player configs for Finamp and tomu.
+- `mprisence web doctor` now warns when your browser's own media
+  integration is running alongside the extension, which makes the same
+  song show up twice.
+- Fixed local files whose paths contain special characters being
+  skipped for metadata and cover art.
+- Fixed player controls occasionally not reaching the page in Firefox.
+- Clearer wording in the extension's settings and warnings.
+- `mprisence config show` is the explicit name for what `mprisence
+  config` already printed.
 
 ## [1.7.0] - 2026-06-17
 
