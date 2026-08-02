@@ -655,6 +655,43 @@ mod tests {
     }
 
     #[test]
+    fn bundled_defaults_include_cover_cache_limits() {
+        let config = parse_config_str("").expect("config should load");
+
+        assert_eq!(config.cover.cache.max_size_mb, 32);
+        assert_eq!(config.cover.cache.max_entries, 1024);
+        assert_eq!(config.cover.cache.ttl_hours, 24);
+    }
+
+    #[test]
+    fn user_can_override_cover_cache_limits() {
+        let config = parse_config_str(
+            r#"
+[cover.cache]
+max_size_mb = 64
+max_entries = 2048
+ttl_hours = 72
+"#,
+        )
+        .expect("config should load");
+
+        assert_eq!(config.cover.cache.max_size_mb, 64);
+        assert_eq!(config.cover.cache.max_entries, 2048);
+        assert_eq!(config.cover.cache.ttl_hours, 72);
+    }
+
+    #[test]
+    fn cover_cache_limits_must_be_positive() {
+        for key in ["max_size_mb", "max_entries", "ttl_hours"] {
+            let source = format!("[cover.cache]\n{key} = 0\n");
+            assert!(
+                parse_config_str(&source).is_err(),
+                "{key}=0 should be rejected"
+            );
+        }
+    }
+
+    #[test]
     fn legacy_template_detail_overrides_bundled_details() {
         let temp_dir = temp_config_dir();
         let config_path = temp_dir.join("config.toml");

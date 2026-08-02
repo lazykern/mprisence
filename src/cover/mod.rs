@@ -20,7 +20,6 @@ use error::CoverArtError;
 use providers::{create_shared_client, CacheKeyScope, CoverArtProvider, CoverResult};
 use sources::{search_local_cover_art, ArtSource};
 
-const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 24 hours
 const CACHE_VALIDATION_INTERVAL: Duration = Duration::from_secs(60 * 60); // 1 hour
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,7 +61,9 @@ impl CoverManager {
     pub fn new(config: &Arc<config::ConfigManager>) -> Result<Self, CoverArtError> {
         info!("Initializing cover art manager");
         let cover_config = config.cover_config();
-        let cache = Arc::new(CoverCache::new(CACHE_TTL)?);
+        let cache = CoverCache::new(cover_config.cache)?;
+        cache.clean()?;
+        let cache = Arc::new(cache);
         let artwork_slots = Arc::new(Semaphore::new(1));
         let mut providers: Vec<Box<dyn CoverArtProvider>> = Vec::new();
 
@@ -828,7 +829,7 @@ impl CoverManager {
 
 pub async fn clean_cache() -> Result<(), CoverArtError> {
     info!("Starting periodic cache cleanup");
-    let cache = CoverCache::new(CACHE_TTL)?;
+    let cache = CoverCache::new(config::get_config().cover_config().cache)?;
     let cleaned_result = spawn_blocking(move || cache.clean())
         .await
         .map_err(|e| CoverArtError::other(format!("Cache cleanup task failed: {}", e)))?;

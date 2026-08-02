@@ -154,6 +154,16 @@
 # for local cover art. 0 means only search in the same directory.
 # local_search_depth = 2
 
+[cover.cache]
+# Maximum total disk usage in MiB. The oldest entries are evicted first.
+# max_size_mb = 32
+
+# Maximum number of logical cache entries.
+# max_entries = 1024
+
+# Maximum time an entry remains cached, in hours.
+# ttl_hours = 24
+
 [cover.provider]
 # Cover art providers (in order of preference)
 # "catbox"     - Upload using Catbox (optionally via temp Litterbox)

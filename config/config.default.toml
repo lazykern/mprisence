@@ -21,6 +21,11 @@ default = "listening"
 file_names = ["cover", "folder", "front", "album", "art"]
 local_search_depth = 2
 
+[cover.cache]
+max_size_mb = 32
+max_entries = 1024
+ttl_hours = 24
+
 [cover.provider]
 provider = ["catbox", "musicbrainz"]
 
@@ -338,4 +343,3 @@ title_suffix = " - YouTube"
 app_id = "1301894190904639559"
 icon = "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icons/web-player/youtube.png"
 ignore = true
-

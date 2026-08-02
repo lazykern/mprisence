@@ -380,6 +380,12 @@ impl Command {
                     print_key_value("imgbb_api_key", key_state);
                     print_key_value("mb_min_score", cover_config.provider.musicbrainz.min_score);
                     print_key_value("local_search_depth", cover_config.local_search_depth);
+                    print_key_value(
+                        "cache_max_size",
+                        format!("{} MiB", cover_config.cache.max_size_mb),
+                    );
+                    print_key_value("cache_max_entries", cover_config.cache.max_entries);
+                    print_key_value("cache_ttl", format!("{} h", cover_config.cache.ttl_hours));
                     print_key_value("file_names", format_vector(&cover_config.file_names));
 
                     let template_config = config.template_config();

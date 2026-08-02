@@ -49,6 +49,9 @@ const DEFAULT_TEMPLATE_SMALL_TEXT: &str = "{{{player}}}";
 const DEFAULT_COVER_FILE_NAMES: [&str; 5] = ["cover", "folder", "front", "album", "art"];
 const DEFAULT_COVER_PROVIDERS: [&str; 2] = ["catbox", "musicbrainz"];
 const DEFAULT_COVER_LOCAL_SEARCH_DEPTH: usize = 2;
+const DEFAULT_COVER_CACHE_MAX_SIZE_MB: u64 = 32;
+const DEFAULT_COVER_CACHE_MAX_ENTRIES: usize = 1024;
+const DEFAULT_COVER_CACHE_TTL_HOURS: u64 = 24;
 const DEFAULT_MUSICBRAINZ_MIN_SCORE: u8 = 95;
 const DEFAULT_CATBOX_USE_LITTER: bool = true;
 const DEFAULT_CATBOX_LITTER_HOURS: u8 = 24;
@@ -1321,6 +1324,9 @@ pub struct CoverConfig {
 
     #[serde(default = "default_cover_local_search_depth")]
     pub local_search_depth: usize,
+
+    #[serde(default)]
+    pub cache: CoverCacheConfig,
 }
 
 fn default_cover_file_names() -> Vec<String> {
@@ -1340,6 +1346,72 @@ impl Default for CoverConfig {
             file_names: default_cover_file_names(),
             provider: CoverProviderConfig::default(),
             local_search_depth: default_cover_local_search_depth(),
+            cache: CoverCacheConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct CoverCacheConfig {
+    #[serde(
+        default = "default_cover_cache_max_size_mb",
+        deserialize_with = "deserialize_positive_u64"
+    )]
+    pub max_size_mb: u64,
+
+    #[serde(
+        default = "default_cover_cache_max_entries",
+        deserialize_with = "deserialize_positive_usize"
+    )]
+    pub max_entries: usize,
+
+    #[serde(
+        default = "default_cover_cache_ttl_hours",
+        deserialize_with = "deserialize_positive_u64"
+    )]
+    pub ttl_hours: u64,
+}
+
+fn default_cover_cache_max_size_mb() -> u64 {
+    DEFAULT_COVER_CACHE_MAX_SIZE_MB
+}
+
+fn default_cover_cache_max_entries() -> usize {
+    DEFAULT_COVER_CACHE_MAX_ENTRIES
+}
+
+fn default_cover_cache_ttl_hours() -> u64 {
+    DEFAULT_COVER_CACHE_TTL_HOURS
+}
+
+fn deserialize_positive_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = u64::deserialize(deserializer)?;
+    if value == 0 {
+        return Err(serde::de::Error::custom("must be greater than zero"));
+    }
+    Ok(value)
+}
+
+fn deserialize_positive_usize<'de, D>(deserializer: D) -> Result<usize, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = usize::deserialize(deserializer)?;
+    if value == 0 {
+        return Err(serde::de::Error::custom("must be greater than zero"));
+    }
+    Ok(value)
+}
+
+impl Default for CoverCacheConfig {
+    fn default() -> Self {
+        Self {
+            max_size_mb: default_cover_cache_max_size_mb(),
+            max_entries: default_cover_cache_max_entries(),
+            ttl_hours: default_cover_cache_ttl_hours(),
         }
     }
 }

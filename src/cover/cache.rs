@@ -8,10 +8,10 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use crate::config::schema::CoverCacheConfig;
 use crate::cover::error::CoverArtError;
 
-const MAX_CACHE_ENTRIES: usize = 1024;
-const MAX_CACHE_SIZE_BYTES: u64 = 32 * 1024 * 1024; // 32 MB soft limit
+const MEBIBYTE: u64 = 1024 * 1024;
 pub const MAX_CACHED_IMAGE_BYTES: usize = 8 * 1024 * 1024; // 8 MB per entry cap
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -40,6 +40,8 @@ struct CacheUsage {
 pub struct CoverCache {
     cache_dir: PathBuf,
     ttl: Duration,
+    max_entries: usize,
+    max_size_bytes: u64,
     usage: Mutex<CacheUsage>,
 }
 
@@ -115,6 +117,16 @@ impl CoverCache {
             return Ok(None);
         }
 
+        if data.len() as u64 > self.max_size_bytes {
+            warn!(
+                "Cached payload for key {} exceeds configured cache size ({} bytes > {} bytes)",
+                key,
+                data.len(),
+                self.max_size_bytes
+            );
+            return Ok(None);
+        }
+
         let file_name = Self::data_file_name(key);
         let path = self.data_path_from_name(&file_name);
         trace!(
@@ -163,12 +175,19 @@ impl CoverCache {
         Ok(None)
     }
 
-    pub fn new(ttl: Duration) -> Result<Self, CoverArtError> {
+    pub fn new(config: CoverCacheConfig) -> Result<Self, CoverArtError> {
+        Self::new_in(Self::get_cache_directory()?, config)
+    }
+
+    fn new_in(cache_dir: PathBuf, config: CoverCacheConfig) -> Result<Self, CoverArtError> {
+        let ttl = Duration::from_secs(config.ttl_hours.saturating_mul(60 * 60));
+        let max_size_bytes = config.max_size_mb.saturating_mul(MEBIBYTE);
         trace!(
-            "Creating new cover cache instance with TTL: {}s",
-            ttl.as_secs()
+            "Creating cover cache with TTL {}s, {} entry limit, and {} byte limit",
+            ttl.as_secs(),
+            config.max_entries,
+            max_size_bytes
         );
-        let cache_dir = Self::get_cache_directory()?;
 
         Self::ensure_directory(&cache_dir)?;
         debug!("Initialized cover cache in directory: {:?}", cache_dir);
@@ -176,6 +195,8 @@ impl CoverCache {
         let cache = Self {
             cache_dir,
             ttl,
+            max_entries: config.max_entries,
+            max_size_bytes,
             usage: Mutex::new(CacheUsage::default()),
         };
         cache.recalculate_usage()?;
@@ -506,6 +527,7 @@ impl CoverCache {
             }
         }
 
+        self.enforce_limits()?;
         debug!("Cache cleanup completed, removed {} entries", cleaned);
         Ok(cleaned)
     }
@@ -562,13 +584,13 @@ impl CoverCache {
             entries.push((path, modified, len));
         }
 
-        if entries.len() <= MAX_CACHE_ENTRIES && total_size <= MAX_CACHE_SIZE_BYTES {
+        if entries.len() <= self.max_entries && total_size <= self.max_size_bytes {
             return Ok(());
         }
 
         entries.sort_by(|a, b| a.1.cmp(&b.1));
 
-        while entries.len() > MAX_CACHE_ENTRIES || total_size > MAX_CACHE_SIZE_BYTES {
+        while entries.len() > self.max_entries || total_size > self.max_size_bytes {
             if entries.is_empty() {
                 break;
             }
@@ -590,7 +612,7 @@ impl CoverCache {
 
     fn usage_exceeds_limits(&self) -> bool {
         let usage = self.usage.lock().unwrap();
-        usage.entries > MAX_CACHE_ENTRIES || usage.bytes > MAX_CACHE_SIZE_BYTES
+        usage.entries > self.max_entries || usage.bytes > self.max_size_bytes
     }
 
     fn adjust_usage(&self, entries_delta: isize, bytes_delta: i64) {
@@ -660,5 +682,132 @@ impl CoverCache {
         let mut lock = self.usage.lock().unwrap();
         *lock = usage;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_cache_dir() -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time went backwards")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "mprisence-cover-cache-test-{}-{}",
+            std::process::id(),
+            unique
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        dir
+    }
+
+    fn cache_config(max_size_mb: u64, max_entries: usize) -> CoverCacheConfig {
+        CoverCacheConfig {
+            max_size_mb,
+            max_entries,
+            ttl_hours: 24,
+        }
+    }
+
+    #[test]
+    fn configured_entry_limit_is_enforced() {
+        let dir = temp_cache_dir();
+        let cache = CoverCache::new_in(dir.clone(), cache_config(32, 1)).expect("create cache");
+
+        cache
+            .store_with_key("first", "test", "https://example.com/first", None, None)
+            .expect("store first entry");
+        cache
+            .store_with_key("second", "test", "https://example.com/second", None, None)
+            .expect("store second entry");
+
+        let usage = cache.usage.lock().expect("read cache usage");
+        assert_eq!(usage.entries, 1);
+        drop(usage);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn configured_size_limit_is_enforced() {
+        let dir = temp_cache_dir();
+        let cache = CoverCache::new_in(dir.clone(), cache_config(1, 10)).expect("create cache");
+        let payload = vec![0_u8; 700 * 1024];
+
+        cache
+            .store_with_key(
+                "first",
+                "test",
+                "https://example.com/first",
+                None,
+                Some(&payload),
+            )
+            .expect("store first entry");
+        cache
+            .store_with_key(
+                "second",
+                "test",
+                "https://example.com/second",
+                None,
+                Some(&payload),
+            )
+            .expect("store second entry");
+
+        let usage = cache.usage.lock().expect("read cache usage");
+        assert!(usage.bytes <= MEBIBYTE);
+        assert_eq!(usage.entries, 1);
+        drop(usage);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cleanup_applies_reduced_limits_to_existing_entries() {
+        let dir = temp_cache_dir();
+        let initial = CoverCache::new_in(dir.clone(), cache_config(32, 2)).expect("create cache");
+        initial
+            .store_with_key("first", "test", "https://example.com/first", None, None)
+            .expect("store first entry");
+        initial
+            .store_with_key("second", "test", "https://example.com/second", None, None)
+            .expect("store second entry");
+        drop(initial);
+
+        let reduced = CoverCache::new_in(dir.clone(), cache_config(32, 1)).expect("reopen cache");
+        reduced.clean().expect("clean cache");
+
+        let usage = reduced.usage.lock().expect("read cache usage");
+        assert_eq!(usage.entries, 1);
+        drop(usage);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn oversized_payload_keeps_url_entry_without_bytes() {
+        let dir = temp_cache_dir();
+        let cache = CoverCache::new_in(dir.clone(), cache_config(1, 10)).expect("create cache");
+        let payload = vec![0_u8; 2 * 1024 * 1024];
+
+        cache
+            .store_with_key(
+                "cover",
+                "test",
+                "https://example.com/cover",
+                None,
+                Some(&payload),
+            )
+            .expect("store entry");
+
+        let entry = cache
+            .get_by_key("cover")
+            .expect("read entry")
+            .expect("entry should remain cached");
+        assert!(entry.data_file.is_none());
+        let usage = cache.usage.lock().expect("read cache usage");
+        assert_eq!(usage.entries, 1);
+        assert!(usage.bytes <= MEBIBYTE);
+        drop(usage);
+        let _ = fs::remove_dir_all(dir);
     }
 }
