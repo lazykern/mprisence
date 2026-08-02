@@ -52,8 +52,6 @@ pub enum Command {
 pub enum ConfigCommand {
     /// Print the resolved configuration (default)
     Show,
-    /// Open a local web UI for editing the configuration
-    Ui,
 }
 
 #[derive(Subcommand)]
@@ -336,7 +334,6 @@ impl Command {
                 }
             },
             Command::Config { command } => match command.unwrap_or(ConfigCommand::Show) {
-                ConfigCommand::Ui => return crate::config_ui::serve(),
                 ConfigCommand::Show => {
                     let config = get_config();
                     let config_path = config.config_path();

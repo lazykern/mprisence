@@ -472,6 +472,7 @@ pub(crate) fn load_config_from_file(path: &Path) -> Result<Config, ConfigError> 
 /// Used by the config UI for validation and template preview. Unlike
 /// `load_config_from_file` it skips legacy-key handling and sibling
 /// player-config files - those don't affect template preview.
+#[cfg(test)]
 pub(crate) fn parse_config_str(user_toml: &str) -> Result<Config, ConfigError> {
     let figment = Figment::new()
         .merge(Toml::string(include_str!(

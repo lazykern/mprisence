@@ -177,19 +177,6 @@ curl -o ~/.config/mprisence/config.toml \
   https://raw.githubusercontent.com/lazykern/mprisence/main/config/config.example.toml
 ```
 
-### Config UI
-
-Prefer a GUI? Run:
-
-```bash
-mprisence config ui
-```
-
-This opens a local settings page (localhost only) - toggles and dropdowns for
-the common options, live preview of your Discord status against the currently
-playing track, per-player show/hide switches, and a raw-file editor under
-Advanced. Changes apply instantly; the running daemon hot-reloads the file.
-
 Reference files:
 - [`config/config.example.toml`](./config/config.example.toml) - documented example
 - [`config/config.default.toml`](./config/config.default.toml) - bundled player and web-player presets

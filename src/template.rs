@@ -111,6 +111,7 @@ impl TemplateManager {
     }
 
     /// Create a TemplateManager from raw template strings (tests, config UI preview).
+    #[cfg(test)]
     pub fn new_raw(
         details: &str,
         state: &str,
