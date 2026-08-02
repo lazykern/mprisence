@@ -44,24 +44,10 @@ impl ImgbbProvider {
             format!("{} - {}", artist, title)
         }
     }
-}
 
-#[async_trait]
-impl CoverArtProvider for ImgbbProvider {
-    fn name(&self) -> &'static str {
-        "imgbb"
-    }
-
-    fn supports_source_type(&self, source: &ArtSource) -> bool {
-        matches!(
-            source,
-            ArtSource::Base64(_) | ArtSource::File(_) | ArtSource::Bytes(_)
-        )
-    }
-
-    async fn process(
+    async fn process_source(
         &self,
-        source: ArtSource,
+        source: &ArtSource,
         metadata_source: &MetadataSource,
         cancel: &CancellationToken,
     ) -> Result<Option<CoverResult>, CoverArtError> {
@@ -76,7 +62,6 @@ impl CoverArtProvider for ImgbbProvider {
 
         debug!("Processing cover art with ImgBB provider");
         let image_name = self.generate_image_name(metadata_source);
-
         let mut builder = self.client.upload_builder().name(&image_name);
 
         if self.config.expiration > 0 {
@@ -88,14 +73,14 @@ impl CoverArtProvider for ImgbbProvider {
         }
 
         let response = match source {
-            ArtSource::Base64(data) => builder.data(&data),
-            ArtSource::Bytes(data) => builder.bytes(&data),
+            ArtSource::Base64(data) => builder.data(data),
+            ArtSource::Bytes(data) => builder.bytes(data),
             ArtSource::File(path) => {
                 if cancel.is_cancelled() {
                     debug!("ImgBB cancelled before file read");
                     return Ok(None);
                 }
-                let data = tokio::fs::read(&path).await.map_err(|e| {
+                let data = tokio::fs::read(path).await.map_err(|e| {
                     CoverArtError::provider_error("imgbb", &format!("Failed to read file: {}", e))
                 })?;
                 builder.bytes(&data)
@@ -124,8 +109,40 @@ impl CoverArtProvider for ImgbbProvider {
 
         Ok(url.map(|url| CoverResult {
             url,
-            provider: self.name().to_string(),
+            provider: "imgbb".to_string(),
             expiration,
         }))
+    }
+}
+
+#[async_trait]
+impl CoverArtProvider for ImgbbProvider {
+    fn name(&self) -> &'static str {
+        "imgbb"
+    }
+
+    fn supports_source_type(&self, source: &ArtSource) -> bool {
+        matches!(
+            source,
+            ArtSource::Base64(_) | ArtSource::File(_) | ArtSource::Bytes(_)
+        )
+    }
+
+    async fn process(
+        &self,
+        source: ArtSource,
+        metadata_source: &MetadataSource,
+        cancel: &CancellationToken,
+    ) -> Result<Option<CoverResult>, CoverArtError> {
+        self.process_source(&source, metadata_source, cancel).await
+    }
+
+    async fn process_borrowed(
+        &self,
+        source: &ArtSource,
+        metadata_source: &MetadataSource,
+        cancel: &CancellationToken,
+    ) -> Result<Option<CoverResult>, CoverArtError> {
+        self.process_source(source, metadata_source, cancel).await
     }
 }

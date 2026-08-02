@@ -1,8 +1,8 @@
 use log::{debug, info, trace, warn};
 use reqwest::StatusCode;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
+use tokio::sync::Semaphore;
 use tokio::task::spawn_blocking;
 use tokio_util::sync::CancellationToken;
 use url::{Host, Url};
@@ -54,6 +54,8 @@ pub struct CoverManager {
     providers: Vec<Box<dyn CoverArtProvider>>,
     cache: Arc<CoverCache>,
     config: Arc<config::ConfigManager>,
+    artwork_slots: Arc<Semaphore>,
+    upload_slots: Arc<Semaphore>,
 }
 
 impl CoverManager {
@@ -61,6 +63,7 @@ impl CoverManager {
         info!("Initializing cover art manager");
         let cover_config = config.cover_config();
         let cache = Arc::new(CoverCache::new(CACHE_TTL)?);
+        let artwork_slots = Arc::new(Semaphore::new(1));
         let mut providers: Vec<Box<dyn CoverArtProvider>> = Vec::new();
 
         for provider_name in &cover_config.provider.provider {
@@ -85,9 +88,12 @@ impl CoverManager {
                 }
                 "catbox" => {
                     debug!("Adding Catbox provider");
-                    providers.push(Box::new(providers::catbox::CatboxProvider::with_config(
-                        cover_config.provider.catbox.clone(),
-                    )));
+                    providers.push(Box::new(
+                        providers::catbox::CatboxProvider::with_resize_slots(
+                            cover_config.provider.catbox.clone(),
+                            artwork_slots.clone(),
+                        ),
+                    ));
                 }
                 unknown => warn!("Skipping unknown provider: {}", unknown),
             }
@@ -101,6 +107,8 @@ impl CoverManager {
             providers,
             cache,
             config: config.clone(),
+            artwork_slots,
+            upload_slots: Arc::new(Semaphore::new(1)),
         })
     }
 
@@ -266,7 +274,7 @@ impl CoverManager {
 
     pub async fn get_cover_art(
         &self,
-        source: Option<ArtSource>,
+        mut source: Option<ArtSource>,
         metadata_source: &MetadataSource,
         read_cache: bool,
         cancel: &CancellationToken,
@@ -302,10 +310,7 @@ impl CoverManager {
         }
 
         // Prepare a potentially transformed source for providers
-        let mut source_for_providers = match &recovered_cache_bytes {
-            Some(bytes) => Some(ArtSource::Bytes(bytes.clone())),
-            None => source.clone(),
-        };
+        let mut source_for_providers = recovered_cache_bytes.map(ArtSource::Bytes);
 
         // 2. If we have a direct URL, decide whether to use it or transform
         if let Some(ArtSource::Url(ref url)) = source.as_ref() {
@@ -361,15 +366,12 @@ impl CoverManager {
                 );
             }
         }
+        if source_for_providers.is_none() {
+            source_for_providers = source.take();
+        }
 
-        // 3. Try to find local cover art if we have a file path
-        if let Some(path) = metadata_source.url().and_then(|url| {
-            url.strip_prefix("file://")
-                .and_then(|stripped| match urlencoding::decode(stripped) {
-                    Ok(dec) => Some(PathBuf::from(dec.into_owned())),
-                    Err(_) => None,
-                })
-        }) {
+        // 3. Prefer a shared local cover file before opening embedded artwork.
+        if let Some(path) = metadata_source.local_file_path() {
             if let Some(parent) = path.parent() {
                 debug!("Attempting to find local cover art in: {:?}", parent);
                 let cover_config = self.config.cover_config();
@@ -396,14 +398,77 @@ impl CoverManager {
             }
         }
 
-        // 4. Try configured providers with the prepared source (or metadata-only)
-        self.try_providers(
-            source_for_providers.as_ref(),
-            metadata_source,
-            read_cache,
-            cancel,
-        )
+        // 4. Try an explicit MPRIS source or bytes recovered from cache.
+        if source_for_providers.is_some() {
+            if let Some(url) = self
+                .try_providers(
+                    source_for_providers.as_ref(),
+                    metadata_source,
+                    read_cache,
+                    cancel,
+                )
+                .await?
+            {
+                return Ok(Some(url));
+            }
+        }
+
+        // 5. Embedded artwork is the expensive fallback. It is parsed only after
+        // direct, cached, and shared local sources have failed.
+        if let Some(embedded_art) = self.load_embedded_art(metadata_source, cancel).await? {
+            return self
+                .try_providers(Some(&embedded_art), metadata_source, read_cache, cancel)
+                .await;
+        }
+
+        // 6. Providers such as MusicBrainz can still resolve artwork from tags.
+        if source_for_providers.is_none() {
+            return self
+                .try_providers(None, metadata_source, read_cache, cancel)
+                .await;
+        }
+
+        Ok(None)
+    }
+
+    async fn load_embedded_art(
+        &self,
+        metadata_source: &MetadataSource,
+        cancel: &CancellationToken,
+    ) -> Result<Option<ArtSource>, CoverArtError> {
+        if let Some(source) = metadata_source.embedded_art_from_loaded_tag() {
+            return Ok(Some(source));
+        }
+        let Some(path) = metadata_source.local_file_path() else {
+            return Ok(None);
+        };
+        if cancel.is_cancelled() {
+            return Ok(None);
+        }
+
+        let artwork_slot = tokio::select! {
+            permit = self.artwork_slots.clone().acquire_owned() => permit.map_err(|_| {
+                CoverArtError::other("Artwork processing queue closed")
+            })?,
+            _ = cancel.cancelled() => return Ok(None),
+        };
+        let display_path = path.clone();
+        let result = spawn_blocking(move || {
+            let _artwork_slot = artwork_slot;
+            MetadataSource::embedded_art_from_path(&path)
+        })
         .await
+        .map_err(|e| CoverArtError::other(format!("Embedded art task failed: {e}")))?;
+        match result {
+            Ok(source) => Ok(source),
+            Err(err) => {
+                warn!(
+                    "Failed to read embedded cover art from {:?}: {}",
+                    display_path, err
+                );
+                Ok(None)
+            }
+        }
     }
 
     async fn try_providers(
@@ -442,10 +507,21 @@ impl CoverManager {
             }
 
             debug!("Attempting cover art retrieval with {}", provider.name());
-            match provider
-                .process(process_source.clone(), metadata_source, cancel)
-                .await
-            {
+            let upload_slot = if provider.cache_key_scope() == CacheKeyScope::Source {
+                Some(tokio::select! {
+                    permit = self.upload_slots.clone().acquire_owned() => permit.map_err(|_| {
+                        CoverArtError::other("Cover upload queue closed")
+                    })?,
+                    _ = cancel.cancelled() => return Ok(None),
+                })
+            } else {
+                None
+            };
+            let provider_result = provider
+                .process_borrowed(process_source, metadata_source, cancel)
+                .await;
+            drop(upload_slot);
+            match provider_result {
                 Ok(Some(result)) => {
                     let CoverResult {
                         url,

@@ -79,4 +79,13 @@ pub trait CoverArtProvider: Send + Sync {
         metadata_source: &MetadataSource,
         cancel: &CancellationToken,
     ) -> Result<Option<CoverResult>, CoverArtError>;
+
+    async fn process_borrowed(
+        &self,
+        source: &ArtSource,
+        metadata_source: &MetadataSource,
+        cancel: &CancellationToken,
+    ) -> Result<Option<CoverResult>, CoverArtError> {
+        self.process(source.clone(), metadata_source, cancel).await
+    }
 }

@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::cover::sources::ArtSource;
@@ -7,11 +9,13 @@ use crate::utils::{
 };
 use blake3::Hasher;
 use lofty::{
+    config::ParseOptions,
     file::{AudioFile, TaggedFile, TaggedFileExt},
     prelude::*,
+    probe::Probe,
     properties::FileProperties,
 };
-use log::{trace, warn};
+use log::trace;
 use mpris::Metadata;
 use serde::Serialize;
 use url::Url;
@@ -189,8 +193,8 @@ pub struct MetadataSource {
     override_url: Option<String>,
     /// Memoized cover-cache key. Computed once via `generate_cache_key()`
     /// and reused across fast-path and slow-path lookups on the same track.
-    cache_key: std::sync::OnceLock<String>,
-    cover_cache_key: std::sync::OnceLock<String>,
+    cache_key: OnceLock<String>,
+    cover_cache_key: OnceLock<String>,
 }
 
 impl MetadataSource {
@@ -199,8 +203,8 @@ impl MetadataSource {
             mpris_metadata,
             tagged_file: lofty_tagged_file,
             override_url: None,
-            cache_key: std::sync::OnceLock::new(),
-            cover_cache_key: std::sync::OnceLock::new(),
+            cache_key: OnceLock::new(),
+            cover_cache_key: OnceLock::new(),
         }
     }
 
@@ -218,25 +222,49 @@ impl MetadataSource {
     }
 
     fn lofty_tag_from_url<S: AsRef<str>>(url: S) -> Result<TaggedFile, String> {
-        let url = Url::parse(url.as_ref()).map_err(|e| e.to_string())?;
-        if url.scheme() == "file" {
-            let encoded_path = url.path();
-            match urlencoding::decode(encoded_path) {
-                Ok(decoded_cow) => {
-                    let decoded_path = decoded_cow.into_owned();
-                    lofty::read_from_path(&decoded_path).map_err(|e| e.to_string())
-                }
-                Err(e) => {
-                    warn!(
-                        "Failed to URL-decode path '{}': {}. Lofty might fail.",
-                        encoded_path, e
-                    );
-                    lofty::read_from_path(encoded_path).map_err(|e| e.to_string())
-                }
-            }
-        } else {
-            Err(format!("Unsupported URL scheme: {}", url.scheme()))
+        let path = Self::local_path_from_url(url.as_ref())?;
+        Probe::open(path)
+            .map_err(|e| e.to_string())?
+            .options(ParseOptions::new().read_cover_art(false))
+            .read()
+            .map_err(|e| e.to_string())
+    }
+
+    fn local_path_from_url(url: &str) -> Result<PathBuf, String> {
+        let url = Url::parse(url).map_err(|e| e.to_string())?;
+        if url.scheme() != "file" {
+            return Err(format!("Unsupported URL scheme: {}", url.scheme()));
         }
+        url.to_file_path()
+            .map_err(|_| format!("Invalid file URL: {url}"))
+    }
+
+    pub(crate) fn local_file_path(&self) -> Option<PathBuf> {
+        self.url()
+            .and_then(|url| Self::local_path_from_url(&url).ok())
+    }
+
+    pub(crate) fn embedded_art_from_loaded_tag(&self) -> Option<ArtSource> {
+        Self::first_picture_bytes(self.tagged_file.as_ref()?).map(ArtSource::Bytes)
+    }
+
+    pub(crate) fn embedded_art_from_path(path: &Path) -> Result<Option<ArtSource>, String> {
+        let mut tagged_file = Probe::open(path)
+            .map_err(|e| e.to_string())?
+            .options(ParseOptions::new().read_properties(false))
+            .read()
+            .map_err(|e| e.to_string())?;
+        let picture = tagged_file.primary_tag_mut().and_then(|tag| {
+            (!tag.pictures().is_empty()).then(|| tag.remove_picture(0).into_data())
+        });
+        Ok(picture.map(ArtSource::Bytes))
+    }
+
+    fn first_picture_bytes(tagged_file: &TaggedFile) -> Option<Vec<u8>> {
+        tagged_file
+            .primary_tag()
+            .and_then(|tag| tag.pictures().first())
+            .map(|picture| picture.data().to_vec())
     }
 
     impl_metadata_getter!(title, "xesam:title", ItemKey::TrackTitle);
@@ -367,18 +395,11 @@ impl MetadataSource {
     pub fn art_source_with_options(&self, options: ArtSourceOptions) -> Option<ArtSource> {
         trace!("Getting art source from metadata");
 
-        let art_url = options
+        options
             .allow_mpris_art_url
             .then(|| self.mpris_metadata.as_ref().and_then(|m| m.art_url()))
-            .flatten();
-        let embedded = self
-            .tagged_file
-            .as_ref()
-            .and_then(|t| t.primary_tag())
-            .and_then(|tag| tag.pictures().first())
-            .map(|picture| picture.data().to_vec());
-
-        select_art_source(art_url, embedded)
+            .flatten()
+            .and_then(ArtSource::from_art_url)
     }
 
     pub fn mpris_metadata(&self) -> Option<&Metadata> {
@@ -652,36 +673,22 @@ impl Default for ArtSourceOptions {
     }
 }
 
-/// Pick the best art source from the available inputs.
-///
-/// Priority:
-/// 1. `mpris:artUrl` if it is an `http(s)://` URL - Discord can consume it
-///    directly without a provider upload.
-/// 2. `mpris:artUrl` for any other scheme (`data:image/...;base64,...`,
-///    `file://`, bare path) - needs upload via the provider chain.
-/// 3. Embedded picture from the local file's tag.
-fn select_art_source(art_url: Option<&str>, embedded_bytes: Option<Vec<u8>>) -> Option<ArtSource> {
-    if let Some(url) = art_url {
-        if let Some(src) = ArtSource::from_art_url(url) {
-            return Some(src);
-        }
-    }
-
-    embedded_bytes.map(ArtSource::Bytes)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::select_art_source;
     use crate::cover::sources::ArtSource;
+    use lofty::file::TaggedFileExt;
+    use mpris::Metadata;
+    use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::{fs, time::SystemTime};
+    use url::Url;
 
     const PLASMA_FILE: &str = "file:///tmp/plasma-browser-integration_artwork_zmXyTR.jpg";
 
     #[test]
     fn remote_http_art_url_wins() {
         let curated = "https://cdn.example.com/cover.png";
-        let got = select_art_source(Some(curated), None);
+        let got = metadata_with_art_url(curated).art_source_with_options(Default::default());
         match got {
             Some(ArtSource::Url(url)) => assert_eq!(url, curated),
             other => panic!("expected curated http URL, got {other:?}"),
@@ -690,7 +697,7 @@ mod tests {
 
     #[test]
     fn file_art_url_keeps_file() {
-        let got = select_art_source(Some(PLASMA_FILE), None);
+        let got = metadata_with_art_url(PLASMA_FILE).art_source_with_options(Default::default());
         match got {
             Some(ArtSource::File(path)) => assert_eq!(
                 path,
@@ -701,19 +708,16 @@ mod tests {
     }
 
     #[test]
-    fn no_art_url_with_embedded_returns_bytes() {
-        let bytes = vec![1u8, 2, 3, 4];
-        let got = select_art_source(None, Some(bytes.clone()));
-        match got {
-            Some(ArtSource::Bytes(b)) => assert_eq!(b, bytes),
-            other => panic!("expected embedded bytes, got {other:?}"),
-        }
+    fn no_art_url_defers_embedded_art() {
+        let got = super::MetadataSource::new(Some(Metadata::new("/test/1")), None)
+            .art_source_with_options(Default::default());
+        assert!(got.is_none());
     }
 
     #[test]
     fn data_art_url_falls_back_to_base64() {
         let data_uri = "data:image/png;base64,iVBORw0KGgo=";
-        let got = select_art_source(Some(data_uri), None);
+        let got = metadata_with_art_url(data_uri).art_source_with_options(Default::default());
         match got {
             Some(ArtSource::Base64(payload)) => assert_eq!(payload, "iVBORw0KGgo="),
             other => panic!("expected base64 source, got {other:?}"),
@@ -722,6 +726,81 @@ mod tests {
 
     #[test]
     fn all_inputs_empty_returns_none() {
-        assert!(select_art_source(None, None).is_none());
+        let source = super::MetadataSource::new(None, None);
+        assert!(source.art_source_with_options(Default::default()).is_none());
+    }
+
+    #[test]
+    fn embedded_art_is_loaded_only_by_the_fallback_reader() {
+        let picture = b"embedded-picture";
+        let path = temp_flac_path();
+        fs::write(&path, minimal_flac_with_picture(picture)).unwrap();
+
+        let mut values = HashMap::new();
+        values.insert(
+            "xesam:url".to_string(),
+            Url::from_file_path(&path).unwrap().to_string().into(),
+        );
+        let normal = super::MetadataSource::from_mpris_with_override(Metadata::from(values), None);
+        let normal = normal.lofty_tag().unwrap();
+        assert!(normal.tags().iter().all(|tag| tag.pictures().is_empty()));
+
+        let embedded = super::MetadataSource::embedded_art_from_path(&path)
+            .unwrap()
+            .unwrap();
+        fs::remove_file(path).unwrap();
+
+        match embedded {
+            ArtSource::Bytes(bytes) => assert_eq!(bytes, picture),
+            other => panic!("expected embedded bytes, got {other:?}"),
+        }
+    }
+
+    fn metadata_with_art_url(art_url: &str) -> super::MetadataSource {
+        let mut data = HashMap::new();
+        data.insert("mpris:artUrl".to_string(), art_url.into());
+        super::MetadataSource::new(Some(Metadata::from(data)), None)
+    }
+
+    fn temp_flac_path() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "mprisence-lazy-cover-{}-{}.flac",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    fn minimal_flac_with_picture(picture: &[u8]) -> Vec<u8> {
+        let mut picture_block = Vec::new();
+        push_u32(&mut picture_block, 3);
+        push_u32(&mut picture_block, 9);
+        picture_block.extend_from_slice(b"image/png");
+        push_u32(&mut picture_block, 0);
+        push_u32(&mut picture_block, 1);
+        push_u32(&mut picture_block, 1);
+        push_u32(&mut picture_block, 24);
+        push_u32(&mut picture_block, 0);
+        push_u32(&mut picture_block, picture.len() as u32);
+        picture_block.extend_from_slice(picture);
+
+        let mut flac = b"fLaC".to_vec();
+        flac.extend_from_slice(&[0, 0, 0, 34]);
+        flac.extend_from_slice(&[0; 34]);
+        flac.push(0x86);
+        let len = picture_block.len() as u32;
+        flac.extend_from_slice(&[
+            ((len >> 16) & 0xff) as u8,
+            ((len >> 8) & 0xff) as u8,
+            (len & 0xff) as u8,
+        ]);
+        flac.extend_from_slice(&picture_block);
+        flac
+    }
+
+    fn push_u32(buffer: &mut Vec<u8>, value: u32) {
+        buffer.extend_from_slice(&value.to_be_bytes());
     }
 }

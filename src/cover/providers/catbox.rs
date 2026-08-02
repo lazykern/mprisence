@@ -1,12 +1,14 @@
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use catbox::{file, litter};
-use image::{imageops::FilterType, ImageFormat};
+use image::{imageops::FilterType, ImageFormat, ImageReader, Limits};
 use log::{debug, info, trace, warn};
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::fs;
+use tokio::sync::Semaphore;
 use tokio::task::spawn_blocking;
 
 use crate::config::schema::CatboxConfig;
@@ -19,12 +21,22 @@ use super::{CoverArtProvider, CoverResult};
 
 pub struct CatboxProvider {
     config: CatboxConfig,
+    resize_slots: Arc<Semaphore>,
 }
 
 impl CatboxProvider {
     pub fn with_config(config: CatboxConfig) -> Self {
         info!("Initializing Catbox provider");
-        Self { config }
+        Self {
+            config,
+            resize_slots: Arc::new(Semaphore::new(1)),
+        }
+    }
+
+    pub(crate) fn with_resize_slots(config: CatboxConfig, resize_slots: Arc<Semaphore>) -> Self {
+        let mut provider = Self::with_config(config);
+        provider.resize_slots = resize_slots;
+        provider
     }
 
     fn provider_label(&self) -> &'static str {
@@ -170,8 +182,29 @@ impl CatboxProvider {
             return Err(CoverArtError::other("cancelled"));
         }
 
+        let resize_slot = tokio::select! {
+            permit = self.resize_slots.clone().acquire_owned() => permit.map_err(|_| {
+                CoverArtError::provider_error(provider, "image resize queue closed")
+            })?,
+            _ = cancel.cancelled() => return Err(CoverArtError::other("cancelled")),
+        };
+
         spawn_blocking(move || -> Result<Vec<u8>, CoverArtError> {
-            let img = image::load_from_memory(&bytes).map_err(|e| {
+            let _resize_slot = resize_slot;
+            let mut reader = ImageReader::new(Cursor::new(bytes.as_slice()))
+                .with_guessed_format()
+                .map_err(|e| {
+                    CoverArtError::provider_error(
+                        provider,
+                        &format!("image format detection failed: {e}"),
+                    )
+                })?;
+            let mut limits = Limits::default();
+            limits.max_image_width = Some(8192);
+            limits.max_image_height = Some(8192);
+            limits.max_alloc = Some(128 * 1024 * 1024);
+            reader.limits(limits);
+            let img = reader.decode().map_err(|e| {
                 CoverArtError::provider_error(provider, &format!("image decode failed: {e}"))
             })?;
             let (w, h) = (img.width(), img.height());
@@ -224,6 +257,59 @@ impl CatboxProvider {
             .decode(data.as_bytes())
             .map_err(|e| CoverArtError::provider_error(self.provider_label(), &format!("{e}")))
     }
+
+    async fn process_source(
+        &self,
+        source: &ArtSource,
+        cancel: &CancellationToken,
+    ) -> Result<Option<CoverResult>, CoverArtError> {
+        if cancel.is_cancelled() {
+            debug!("{} provider cancelled before upload", self.provider_label());
+            return Ok(None);
+        }
+        debug!(
+            "Processing cover art with {} provider",
+            self.provider_label()
+        );
+
+        let url = match source {
+            ArtSource::File(path) => {
+                let bytes = fs::read(path).await.map_err(|e| {
+                    CoverArtError::provider_error(
+                        self.provider_label(),
+                        &format!("read {:?}: {e}", path),
+                    )
+                })?;
+                Some(self.upload_from_bytes(&bytes, cancel).await?)
+            }
+            ArtSource::Bytes(data) => Some(self.upload_from_bytes(data, cancel).await?),
+            ArtSource::Base64(data) => {
+                let bytes = self.base64_to_bytes(data)?;
+                Some(self.upload_from_bytes(&bytes, cancel).await?)
+            }
+            ArtSource::Url(_) => return Ok(None),
+        };
+
+        if let Some(ref url) = url {
+            info!(
+                "{} provided hosted cover art: {}",
+                self.provider_label(),
+                url
+            );
+        }
+
+        let expiration = if self.config.use_litter {
+            Some(Duration::from_secs(self.litter_time() as u64 * 60 * 60))
+        } else {
+            None
+        };
+
+        Ok(url.map(|url| CoverResult {
+            url,
+            provider: self.provider_label().to_string(),
+            expiration,
+        }))
+    }
 }
 
 #[async_trait]
@@ -245,47 +331,49 @@ impl CoverArtProvider for CatboxProvider {
         _metadata_source: &MetadataSource,
         cancel: &CancellationToken,
     ) -> Result<Option<CoverResult>, CoverArtError> {
-        if cancel.is_cancelled() {
-            debug!("{} provider cancelled before upload", self.name());
-            return Ok(None);
-        }
-        debug!("Processing cover art with {} provider", self.name());
+        self.process_source(&source, cancel).await
+    }
 
-        let url = match source {
-            ArtSource::File(path) => {
-                // Route through the bytes path so resize/recompression applies
-                // uniformly regardless of whether the source was a file or
-                // inline bytes from MPRIS.
-                let bytes = fs::read(&path).await.map_err(|e| {
-                    CoverArtError::provider_error(
-                        self.provider_label(),
-                        &format!("read {:?}: {e}", path),
-                    )
-                })?;
-                Some(self.upload_from_bytes(&bytes, cancel).await?)
-            }
-            ArtSource::Bytes(data) => Some(self.upload_from_bytes(&data, cancel).await?),
-            ArtSource::Base64(data) => {
-                let bytes = self.base64_to_bytes(&data)?;
-                Some(self.upload_from_bytes(&bytes, cancel).await?)
-            }
-            ArtSource::Url(_) => return Ok(None),
-        };
+    async fn process_borrowed(
+        &self,
+        source: &ArtSource,
+        _metadata_source: &MetadataSource,
+        cancel: &CancellationToken,
+    ) -> Result<Option<CoverResult>, CoverArtError> {
+        self.process_source(source, cancel).await
+    }
+}
 
-        if let Some(ref url) = url {
-            info!("{} provided hosted cover art: {}", self.name(), url);
-        }
+#[cfg(test)]
+mod tests {
+    use super::CatboxProvider;
+    use crate::config::schema::CatboxConfig;
+    use image::{DynamicImage, ImageFormat, Rgb, RgbImage};
+    use std::io::Cursor;
+    use tokio_util::sync::CancellationToken;
 
-        let expiration = if self.config.use_litter {
-            Some(Duration::from_secs(self.litter_time() as u64 * 60 * 60))
-        } else {
-            None
-        };
+    #[tokio::test]
+    async fn large_upload_images_are_resized() {
+        let image = RgbImage::from_fn(1024, 1024, |x, y| {
+            let value = x
+                .wrapping_mul(1_664_525)
+                .wrapping_add(y.wrapping_mul(1_013_904_223));
+            Rgb([value as u8, (value >> 8) as u8, (value >> 16) as u8])
+        });
+        let mut encoded = Vec::new();
+        DynamicImage::ImageRgb8(image)
+            .write_to(&mut Cursor::new(&mut encoded), ImageFormat::Png)
+            .unwrap();
+        assert!(encoded.len() > 256 * 1024);
 
-        Ok(url.map(|url| CoverResult {
-            url,
-            provider: self.name().to_string(),
-            expiration,
-        }))
+        let provider = CatboxProvider::with_config(CatboxConfig::default());
+        let resized = provider
+            .prepare_upload_bytes(encoded, &CancellationToken::new())
+            .await
+            .unwrap();
+        let decoded = image::load_from_memory(&resized).unwrap();
+
+        assert!(decoded.width() <= 512);
+        assert!(decoded.height() <= 512);
     }
 }

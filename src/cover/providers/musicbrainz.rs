@@ -635,4 +635,14 @@ impl CoverArtProvider for MusicbrainzProvider {
         debug!("MusicBrainz provider found no suitable cover art");
         Ok(None)
     }
+
+    async fn process_borrowed(
+        &self,
+        _source: &ArtSource,
+        metadata_source: &MetadataSource,
+        cancel: &CancellationToken,
+    ) -> Result<Option<CoverResult>, CoverArtError> {
+        self.process(ArtSource::Url(String::new()), metadata_source, cancel)
+            .await
+    }
 }
