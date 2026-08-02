@@ -2,24 +2,40 @@
 
 ## [Unreleased]
 
-**Any site can now show up in Discord, and cover art is faster.**
+### Breaking config changes
 
-**Media from unsupported sites**
+- Removed `ignore` from `[web_player.default]`. Set top-level
+  `web_player_enabled = false` to disable website detection.
+- Removed web-player `ignore_unmatched`. Unmatched websites are now always
+  hidden.
+- Removed web-player `allow_streaming`. Matched websites now always allow
+  streaming; set per-site `ignore = true` to hide a site.
 
-The mprisence bridge browser extension can now pick up media from sites it has no
-dedicated support for, reading whatever the page reports plus its
-video/audio player. It's off by default: click the extension's toolbar
-icon to open its settings and turn it on. Enabling it asks for access to
-all sites, which is what makes it work everywhere.
+```toml
+# Disable website detection.
+web_player_enabled = false
 
-**Faster, tidier cover art**
+# Hide one site.
+[web_player.youtube_music]
+ignore = true
+```
 
-- The same artwork arriving from different places now reuses one cached
-  upload instead of being uploaded again, so covers appear sooner.
-- Embedded artwork in local files is only read when it's actually
-  needed. Large libraries use noticeably less memory and CPU.
-- Cache size limits are configurable, and the cache no longer holds on
-  to space it should have freed:
+### Added
+
+- Opt-in generic media detection for unsupported sites in the browser
+  extension. Enabling it requires all-sites permission. Unbundled sites also
+  need a matching `[web_player.*]` entry to appear in Discord.
+
+```toml
+[web_player.my_site]
+match_pattern = "mysite.com"
+name = "My Site"
+app_id = "YOUR_DISCORD_APP_ID"
+ignore = false
+```
+
+- Configurable cover-cache size, entry-count, and TTL limits under
+  `[cover.cache]`.
 
 ```toml
 [cover.cache]
@@ -28,30 +44,41 @@ max_entries = 1024
 ttl_hours = 24
 ```
 
-**Also**
-
-- Native-player presets now use stable keys with explicit
-  `match_pattern` / `match_patterns`, including optional `identity:` and
-  `bus:` selectors. Existing implicit table-key patterns still work with a
+- `player:`, `web_player:`, `identity:`, and `bus:` selectors for
+  `allowed_players`. Existing unscoped entries remain supported with a
   deprecation warning.
-- `allowed_players` now accepts source-aware `player:`, `web_player:`,
-  `identity:`, and `bus:` selectors. Existing unscoped entries still work
+
+```toml
+allowed_players = ["player:vlc", "web_player:youtube_music", "bus:*mpdris2*"]
+```
+
+- Bundled player configs for Finamp and tomu.
+- `mprisence web doctor` warns about browser media integrations that can
+  create duplicate players alongside the extension.
+- `mprisence config show`; `mprisence config` remains an alias.
+
+### Changed
+
+- Cached uploads are reused when the same artwork arrives from different
+  sources.
+- Embedded artwork is loaded from local files only when needed.
+- Cache cleanup removes orphaned artwork files.
+- Native-player presets now use stable keys with explicit `match_pattern` or
+  `match_patterns`. Optional `identity:` and `bus:` selectors restrict matching
+  to the identity or bus name; implicit table-key patterns remain supported
   with a deprecation warning.
-- Added `web_player_enabled` (default: `true`). Setting it to `false` stops
-  URL and title-suffix website detection so browsers use `[player.*]` rules.
-- Removed `[web_player.default].ignore`, web-player `ignore_unmatched`, and
-  web-player `allow_streaming`. Unmatched websites are always hidden,
-  matched websites always allow streaming, and per-site `ignore` remains.
-- Added bundled player configs for Finamp and tomu.
-- `mprisence web doctor` now warns when your browser's own media
-  integration is running alongside the extension, which makes the same
-  song show up twice.
-- Fixed local files whose paths contain special characters being
-  skipped for metadata and cover art.
+
+```toml
+[player.vlc]
+match_patterns = ["vlc_media_player", "bus:vlc"]
+show_icon = true
+```
+
+### Fixed
+
+- Fixed metadata and cover-art lookup for local file paths containing special
+  characters.
 - Fixed player controls occasionally not reaching the page in Firefox.
-- Clearer wording in the extension's settings and warnings.
-- `mprisence config show` is the explicit name for what `mprisence
-  config` already printed.
 
 ## [1.7.0] - 2026-06-17
 
