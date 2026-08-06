@@ -18,7 +18,7 @@
     "watch:chromium": "node build.mjs chromium --watch"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.1",
     "@types/webextension-polyfill": "^0.12.0"
   }
 }
