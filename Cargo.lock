@@ -1874,6 +1874,7 @@ dependencies = [
  "blake3",
  "catbox",
  "clap",
+ "dbus",
  "dirs",
  "discord-rich-presence",
  "env_logger",

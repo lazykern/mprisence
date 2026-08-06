@@ -1,15 +1,18 @@
 use std::{collections::HashMap, fmt::Display, time::Duration};
 
 use log::{debug, info, trace};
-use mpris::{DBusError, PlaybackStatus, Player};
+use mpris::PlaybackStatus;
 use smol_str::SmolStr;
 use url::Url;
 
 use crate::utils;
 
+mod client;
 pub mod cmus;
 pub mod events;
 pub mod health;
+
+pub use client::{ClientError, Player, PlayerFinder};
 
 const MPRIS_BUS_PREFIX: &str = "org.mpris.MediaPlayer2.";
 const PLAYERCTLD_NO_ACTIVE_PLAYER_ERROR: &str = "com.github.altdesktop.playerctld.NoActivePlayer";
@@ -353,17 +356,11 @@ pub fn select_winner_idx(candidates: &[PlayerIdentifier], current_bus: Option<&s
     0
 }
 
-pub fn is_playerctld_no_active_error(error: &DBusError) -> bool {
-    match error {
-        DBusError::TransportError(transport_error) => {
-            transport_error.name() == Some(PLAYERCTLD_NO_ACTIVE_PLAYER_ERROR)
-                || transport_error
-                    .message()
-                    .map(|message| message.contains(PLAYERCTLD_NO_ACTIVE_PLAYER_MESSAGE))
-                    .unwrap_or(false)
-        }
-        _ => false,
-    }
+pub fn is_playerctld_no_active_error(error: &ClientError) -> bool {
+    error.name() == Some(PLAYERCTLD_NO_ACTIVE_PLAYER_ERROR)
+        || error
+            .message()
+            .is_some_and(|message| message.contains(PLAYERCTLD_NO_ACTIVE_PLAYER_MESSAGE))
 }
 
 impl PlaybackState {

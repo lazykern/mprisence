@@ -52,7 +52,6 @@ ttl_hours = 24
 allowed_players = ["player:vlc", "web_player:youtube_music", "bus:*mpdris2*"]
 ```
 
-- Bundled player configs for Finamp and tomu.
 - `mprisence web doctor` warns about browser media integrations that can
   create duplicate players alongside the extension.
 - `mprisence config show`; `mprisence config` remains an alias.
@@ -79,6 +78,14 @@ show_icon = true
 - Fixed metadata and cover-art lookup for local file paths containing special
   characters.
 - Fixed player controls occasionally not reaching the page in Firefox.
+
+## What's Changed
+* Add Support for tomu by @6z7y in https://github.com/lazykern/mprisence/pull/86
+* Change app_id in finamp player settings by @anoraktrend in https://github.com/lazykern/mprisence/pull/91
+
+## New Contributors
+* @6z7y made their first contribution in https://github.com/lazykern/mprisence/pull/86
+* @anoraktrend made their first contribution in https://github.com/lazykern/mprisence/pull/91
 
 ## [1.7.0] - 2026-06-17
 

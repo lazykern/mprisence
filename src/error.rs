@@ -1,6 +1,6 @@
 use crate::config;
 use crate::cover;
-use mpris::{DBusError, FindingError};
+use crate::player::ClientError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -17,11 +17,8 @@ pub enum Error {
     #[error("IO error: {0}")]
     IO(#[from] std::io::Error),
 
-    #[error("DBus error: {0}")]
-    DBus(#[from] DBusError),
-
-    #[error("Player finding error: {0}")]
-    PlayerFinding(#[from] FindingError),
+    #[error("MPRIS client error: {0}")]
+    MprisClient(#[from] ClientError),
 }
 
 #[derive(Error, Debug)]
@@ -35,14 +32,11 @@ pub enum MprisenceError {
     #[error("Failed to initialize cover art: {0}")]
     CoverArt(#[from] cover::error::CoverArtError),
 
-    #[error("Failed to create player finder")]
-    DBus(#[from] DBusError),
+    #[error("MPRIS client error: {0}")]
+    MprisClient(#[from] ClientError),
 
     #[error("Discord error: {0}")]
     Discord(#[from] DiscordError),
-
-    #[error("Player finding error: {0}")]
-    PlayerFinding(#[from] FindingError),
 }
 
 #[derive(Error, Debug)]

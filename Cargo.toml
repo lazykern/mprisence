@@ -30,6 +30,7 @@ handlebars = "6.4.1"
 handlebars_misc_helpers = { version = "0.17.0", features = ["string", "regex"] }
 log = "0.4.32"
 mime_guess = "2.0.5"
+dbus = "0.9.11"
 mpris = "2.1.0"
 notify = "8.2.0"
 parking_lot = "0.12"

@@ -7,13 +7,13 @@ use crate::{
     },
     error::Error,
     player::{
-        canonical_player_bus_name, is_playerctld_no_active_error, select_winner_idx,
+        canonical_player_bus_name, is_playerctld_no_active_error, select_winner_idx, PlayerFinder,
         PlayerIdentifier,
     },
     utils::{format_playback_status_icon, normalize_player_identity},
 };
 use clap::{Parser, Subcommand};
-use mpris::{PlaybackStatus, PlayerFinder};
+use mpris::PlaybackStatus;
 use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},

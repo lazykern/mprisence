@@ -3,6 +3,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
+    thread::JoinHandle,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -12,7 +13,7 @@ use discord_rich_presence::{
 };
 use log::{debug, error, info, trace, warn};
 use mime_guess::mime;
-use mpris::{Event as MprisEvent, Metadata as MprisMetadata, PlaybackStatus, Player};
+use mpris::{Metadata as MprisMetadata, PlaybackStatus};
 use parking_lot::Mutex;
 use smol_str::SmolStr;
 use tokio::sync::{mpsc, Notify};
@@ -32,7 +33,7 @@ use crate::{
     player::{
         canonical_player_bus_name, cmus,
         events::{self, EventOutcome, PlayerEvent, PlayerEventKind},
-        health, PlaybackState, PlayerIdentifier,
+        health, PlaybackState, Player, PlayerFinder, PlayerIdentifier,
     },
     template::{ActivityTexts, TemplateManager},
     utils,
@@ -65,6 +66,14 @@ impl UpdateSnapshot {
             track: health::TrackFingerprint::from_mpris(metadata),
         }
     }
+}
+
+fn track_identity_changed(previous: &TrackFingerprint, current: &TrackFingerprint) -> bool {
+    previous.track_id != current.track_id
+        || previous.url != current.url
+        || previous.art_url != current.art_url
+        || previous.title != current.title
+        || previous.artists != current.artists
 }
 
 fn resolve_status_display_type(player_config: &PlayerConfig) -> StatusDisplayType {
@@ -147,11 +156,9 @@ pub struct Presence {
     needs_reconnection: AtomicBool,
     error_logged: AtomicBool,
     last_reconnect_attempt: Mutex<Instant>,
-    /// Monotonically increasing counter, incremented on every TrackChanged event
-    /// (event-driven mode) AND on every polling-mode track change detected inside
-    /// `update_activity`. Background cover-art tasks capture this value at spawn
-    /// time and abort if it has changed when their fetch completes - that's what
-    /// prevents a slow cover from overwriting a newer track's activity.
+    /// Monotonically increasing counter, incremented whenever the event-driven
+    /// or polling path detects a track change. Background cover-art tasks capture
+    /// this value and abort if it changes before their fetch completes.
     update_generation: Arc<AtomicU64>,
     update_notify: Arc<Notify>,
     /// Unified staleness state machine. Replaces the 6 scattered fields that
@@ -185,6 +192,9 @@ pub struct Presence {
     /// Cached activity texts from the last template render. Reused when
     /// `last_rendered_snapshot` matches the current state.
     last_activity_texts: Option<crate::template::ActivityTexts>,
+    /// Last track observed by either update path. Unlike playback state, this
+    /// includes artists and catches metadata-only stream changes.
+    last_observed_track: Option<TrackFingerprint>,
     /// Tracks whether a Discord activity (push) is currently displayed.
     /// Set `true` after a successful push, `false` after a clear.
     /// Prevents redundant Clear→Clear log spam from duplicate players.
@@ -200,8 +210,12 @@ pub struct Presence {
     cover_cancel_token: Arc<parking_lot::Mutex<CancellationToken>>,
     /// Cancellation flag for the per-player event listener thread (event-driven mode only).
     listener_cancel: Option<Arc<AtomicBool>>,
+    /// Join handle for prompt, deterministic listener shutdown.
+    listener_handle: Option<JoinHandle<()>>,
     /// The MPRIS bus name the active listener is bound to (used to detect winner-bus handoff).
     listener_bus: Option<SmolStr>,
+    /// Monotonic identity used to reject delayed events from replaced listeners.
+    listener_generation: u64,
 }
 
 impl Presence {
@@ -247,12 +261,15 @@ impl Presence {
             last_rendered_snapshot: None,
             last_rendered_volume: None,
             last_activity_texts: None,
+            last_observed_track: None,
             discord_activity_is_set: Arc::new(AtomicBool::new(false)),
             first_update_done: AtomicBool::new(false),
             config,
             cover_cancel_token: Arc::new(parking_lot::Mutex::new(CancellationToken::new())),
             listener_cancel: None,
+            listener_handle: None,
             listener_bus: None,
+            listener_generation: 0,
         }
     }
 
@@ -384,6 +401,7 @@ impl Presence {
             *self.last_pushed_track_url.lock() = None;
             *self.last_pushed_art_url.lock() = None;
             *self.last_resolved_cover_art.lock() = None;
+            self.last_observed_track = None;
             // Reset health on connection handoff (new underlying player).
             let is_browser =
                 Self::is_browser_source(self.player.bus_name(), self.player.identity());
@@ -415,7 +433,7 @@ impl Presence {
             PlaybackStatus::Playing
         } else {
             // Re-check with a fresh connection to rule out stale state.
-            recheck_playback_status(&self.player.bus_name())
+            recheck_playback_status(self.player.bus_name())
                 .await
                 .unwrap_or(raw_status)
         };
@@ -785,6 +803,7 @@ impl Presence {
             }
         };
         let update_snapshot = UpdateSnapshot::from_mpris(playback_status, &metadata);
+        self.last_observed_track = Some(update_snapshot.track.clone());
         debug!(
             "Raw MPRIS metadata from player: {}",
             summarize_metadata_for_log(&metadata)
@@ -793,8 +812,8 @@ impl Presence {
         // Detect a track change relative to the last push and bump the
         // generation counter so any in-flight cover-art task spawned for the
         // previous track aborts before re-pushing its (now stale) result.
-        // Event-driven mode already bumps from the listener thread; this path
-        // makes the same guarantee hold in polling mode.
+        // The event-driven handler may already have bumped this counter; this
+        // path makes the same guarantee hold for polling-mode track changes.
         //
         // Also compare art_url: plasma-browser-integration reuses the same
         // track_id AND xesam:url across tracks, and updates artUrl to the
@@ -1442,6 +1461,7 @@ impl Presence {
         *self.last_pushed_track_url.lock() = None;
         *self.last_pushed_art_url.lock() = None;
         *self.last_resolved_cover_art.lock() = None;
+        self.last_observed_track = None;
     }
 
     /// Event-driven mode entry point. Returns `ShouldRemove` when the listener has terminated
@@ -1452,10 +1472,8 @@ impl Presence {
     ) -> Result<EventOutcome, DiscordError> {
         trace!("handling {:?} for {}", kind, self.player.identity());
 
-        let mut is_track_change = false;
         match kind {
-            PlayerEventKind::Mpris(MprisEvent::PlayerShutDown)
-            | PlayerEventKind::ListenerExited => {
+            PlayerEventKind::ListenerExited => {
                 debug!(
                     "player {} reported shutdown via event stream",
                     self.player.identity()
@@ -1466,49 +1484,7 @@ impl Presence {
                 warn!("listener error for {}: {}", self.player.identity(), msg);
                 return Ok(EventOutcome::Continue);
             }
-            PlayerEventKind::Mpris(MprisEvent::VolumeChanged(_))
-            | PlayerEventKind::Mpris(MprisEvent::LoopingChanged(_))
-            | PlayerEventKind::Mpris(MprisEvent::ShuffleToggled(_))
-            | PlayerEventKind::Mpris(MprisEvent::PlaybackRateChanged(_))
-            | PlayerEventKind::Mpris(MprisEvent::TrackAdded(_))
-            | PlayerEventKind::Mpris(MprisEvent::TrackRemoved(_))
-            | PlayerEventKind::Mpris(MprisEvent::TrackListReplaced) => {
-                trace!("ignoring event variant (no Discord-relevant change)");
-                return Ok(EventOutcome::Continue);
-            }
-            PlayerEventKind::Mpris(MprisEvent::TrackMetadataChanged { .. }) => {
-                // plasma-browser-integration can emit corrected mpris:artUrl
-                // after TrackChanged. Let update_activity re-run so it can
-                // bump generation on art changes and refresh Discord artwork.
-            }
-            PlayerEventKind::Mpris(MprisEvent::TrackChanged(_)) => {
-                // Force the next polling-style diff (if event_driven flips off) to detect a change.
-                self.last_player_state = None;
-                is_track_change = true;
-            }
-            PlayerEventKind::Mpris(MprisEvent::Playing)
-            | PlayerEventKind::Mpris(MprisEvent::Paused)
-            | PlayerEventKind::Mpris(MprisEvent::Stopped)
-            | PlayerEventKind::Mpris(MprisEvent::Seeked { .. }) => {
-                // Fall through to update.
-            }
-        }
-
-        // Listener threads increment this before queuing TrackChanged, so an in-flight
-        // cover-art lookup can be cancelled even while the main event loop is awaiting it.
-        let generation = if is_track_change {
-            Some(self.update_generation.load(Ordering::Relaxed))
-        } else {
-            None
-        };
-
-        // Cancel stale provider jobs so a new track's cover fetch doesn't
-        // waste bandwidth competing with the old one.
-        if is_track_change {
-            let mut token = self.cover_cancel_token.lock();
-            token.cancel();
-            *token = CancellationToken::new();
-            self.cover_fetch_generation.store(0, Ordering::Release);
+            PlayerEventKind::Refresh => {}
         }
 
         let Some(_discord_client) = &self.discord_client else {
@@ -1517,36 +1493,56 @@ impl Presence {
 
         self.ensure_connection()?;
 
+        let metadata = match self.player.get_metadata() {
+            Ok(metadata) => metadata,
+            Err(err) => {
+                warn!("Failed to get metadata in handle_event: {}", err);
+                return Ok(EventOutcome::Continue);
+            }
+        };
+        let playback_status = self
+            .player
+            .get_playback_status()
+            .unwrap_or(PlaybackStatus::Stopped);
+        let current_track = TrackFingerprint::from_mpris(&metadata);
+        let previous_track = self.last_observed_track.as_ref().or_else(|| {
+            self.last_rendered_snapshot
+                .as_ref()
+                .map(|snapshot| &snapshot.track)
+        });
+        let is_track_change =
+            previous_track.is_some_and(|previous| track_identity_changed(previous, &current_track));
+        self.last_observed_track = Some(current_track.clone());
+
+        let generation = if is_track_change {
+            self.last_player_state = None;
+            let generation = self.update_generation.fetch_add(1, Ordering::Relaxed) + 1;
+            self.update_notify.notify_waiters();
+            self.cover_fetch_generation.store(0, Ordering::Release);
+            let mut token = self.cover_cancel_token.lock();
+            token.cancel();
+            *token = CancellationToken::new();
+            Some(generation)
+        } else {
+            None
+        };
+
         // Get current track's art decision from the health state machine.
-        // For TrackChanged events, run a full health transition so the state
+        // For track changes, run a full health transition so the state
         // machine can react to the new track.
         // Other events keep the existing snapshot behaviour.
         let art_decision;
-        let playback_status: Option<PlaybackStatus>;
         if is_track_change {
-            let metadata = match self.player.get_metadata() {
-                Ok(m) => m,
-                Err(e) => {
-                    warn!("Failed to get metadata in handle_event: {}", e);
-                    return Ok(EventOutcome::Continue);
-                }
-            };
-            let track = health::TrackFingerprint::from_mpris(&metadata);
             let position = self.player.get_position().unwrap_or_default();
             let now = Instant::now();
-            let status = self
-                .player
-                .get_playback_status()
-                .unwrap_or(PlaybackStatus::Playing);
-            playback_status = Some(status);
             let is_browser =
                 Self::is_browser_source(self.player.bus_name(), self.player.identity());
             let gen = generation.unwrap_or(0);
             let input = health::HealthCheckInput {
-                playback_status: status,
+                playback_status,
                 position,
-                track: &track,
-                track_length: track.length,
+                track: &current_track,
+                track_length: current_track.length,
                 is_browser_source: is_browser,
                 generation: gen,
                 now,
@@ -1574,28 +1570,14 @@ impl Presence {
                 }
             }
         } else {
-            playback_status = self.player.get_playback_status().ok();
-            // Non-TrackChanged events: skip Discord push if nothing
+            // Non-track events: skip Discord push if nothing
             // changed since the last tick (same guard as the polling
             // path in update()). Without this, the bridge's MPRIS
             // signals (e.g. TrackMetadataChanged from each DOM poll,
             // or Playing/Paused from YouTube ad breaks) push to
             // Discord every 1-3 seconds.
-            let metadata = match self.player.get_metadata() {
-                Ok(m) => m,
-                Err(e) => {
-                    warn!(
-                        "Failed to get metadata for significant_change check in handle_event: {}",
-                        e
-                    );
-                    return Ok(EventOutcome::Continue);
-                }
-            };
-            let new_state = PlaybackState::from_with_status(
-                &self.player,
-                playback_status.unwrap_or(PlaybackStatus::Stopped),
-                &metadata,
-            );
+            let new_state =
+                PlaybackState::from_with_status(&self.player, playback_status, &metadata);
             let effective_interval = if self.config.event_driven() {
                 self.config.fallback_poll_interval()
             } else {
@@ -1623,11 +1605,10 @@ impl Presence {
             self.last_player_state = Some(new_state);
 
             // Snapshot existing art_decision for the push.
-            let current_track = health::TrackFingerprint::from_mpris(&metadata);
             art_decision = self.health.lock().art_decision(&current_track);
         }
         if let Err(err) = self
-            .update_activity(generation, art_decision, playback_status)
+            .update_activity(generation, art_decision, Some(playback_status))
             .await
         {
             if matches!(err, DiscordError::ActivityError(_)) {
@@ -1649,39 +1630,52 @@ impl Presence {
     pub fn ensure_listener(&mut self, tx: mpsc::Sender<PlayerEvent>, norm_id: SmolStr) {
         let current_bus = SmolStr::new(self.player.bus_name());
         if let Some(existing) = &self.listener_bus {
-            if existing == &current_bus {
+            let listener_running = self
+                .listener_handle
+                .as_ref()
+                .is_some_and(|handle| !handle.is_finished());
+            if existing == &current_bus && listener_running {
                 return;
             }
-            debug!(
-                "listener bus changed for {}: {} -> {}; restarting",
-                norm_id, existing, current_bus
-            );
+            if existing == &current_bus {
+                debug!("listener for {} ended; restarting", norm_id);
+            } else {
+                debug!(
+                    "listener bus changed for {}: {} -> {}; restarting",
+                    norm_id, existing, current_bus
+                );
+            }
             self.stop_listener();
         }
+
         let cancel = Arc::new(AtomicBool::new(false));
-        // The JoinHandle is intentionally dropped - the listener thread blocks
-        // on a D-Bus call we can't interrupt, so it's detached and exits on its
-        // own once `cancel` flips or the player disappears.
-        let _ = events::spawn_listener(
+        self.listener_generation = self.listener_generation.wrapping_add(1).max(1);
+        let handle = events::spawn_listener(
             current_bus.clone(),
             norm_id,
+            self.listener_generation,
             tx,
             cancel.clone(),
-            self.update_generation.clone(),
-            self.update_notify.clone(),
         );
         self.listener_cancel = Some(cancel);
+        self.listener_handle = Some(handle);
         self.listener_bus = Some(current_bus);
     }
 
-    /// Cancel the listener thread. NOTE: cancellation is best-effort - the
-    /// thread blocks on `mpris::Player::events()` and only checks the cancel
-    /// flag on the next D-Bus event, so it may live on briefly after this
-    /// returns. The trailing `ListenerExited` event is dropped silently by
-    /// `Mprisence::handle_player_event` when the norm_id is no longer tracked.
+    pub fn listener_generation_matches(&self, generation: u64) -> bool {
+        self.listener_generation == generation
+    }
+
+    /// Cancel and join the listener. Its D-Bus receive loop wakes at least four
+    /// times per second, so shutdown does not depend on another player signal.
     pub fn stop_listener(&mut self) {
         if let Some(cancel) = self.listener_cancel.take() {
-            cancel.store(true, Ordering::Relaxed);
+            cancel.store(true, Ordering::Release);
+        }
+        if let Some(handle) = self.listener_handle.take() {
+            if handle.join().is_err() {
+                warn!("MPRIS listener thread panicked");
+            }
         }
         self.listener_bus = None;
     }
@@ -1698,7 +1692,6 @@ impl Drop for Presence {
 /// `Presence::player` holds a connection to an old MPRIS object that was
 /// replaced (e.g. bridge pruning + re-creating its sources).
 async fn recheck_playback_status(bus_name: &str) -> Option<PlaybackStatus> {
-    use mpris::PlayerFinder;
     let mut finder = PlayerFinder::new().ok()?;
     finder.set_player_timeout_ms(3000);
     let player = finder
@@ -1712,6 +1705,17 @@ async fn recheck_playback_status(bus_name: &str) -> Option<PlaybackStatus> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn track(title: &str, length: u64) -> TrackFingerprint {
+        TrackFingerprint {
+            track_id: Some("/track/1".to_string()),
+            url: Some("file:///song.flac".to_string()),
+            art_url: Some("file:///cover.jpg".to_string()),
+            title: Some(title.to_string()),
+            artists: vec!["Artist".to_string()],
+            length: Some(Duration::from_secs(length)),
+        }
+    }
 
     fn player_config_with(app_id: &str, status_display_type: StatusDisplayType) -> PlayerConfig {
         PlayerConfig {
@@ -1765,5 +1769,21 @@ mod tests {
         assert!(summary.contains("embedded art"));
         assert!(summary.len() < data_url.len());
         assert!(!summary.contains(&"A".repeat(300)));
+    }
+
+    #[test]
+    fn metadata_identity_detects_stream_title_changes() {
+        assert!(track_identity_changed(
+            &track("Old title", 180),
+            &track("New title", 180)
+        ));
+    }
+
+    #[test]
+    fn metadata_identity_ignores_length_corrections() {
+        assert!(!track_identity_changed(
+            &track("Same title", 180),
+            &track("Same title", 181)
+        ));
     }
 }

@@ -3,14 +3,12 @@ use config::{get_config, ConfigManager};
 use cover::CoverManager;
 use error::MprisenceError;
 use log::{debug, error, info, trace, warn};
-use mpris::Event as MprisEvent;
-use mpris::PlayerFinder;
 use player::{
     bridge_browser, canonical_player_bus_name, compute_presence_migrations,
-    events::{EventOutcome, PlayerEvent, PlayerEventKind},
+    events::{self, EventOutcome, PlayerEvent},
     is_mprisence_web_bridge_bus, is_playerctld_no_active_error, merge_url_duplicates,
-    select_richest_player, select_winner_idx, should_suppress_native, BucketSummary,
-    PlayerIdentifier,
+    select_richest_player, select_winner_idx, should_suppress_native, BucketSummary, Player,
+    PlayerFinder, PlayerIdentifier,
 };
 use presence::Presence;
 use smol_str::SmolStr;
@@ -201,7 +199,7 @@ impl Mprisence {
         // Phase 1: collect all allowed, non-ignored players and group them by
         // normalised identity so that multiple bus names for the same underlying
         // player (e.g. `mpd` and `playerctld`) are treated as one logical player.
-        let mut candidates: HashMap<SmolStr, Vec<mpris::Player>> = HashMap::new();
+        let mut candidates: HashMap<SmolStr, Vec<Player>> = HashMap::new();
 
         for player in player_finder.iter_players()? {
             let player = match player {
@@ -277,7 +275,7 @@ impl Mprisence {
                 Some((browser, url))
             })
             .collect();
-        let candidates: HashMap<SmolStr, Vec<mpris::Player>> = if bridged_sources.is_empty() {
+        let candidates: HashMap<SmolStr, Vec<Player>> = if bridged_sources.is_empty() {
             candidates
         } else {
             candidates
@@ -580,47 +578,6 @@ impl Mprisence {
     }
 
     async fn run_event_driven(&mut self) -> Result<(), MprisenceError> {
-        /// Drain the mpsc channel for TrackChanged events on the same player.
-        /// When the user skips rapidly, multiple TrackChanged events queue up.
-        /// Processing them all wastes cover art fetches on tracks the user has
-        /// already moved past. This keeps only the latest one.
-        fn drain_latest_track_change(
-            mut evt: PlayerEvent,
-            rx: &mut tokio::sync::mpsc::Receiver<PlayerEvent>,
-        ) -> (PlayerEvent, Vec<PlayerEvent>) {
-            let mut deferred = Vec::new();
-            if !matches!(
-                evt.kind,
-                PlayerEventKind::Mpris(MprisEvent::TrackChanged(_))
-            ) {
-                return (evt, deferred);
-            }
-            while let Ok(newer) = rx.try_recv() {
-                if newer.norm_id == evt.norm_id
-                    && matches!(
-                        newer.kind,
-                        PlayerEventKind::Mpris(MprisEvent::TrackChanged(_))
-                    )
-                {
-                    trace!(
-                        "drain: skipping intermediate TrackChanged for {}",
-                        evt.norm_id
-                    );
-                    evt = newer;
-                } else {
-                    // Preserve non-TrackChanged events (notably TrackMetadataChanged,
-                    // which can carry the corrected art URL a few seconds after a
-                    // browser track switch) and other players' events.
-                    trace!(
-                        "drain: deferring {:?} for {} during skip drain",
-                        newer.kind,
-                        newer.norm_id
-                    );
-                    deferred.push(newer);
-                }
-            }
-            (evt, deferred)
-        }
         let (event_tx, mut event_rx) = mpsc::channel::<PlayerEvent>(64);
 
         let mut fallback_poll_interval =
@@ -637,10 +594,8 @@ impl Mprisence {
         loop {
             tokio::select! {
                 Some(evt) = event_rx.recv() => {
-                    // For TrackChanged events, drain any newer ones for the same player
-                    // that already queued while we were processing the previous event.
-                    // This prevents Discord from cycling through every skipped track.
-                    let (evt, deferred) = drain_latest_track_change(evt, &mut event_rx);
+                    // Collapse bursts from one listener before re-reading MPRIS state.
+                    let (evt, deferred) = events::drain_latest_refresh(evt, &mut event_rx);
                     self.handle_player_event(evt, &event_tx).await;
                     for deferred_evt in deferred {
                         self.handle_player_event(deferred_evt, &event_tx).await;
@@ -706,17 +661,31 @@ impl Mprisence {
     }
 
     async fn handle_player_event(&mut self, evt: PlayerEvent, tx: &mpsc::Sender<PlayerEvent>) {
-        let PlayerEvent { norm_id, kind } = evt;
+        let PlayerEvent {
+            norm_id,
+            listener_generation,
+            kind,
+        } = evt;
         trace!("dispatch event to {}: {:?}", norm_id, kind);
 
         let outcome = match self.media_players.get_mut(&norm_id) {
-            Some(presence) => match presence.handle_event(kind).await {
-                Ok(outcome) => outcome,
-                Err(e) => {
-                    warn!("handle_event failed for {}: {}", norm_id, e);
-                    EventOutcome::Continue
+            Some(presence) => {
+                if !presence.listener_generation_matches(listener_generation) {
+                    trace!(
+                        "ignoring stale listener event for {} (generation {})",
+                        norm_id,
+                        listener_generation
+                    );
+                    return;
                 }
-            },
+                match presence.handle_event(kind).await {
+                    Ok(outcome) => outcome,
+                    Err(e) => {
+                        warn!("handle_event failed for {}: {}", norm_id, e);
+                        EventOutcome::Continue
+                    }
+                }
+            }
             None => {
                 trace!("event for unknown presence {} (already removed)", norm_id);
                 return;

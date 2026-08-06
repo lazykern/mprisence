@@ -3,9 +3,10 @@ use std::sync::Arc;
 
 use handlebars::{handlebars_helper, no_escape, Handlebars};
 use handlebars_misc_helpers::regex_helpers;
-use mpris::{PlaybackStatus, Player};
+use mpris::PlaybackStatus;
 use serde::Serialize;
 
+use crate::player::Player;
 use crate::{
     config::ConfigManager, error::TemplateError, metadata::MediaMetadata,
     player::canonical_player_bus_name, utils::format_playback_status_icon,
