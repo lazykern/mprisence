@@ -2,24 +2,6 @@
 
 ## [1.8.0] - 2026-08-06
 
-### Breaking config changes
-
-- Removed `ignore` from `[web_player.default]`. To disable web player site detection, please set
-  `web_player_enabled = false` to disable website detection.
-- Removed web-player `ignore_unmatched`. Unmatched websites are now always
-  hidden.
-- Removed web-player `allow_streaming`. Matched websites now always allow
-  streaming; set per-site `ignore = true` to hide a site.
-
-```toml
-# Disable website detection.
-web_player_enabled = false
-
-# Hide one site.
-[web_player.youtube_music]
-ignore = true
-```
-
 ### Added
 
 - Add Support for tomu by @6z7y in https://github.com/lazykern/mprisence/pull/86
@@ -45,12 +27,22 @@ allowed_players = ["player:vlc", "web_player:youtube_music", "bus:*mpdris2*"]
 - `mprisence config show`; `mprisence config` remains an alias.
 
 ### Changed
+- Config changes
+  - Removed `ignore` from `[web_player.default]`. To disable web player site detection, please set
+  `web_player_enabled = false` to disable website detection.
+  - Removed web-player `ignore_unmatched`. Unmatched websites are now always
+  hidden.
+  - Removed web-player `allow_streaming`. Matched websites now always allow
+  streaming; set per-site `ignore = true` to hide a site.
+```toml
+# Disable website detection.
+web_player_enabled = false
 
-- Cached uploads are reused when the same artwork arrives from different
-  sources.
-- Embedded artwork is loaded from local files only when needed.
-- Cache cleanup removes orphaned artwork files.
-- Native-player presets now use stable keys with explicit `match_pattern` or
+# Hide one site.
+[web_player.youtube_music]
+ignore = true
+```
+  - Native-player presets now use stable keys with explicit `match_pattern` or
   `match_patterns`. Optional `identity:` and `bus:` selectors restrict matching
   to the identity or bus name; implicit table-key patterns remain supported
   with a deprecation warning.
@@ -60,6 +52,12 @@ allowed_players = ["player:vlc", "web_player:youtube_music", "bus:*mpdris2*"]
 match_patterns = ["vlc_media_player", "bus:vlc"]
 show_icon = true
 ```
+
+- Cached uploads are reused when the same artwork arrives from different
+  sources.
+- Embedded artwork is loaded from local files only when needed.
+- Cache cleanup removes orphaned artwork files.
+
 
 ## [1.7.0] - 2026-06-17
 
