@@ -1,10 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [1.8.0] - 2026-08-06
 
 ### Breaking config changes
 
-- Removed `ignore` from `[web_player.default]`. Set top-level
+- Removed `ignore` from `[web_player.default]`. To disable web player site detection, please set
   `web_player_enabled = false` to disable website detection.
 - Removed web-player `ignore_unmatched`. Unmatched websites are now always
   hidden.
@@ -22,18 +22,8 @@ ignore = true
 
 ### Added
 
-- Opt-in generic media detection for unsupported sites in the browser
-  extension. Enabling it requires all-sites permission. Unbundled sites also
-  need a matching `[web_player.*]` entry to appear in Discord.
-
-```toml
-[web_player.my_site]
-match_pattern = "mysite.com"
-name = "My Site"
-app_id = "YOUR_DISCORD_APP_ID"
-ignore = false
-```
-
+- Add Support for tomu by @6z7y in https://github.com/lazykern/mprisence/pull/86
+- Change app_id in finamp player settings by @anoraktrend in https://github.com/lazykern/mprisence/pull/91
 - Configurable cover-cache size, entry-count, and TTL limits under
   `[cover.cache]`.
 
@@ -52,8 +42,6 @@ ttl_hours = 24
 allowed_players = ["player:vlc", "web_player:youtube_music", "bus:*mpdris2*"]
 ```
 
-- `mprisence web doctor` warns about browser media integrations that can
-  create duplicate players alongside the extension.
 - `mprisence config show`; `mprisence config` remains an alias.
 
 ### Changed
@@ -72,20 +60,6 @@ allowed_players = ["player:vlc", "web_player:youtube_music", "bus:*mpdris2*"]
 match_patterns = ["vlc_media_player", "bus:vlc"]
 show_icon = true
 ```
-
-### Fixed
-
-- Fixed metadata and cover-art lookup for local file paths containing special
-  characters.
-- Fixed player controls occasionally not reaching the page in Firefox.
-
-## What's Changed
-* Add Support for tomu by @6z7y in https://github.com/lazykern/mprisence/pull/86
-* Change app_id in finamp player settings by @anoraktrend in https://github.com/lazykern/mprisence/pull/91
-
-## New Contributors
-* @6z7y made their first contribution in https://github.com/lazykern/mprisence/pull/86
-* @anoraktrend made their first contribution in https://github.com/lazykern/mprisence/pull/91
 
 ## [1.7.0] - 2026-06-17
 
