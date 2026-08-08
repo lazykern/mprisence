@@ -826,9 +826,42 @@ ttl_hours = 72
         let config = load_config_from_file(&config_path).expect("config should load");
         let resolved = config.get_player_config("VLC Media Player", "vlc");
         assert_eq!(resolved.app_id, "1124968989538402334");
+        assert_eq!(resolved.name.as_deref(), Some("VLC Media Player"));
         assert!(resolved.show_icon);
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn bundled_presets_define_activity_names_and_keep_app_ids() {
+        let config = parse_config_str("").expect("bundled default config is valid");
+
+        for (key, layer) in &config.bundled_player {
+            if key != "default" {
+                assert!(
+                    layer.name.as_deref().is_some_and(|name| !name.is_empty()),
+                    "player.{key} has no activity name"
+                );
+            }
+        }
+        for (key, layer) in &config.bundled_web_player {
+            if key != "default" {
+                assert!(
+                    layer.name.as_deref().is_some_and(|name| !name.is_empty()),
+                    "web_player.{key} has no activity name"
+                );
+            }
+        }
+
+        let vlc = config.get_player_config("VLC Media Player", "vlc");
+        assert_eq!(vlc.app_id, "1124968989538402334");
+
+        let youtube_music = config.get_player_config_with_url(
+            "Firefox",
+            "firefox",
+            Some("https://music.youtube.com/watch?v=x"),
+        );
+        assert_eq!(youtube_music.app_id, "1125082278339559505");
     }
 
     /// A native browser with no URL and no title match is not a website -

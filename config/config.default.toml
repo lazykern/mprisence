@@ -53,25 +53,29 @@ default = { ignore_unmatched = true, app_id = "1121632048155742288", icon = "htt
 
 [player.audacious]
 match_patterns = ["audacious"]
+name = "Audacious"
 ignore = false
 app_id = "1125084572166656031"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Audacious-2.4-logo.svg/1200px-Audacious-2.4-logo.svg.png"
 
 [player.elisa]
 match_patterns = ["elisa"]
+name = "Elisa"
 ignore = false
 app_id = "1125089232776601761"
 icon = "https://store-images.s-microsoft.com/image/apps.47778.14129707655588863.dafceb08-f3ca-4e43-974e-9776c934976c.b69f75ea-0df1-4e00-9289-d11d9ac5a0f0"
 
 [player.lollypop]
 match_patterns = ["lollypop"]
+name = "Lollypop"
 ignore = false
 app_id = "1124183825489068103"
-icon = "https://upload.wikimedia.org/wikipedia/commons/1/1a/Lollypop_icon_2019.svg"
+icon = "https://dl.flathub.org/media/org/gnome/Lollypop/b7d442234fbce3d1c13ee1c1596e54b4/icons/128x128@2/org.gnome.Lollypop.png"
 allow_streaming = true
 
 [player.rhythmbox]
 match_patterns = ["rhythmbox"]
+name = "Rhythmbox"
 ignore = false
 app_id = "1124770552754733056"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/Rhythmbox_logo_3.4.4.svg/1200px-Rhythmbox_logo_3.4.4.svg.png"
@@ -79,11 +83,13 @@ allow_streaming = true
 
 [player.cmus]
 match_patterns = ["cmus"]
+name = "cmus"
 ignore = false
 app_id = "1124777797722853476"
 
 [player.vlc]
 match_patterns = ["vlc_media_player"]
+name = "VLC Media Player"
 ignore = false
 app_id = "1124968989538402334"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/VLC_Icon.svg/1200px-VLC_Icon.svg.png"
@@ -91,6 +97,7 @@ allow_streaming = true
 
 [player.mpv]
 match_patterns = ["mpv"]
+name = "mpv"
 ignore = false
 app_id = "1125075797942734928"
 icon = "https://upload.wikimedia.org/wikipedia/commons/7/73/Mpv_logo_%28official%29.png"
@@ -98,6 +105,7 @@ allow_streaming = true
 
 [player.mpd]
 match_patterns = ["mpd"]
+name = "MPD"
 ignore = false
 app_id = "1126153268486213672"
 icon = "https://www.musicpd.org/logo.png"
@@ -105,6 +113,7 @@ allow_streaming = true
 
 [player.musikcube]
 match_patterns = ["musikcube"]
+name = "musikcube"
 ignore = false
 app_id = "1127548029294084147"
 icon = "https://dashboard.snapcraft.io/site_media/appmedia/2020/04/ic_launcher_square.png"
@@ -112,6 +121,7 @@ allow_streaming = true
 
 [player.clementine]
 match_patterns = ["clementine"]
+name = "Clementine"
 ignore = false
 app_id = "1125075725473562735"
 icon = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRYiUYLmMQwsDaNqu6eg5I4aB1vyy_uptN34eouN7XxA5eFZTAV8RISZHCsn_M6-iQc-Pw&usqp=CAU"
@@ -119,6 +129,7 @@ allow_streaming = true
 
 [player.strawberry]
 match_patterns = ["strawberry"]
+name = "Strawberry"
 ignore = false
 app_id = "1126197744512536647"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Strawberry-icon-1000px.png/800px-Strawberry-icon-1000px.png"
@@ -126,24 +137,28 @@ allow_streaming = true
 
 [player.amberol]
 match_patterns = ["amberol"]
+name = "Amberol"
 ignore = false
 app_id = "1125077658192056431"
 icon = "https://dashboard.snapcraft.io/site_media/appmedia/2022/09/io.bassi.Amberol.svg.png"
 
 [player.smplayer]
 match_patterns = ["smplayer"]
+name = "SMPlayer"
 ignore = false
 app_id = "1125077752756834314"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/SMPlayer_icon.svg/1200px-SMPlayer_icon.svg.png"
 
 [player.fooyin]
 match_patterns = ["fooyin"]
+name = "fooyin"
 ignore = false
 app_id = "1396689706246209606"
 icon = "https://dl.flathub.org/media/org/fooyin/fooyin/ef334d703743511632d5c616bea80c43/icons/128x128@2/org.fooyin.fooyin.png"
 
 [player.finamp]
 match_patterns = ["finamp"]
+name = "Finamp"
 ignore = false
 app_id = "1397542416201945221"
 icon = "https://raw.githubusercontent.com/UnicornsOnLSD/finamp/refs/heads/main/assets/icon/icon_foreground.png"
@@ -151,6 +166,7 @@ allow_streaming = true
 
 [player.supersonic]
 match_patterns = ["supersonic"]
+name = "Supersonic"
 ignore = false
 app_id = "1404479711106568202"
 icon = "https://github.com/dweymouth/supersonic/blob/main/res/appicon-256.png?raw=true"
@@ -158,6 +174,7 @@ allow_streaming = true
 
 [player.feishin]
 match_patterns = ["feishin"]
+name = "Feishin"
 ignore = false
 app_id = "1404479248428826645"
 icon = "https://github.com/jeffvli/feishin/blob/development/assets/icons/256x256.png?raw=true"
@@ -165,6 +182,7 @@ allow_streaming = true
 
 [player.gelly]
 match_patterns = ["io.m51.Gelly"]
+name = "Gelly"
 ignore = false
 app_id = "1485187543506096158"
 icon = "https://raw.githubusercontent.com/Fingel/gelly/main/resources/io.m51.Gelly.svg"
@@ -172,24 +190,28 @@ allow_streaming = true
 
 [player.kew]
 match_patterns = ["kew"]
+name = "kew"
 ignore = false
 app_id = "1408882241198620782"
 show_icon = false
 
 [player.tomu]
 match_patterns = ["tomu"]
+name = "Tomu"
 ignore = false
 app_id = "1503183287235903521"
 icon = "https://upload.wikimedia.org/wikipedia/commons/6/6d/Tomu-chan-iconnn.png"
 
 [player.gapless]
 match_patterns = ["gapless"]
+name = "Gapless"
 ignore = false
 app_id = "1425518060688769146"
 icon = "https://res.cloudinary.com/canonical/image/fetch/f_auto,q_auto,fl_sanitize,w_256/https%3A%2F%2Fdashboard.snapcraft.io%2Fsite_media%2Fappmedia%2F2023%2F07%2Fapp.svg.png"
 
 [player.harmony_music_notification]
 match_patterns = ["harmony_music_notification"]
+name = "Harmony Music"
 ignore = false
 app_id = "1425521209633669242"
 icon = "https://raw.githubusercontent.com/anandnet/Harmony-Music/refs/heads/main/assets/icons/icon.png"
@@ -197,12 +219,14 @@ allow_streaming = true
 
 [player.haruna]
 match_patterns = ["haruna"]
+name = "Haruna"
 ignore = false
 app_id = "1476992012132679751"
 icon = "https://apps.kde.org/app-icons/org.kde.haruna.svg"
 
 [player.euphonica]
 match_patterns = ["io.github.htkhiem.Euphonica"]
+name = "Euphonica"
 ignore = false
 app_id = "1435313000612630709"
 icon = "https://raw.githubusercontent.com/htkhiem/euphonica/refs/heads/main/data/icons/euphonica-hicolor.png"
@@ -211,6 +235,7 @@ icon = "https://raw.githubusercontent.com/htkhiem/euphonica/refs/heads/main/data
 
 [player.quod_libet]
 match_patterns = ["quod_libet"]
+name = "Quod Libet"
 ignore = false
 app_id = "1265388809860677632"
 icon = "https://raw.githubusercontent.com/quodlibet/quodlibet/refs/heads/main/quodlibet/images/hicolor/256x256/apps/io.github.quodlibet.QuodLibet.png"
@@ -218,6 +243,7 @@ icon = "https://raw.githubusercontent.com/quodlibet/quodlibet/refs/heads/main/qu
 
 [player.musicbee]
 match_patterns = ["MusicBee"]
+name = "MusicBee"
 ignore = false
 app_id = "904523292491255838"
 # app id from this project: https://github.com/sll552/DiscordBee
@@ -226,12 +252,14 @@ icon = "https://i.ibb.co/BKrwxCG2/musicbee-3.png"
 
 [player.qmmp]
 match_patterns = ["qmmp"]
+name = "Qmmp"
 ignore = false
 app_id = "1442356186052563016"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Qmmp_logo.svg/960px-Qmmp_logo.svg.png"
 
 [player.quester]
 match_patterns = ["quester"]
+name = "Quester"
 ignore = false
 app_id = "1471745674960830494"
 icon = "https://codeberg.org/anoraktrend/quester/raw/branch/main/resources/Quester512.png"
@@ -239,6 +267,7 @@ allow_streaming = true
 
 [player.ampcast]
 match_patterns = ["ampcast"]
+name = "Ampcast"
 ignore = false
 app_id = "1480174380997808301"
 icon = "https://raw.githubusercontent.com/rekkyrosso/ampcast/refs/heads/main/app/assets/icons/ampcast.png"
@@ -246,6 +275,7 @@ allow_streaming = true
 
 [player.mpc_qt]
 match_patterns = ["Media_Player_Classic_Qute_Theater"]
+name = "MPC-QT"
 ignore = false
 app_id = "1480176739014672517"
 icon = "https://raw.githubusercontent.com/tag27/icon-res/refs/heads/main/res/mpc_qt.png"
@@ -254,11 +284,13 @@ allow_streaming = true
 
 [player.spotify]
 match_patterns = ["spotify"]
+name = "Spotify"
 ignore = true
 icon = "https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg"
 
 [player.youtube_music]
 match_patterns = ["*youtube_music*"]
+name = "YouTube Music"
 ignore = false
 app_id = "1125082278339559505"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/768px-Youtube_Music_icon.svg.png"

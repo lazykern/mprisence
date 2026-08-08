@@ -199,6 +199,9 @@ match_patterns = ["vlc_media_player", "bus:vlc"]
 show_icon = true
 ```
 
+Bundled presets keep separate Discord application IDs and define an explicit
+`name` for the displayed activity and `{{{player}}}` template value.
+
 Restrict discovery with the same selectors, or by resolved preset/site key:
 
 ```toml

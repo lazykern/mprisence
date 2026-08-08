@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.8.1] - 2026-08-08
+
+### Fixed
+
+- Use the configured player `name` as the Discord activity name, while omitting
+  empty names ([#96](https://github.com/lazykern/mprisence/issues/96)) by
+  @narukoshin in [#97](https://github.com/lazykern/mprisence/pull/97).
+- Fix the Lollypop preset icon using the current Flathub image.
+
+### Changed
+
+- Add explicit activity names to bundled native-player presets and preserve
+  name-based status display when an activity name is configured.
+
 ## [1.8.0] - 2026-08-06
 
 ### Added

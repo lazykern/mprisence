@@ -79,11 +79,19 @@ fn track_identity_changed(previous: &TrackFingerprint, current: &TrackFingerprin
 fn resolve_status_display_type(player_config: &PlayerConfig) -> StatusDisplayType {
     if player_config.app_id == DEFAULT_PLAYER_APP_ID
         && player_config.status_display_type == StatusDisplayType::Name
+        && configured_activity_name(player_config).is_none()
     {
         StatusDisplayType::State
     } else {
         player_config.status_display_type
     }
+}
+
+fn configured_activity_name(player_config: &PlayerConfig) -> Option<&str> {
+    player_config
+        .name
+        .as_deref()
+        .filter(|name| !name.is_empty())
 }
 
 fn summarize_log_value_with_limit(
@@ -1391,14 +1399,22 @@ impl Presence {
         discord_client: &Arc<Mutex<DiscordIpcClient>>,
         framing: &ActivityFraming<'_>,
     ) -> Result<(), DiscordError> {
+        let activity = Self::build_activity(framing);
+
+        discord_client
+            .lock()
+            .set_activity(activity)
+            .map_err(|err| DiscordError::ActivityError(err.to_string()))?;
+        Ok(())
+    }
+
+    fn build_activity<'a>(framing: &ActivityFraming<'a>) -> Activity<'a> {
         let mut activity = Activity::default()
             .activity_type(framing.activity_type.into())
             .status_display_type(framing.status_display_type.into());
 
-        if let Some(name) = framing.player_config.name.as_deref() {
-            if !name.is_empty() {
-                activity = activity.name(name);
-            }
+        if let Some(name) = configured_activity_name(framing.player_config) {
+            activity = activity.name(name);
         }
 
         if !framing.texts.details.is_empty() {
@@ -1439,11 +1455,7 @@ impl Presence {
         }
         activity = activity.assets(assets);
 
-        discord_client
-            .lock()
-            .set_activity(activity)
-            .map_err(|err| DiscordError::ActivityError(err.to_string()))?;
-        Ok(())
+        activity
     }
 
     pub fn update_managers(
@@ -1731,6 +1743,29 @@ mod tests {
         }
     }
 
+    fn activity_payload(name: Option<&str>) -> serde_json::Value {
+        let texts = ActivityTexts {
+            details: "Track".to_string(),
+            state: "Artist".to_string(),
+            large_text: String::new(),
+            small_text: String::new(),
+        };
+        let player_config = PlayerConfig {
+            name: name.map(str::to_string),
+            ..PlayerConfig::default()
+        };
+        let framing = ActivityFraming {
+            texts: &texts,
+            timing: None,
+            cover_art_url: None,
+            player_config: &player_config,
+            activity_type: ActivityType::Listening,
+            status_display_type: StatusDisplayType::Name,
+        };
+
+        serde_json::to_value(Presence::build_activity(&framing)).expect("activity should serialize")
+    }
+
     #[test]
     fn default_app_name_status_falls_back_to_state() {
         let config = player_config_with(DEFAULT_PLAYER_APP_ID, StatusDisplayType::Name);
@@ -1738,6 +1773,17 @@ mod tests {
         assert_eq!(
             resolve_status_display_type(&config),
             StatusDisplayType::State
+        );
+    }
+
+    #[test]
+    fn default_app_with_configured_name_keeps_name_status() {
+        let mut config = player_config_with(DEFAULT_PLAYER_APP_ID, StatusDisplayType::Name);
+        config.name = Some("VLC Media Player".to_string());
+
+        assert_eq!(
+            resolve_status_display_type(&config),
+            StatusDisplayType::Name
         );
     }
 
@@ -1765,6 +1811,19 @@ mod tests {
             resolve_status_display_type(&default_app_details),
             StatusDisplayType::Details
         );
+    }
+
+    #[test]
+    fn activity_uses_nonempty_configured_name() {
+        let payload = activity_payload(Some("VLC Media Player"));
+
+        assert_eq!(payload["name"], "VLC Media Player");
+    }
+
+    #[test]
+    fn activity_omits_missing_or_empty_name() {
+        assert!(activity_payload(None).get("name").is_none());
+        assert!(activity_payload(Some("")).get("name").is_none());
     }
 
     #[test]

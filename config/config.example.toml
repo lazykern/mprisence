@@ -210,7 +210,7 @@
 # Fields:
 #   match_pattern / match_patterns: Match normalized MPRIS identity or canonical bus name.
 #       Prefix with identity: or bus: to restrict a pattern to one field.
-#   name: Display name override (replaces auto-detected identity in {{{player}}} variable)
+#   name: Discord activity name and {{{player}}} template value
 #   ignore: Don't show rich presence for this player
 #   ignore_unmatched: Only in [player.default]. Hide players with no matching [player.*] entry.
 #   app_id: Discord application ID (get yours: https://discord.com/developers/docs/quick-start/overview-of-apps)
