@@ -1395,6 +1395,12 @@ impl Presence {
             .activity_type(framing.activity_type.into())
             .status_display_type(framing.status_display_type.into());
 
+        if let Some(name) = framing.player_config.name.as_deref() {
+            if !name.is_empty() {
+                activity = activity.name(name);
+            }
+        }
+
         if !framing.texts.details.is_empty() {
             activity = activity.details(&framing.texts.details);
         }
