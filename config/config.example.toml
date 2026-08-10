@@ -211,6 +211,7 @@
 #   match_pattern / match_patterns: Match normalized MPRIS identity or canonical bus name.
 #       Prefix with identity: or bus: to restrict a pattern to one field.
 #   name: Discord activity name and {{{player}}} template value
+#   use_app_name: Omit the activity name so Discord uses the name registered for app_id
 #   ignore: Don't show rich presence for this player
 #   ignore_unmatched: Only in [player.default]. Hide players with no matching [player.*] entry.
 #   app_id: Discord application ID (get yours: https://discord.com/developers/docs/quick-start/overview-of-apps)
@@ -252,6 +253,11 @@
 # app_id = "YOUR_DISCORD_APP_ID"
 # icon = "https://www.musicpd.org/logo.png"
 # allow_streaming = true
+
+# Use Discord's registered application name instead of the player preset name.
+# [player.default]
+# app_id = "YOUR_DISCORD_APP_ID"
+# use_app_name = true
 
 # For the full list of bundled local players and web players, see config.default.toml
 # on GitHub: https://github.com/lazykern/mprisence/blob/main/config/config.default.toml

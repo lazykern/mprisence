@@ -202,6 +202,17 @@ show_icon = true
 Bundled presets keep separate Discord application IDs and define an explicit
 `name` for the displayed activity and `{{{player}}}` template value.
 
+Use the name registered for a custom Discord application instead of bundled
+player names:
+
+```toml
+[player.default]
+app_id = "YOUR_DISCORD_APP_ID"
+use_app_name = true
+```
+
+`use_app_name` defaults to `false`.
+
 Restrict discovery with the same selectors, or by resolved preset/site key:
 
 ```toml
