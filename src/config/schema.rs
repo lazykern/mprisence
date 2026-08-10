@@ -73,6 +73,7 @@ pub const DEFAULT_TIME_AS_ELAPSED: bool = false;
 pub const DEFAULT_IMGBB_EXPIRATION: u64 = 86400;
 
 pub const DEFAULT_PLAYER_APP_ID: &str = "1121632048155742288";
+pub const DEFAULT_PLAYER_USE_APP_NAME: bool = false;
 pub const DEFAULT_PLAYER_ICON: &str =
     "https://raw.githubusercontent.com/lazykern/mprisence/main/assets/icon.png";
 pub const DEFAULT_PLAYER_IGNORE: bool = false;
@@ -1790,6 +1791,9 @@ pub struct PlayerConfigLayer {
 
     #[serde(default)]
     pub override_activity_type: Option<ActivityType>,
+
+    #[serde(default)]
+    pub use_app_name: Option<bool>,
 }
 
 impl PlayerConfigLayer {
@@ -1829,6 +1833,9 @@ impl PlayerConfigLayer {
         if let Some(value) = self.override_activity_type {
             base.override_activity_type = Some(value);
         }
+        if let Some(value) = self.use_app_name {
+            base.use_app_name = value;
+        }
 
         base
     }
@@ -1845,6 +1852,7 @@ impl PlayerConfigLayer {
         self.allow_streaming = other.allow_streaming.or(self.allow_streaming);
         self.status_display_type = other.status_display_type.or(self.status_display_type);
         self.override_activity_type = other.override_activity_type.or(self.override_activity_type);
+        self.use_app_name = other.use_app_name.or(self.use_app_name);
     }
 }
 
@@ -1873,6 +1881,14 @@ pub struct PlayerConfig {
 
     #[serde(default)]
     pub override_activity_type: Option<ActivityType>,
+
+    // If true, the player config's name is ignored and the app name is used instead.
+    #[serde(default = "default_player_use_app_name")]
+    pub use_app_name: bool,
+}
+
+fn default_player_use_app_name() -> bool {
+    DEFAULT_PLAYER_USE_APP_NAME
 }
 
 fn default_player_ignore() -> bool {
@@ -1903,6 +1919,7 @@ impl Default for PlayerConfig {
     fn default() -> PlayerConfig {
         PlayerConfig {
             name: None,
+            use_app_name: default_player_use_app_name(),
             ignore: default_player_ignore(),
             app_id: default_player_app_id(),
             icon: default_player_icon(),

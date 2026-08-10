@@ -88,6 +88,11 @@ fn resolve_status_display_type(player_config: &PlayerConfig) -> StatusDisplayTyp
 }
 
 fn configured_activity_name(player_config: &PlayerConfig) -> Option<&str> {
+    // If the player config has `use_app_name = true`, the app name is used instead of the name.
+    if player_config.use_app_name {
+        return None;
+    }
+
     player_config
         .name
         .as_deref()
