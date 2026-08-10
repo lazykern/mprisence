@@ -1748,7 +1748,7 @@ mod tests {
         }
     }
 
-    fn activity_payload(name: Option<&str>) -> serde_json::Value {
+    fn activity_payload(name: Option<&str>, use_app_name: bool) -> serde_json::Value {
         let texts = ActivityTexts {
             details: "Track".to_string(),
             state: "Artist".to_string(),
@@ -1757,6 +1757,7 @@ mod tests {
         };
         let player_config = PlayerConfig {
             name: name.map(str::to_string),
+            use_app_name,
             ..PlayerConfig::default()
         };
         let framing = ActivityFraming {
@@ -1820,15 +1821,22 @@ mod tests {
 
     #[test]
     fn activity_uses_nonempty_configured_name() {
-        let payload = activity_payload(Some("VLC Media Player"));
+        let payload = activity_payload(Some("VLC Media Player"), false);
 
         assert_eq!(payload["name"], "VLC Media Player");
     }
 
     #[test]
     fn activity_omits_missing_or_empty_name() {
-        assert!(activity_payload(None).get("name").is_none());
-        assert!(activity_payload(Some("")).get("name").is_none());
+        assert!(activity_payload(None, false).get("name").is_none());
+        assert!(activity_payload(Some(""), false).get("name").is_none());
+    }
+
+    #[test]
+    fn activity_omits_configured_name_when_using_app_name() {
+        let payload = activity_payload(Some("Strawberry"), true);
+
+        assert!(payload.get("name").is_none());
     }
 
     #[test]
