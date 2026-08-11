@@ -3,7 +3,7 @@ resolver = "2"
 
 [package]
 name = "mprisence"
-version = "1.8.1"
+version = "1.8.2"
 edition = "2021"
 authors = ["Phusit Somboonyingsuk"]
 readme = "README.md"

@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.8.2] - 2026-08-11
+
+### Fixed
+
+- Add `use_app_name` to let Discord use the name registered for `app_id`, even
+  when a bundled player preset defines its own name
+  ([#98](https://github.com/lazykern/mprisence/issues/98)) by @narukoshin in
+  [#100](https://github.com/lazykern/mprisence/pull/100).
+
 ## [1.8.1] - 2026-08-08
 
 ### Fixed
