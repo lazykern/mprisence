@@ -3,6 +3,7 @@ use std::{collections::HashMap, fmt::Display, time::Duration};
 use log::{debug, info, trace};
 use mpris::PlaybackStatus;
 use smol_str::SmolStr;
+use thiserror::Error;
 use url::Url;
 
 use crate::utils;
@@ -13,6 +14,29 @@ pub mod events;
 pub mod health;
 
 pub use client::{ClientError, Player, PlayerFinder};
+
+#[derive(Debug, Error)]
+#[error("failed to initialize MPRIS player '{bus_name}' while {operation}: {source}")]
+pub struct PlayerDiscoveryError {
+    bus_name: String,
+    operation: &'static str,
+    #[source]
+    source: ClientError,
+}
+
+impl PlayerDiscoveryError {
+    fn new(bus_name: impl Into<String>, operation: &'static str, source: ClientError) -> Self {
+        Self {
+            bus_name: bus_name.into(),
+            operation,
+            source,
+        }
+    }
+
+    pub fn client_error(&self) -> &ClientError {
+        &self.source
+    }
+}
 
 const MPRIS_BUS_PREFIX: &str = "org.mpris.MediaPlayer2.";
 const PLAYERCTLD_NO_ACTIVE_PLAYER_ERROR: &str = "com.github.altdesktop.playerctld.NoActivePlayer";

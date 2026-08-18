@@ -108,10 +108,10 @@ impl Command {
                     for player in iter_players {
                         match player {
                             Ok(player) => players.push(player),
-                            Err(err) if is_playerctld_no_active_error(&err) => {
+                            Err(err) if is_playerctld_no_active_error(err.client_error()) => {
                                 log::debug!("Skipping playerctld proxy without an active player");
                             }
-                            Err(err) => return Err(err.into()),
+                            Err(err) => eprintln!("Warning: {}", err),
                         }
                     }
 

@@ -8,6 +8,8 @@ use dbus::{
 use mpris::{Metadata, MetadataValue, PlaybackStatus};
 use thiserror::Error;
 
+use super::PlayerDiscoveryError;
+
 const DBUS_DESTINATION: &str = "org.freedesktop.DBus";
 const DBUS_PATH: &str = "/org/freedesktop/DBus";
 const DBUS_INTERFACE: &str = "org.freedesktop.DBus";
@@ -64,7 +66,7 @@ impl PlayerFinder {
 
     pub fn iter_players(
         &self,
-    ) -> Result<std::vec::IntoIter<Result<Player, ClientError>>, ClientError> {
+    ) -> Result<std::vec::IntoIter<Result<Player, PlayerDiscoveryError>>, ClientError> {
         let request = method_call(DBUS_DESTINATION, DBUS_PATH, DBUS_INTERFACE, "ListNames")?;
         let reply = self
             .connection
@@ -97,7 +99,7 @@ impl Player {
         connection: Rc<Connection>,
         bus_name: String,
         timeout_ms: i32,
-    ) -> Result<Self, ClientError> {
+    ) -> Result<Self, PlayerDiscoveryError> {
         let unique_name = call_string_method(
             &connection,
             DBUS_DESTINATION,
@@ -106,14 +108,24 @@ impl Player {
             "GetNameOwner",
             &bus_name,
             timeout_ms,
-        )?;
+        )
+        .map_err(|source| {
+            PlayerDiscoveryError::new(bus_name.clone(), "resolving its D-Bus owner", source)
+        })?;
         let identity = get_property::<String>(
             &connection,
             &bus_name,
             ROOT_INTERFACE,
             "Identity",
             timeout_ms,
-        )?;
+        )
+        .map_err(|source| {
+            PlayerDiscoveryError::new(
+                bus_name.clone(),
+                "reading org.mpris.MediaPlayer2.Identity",
+                source,
+            )
+        })?;
 
         Ok(Self {
             connection,
@@ -228,4 +240,38 @@ where
         .read1::<Variant<T>>()
         .map(|value| value.0)
         .map_err(|error| ClientError::Message(error.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ClientError;
+    use crate::player::{is_playerctld_no_active_error, PlayerDiscoveryError};
+
+    #[test]
+    fn discovery_error_reports_player_and_operation() {
+        let error = PlayerDiscoveryError::new(
+            "org.mpris.MediaPlayer2.showtime",
+            "reading org.mpris.MediaPlayer2.Identity",
+            ClientError::Message("timed out".to_string()),
+        );
+
+        assert_eq!(
+            error.to_string(),
+            "failed to initialize MPRIS player 'org.mpris.MediaPlayer2.showtime' while reading org.mpris.MediaPlayer2.Identity: invalid D-Bus message: timed out"
+        );
+    }
+
+    #[test]
+    fn discovery_error_exposes_underlying_client_error() {
+        let error = PlayerDiscoveryError::new(
+            "org.mpris.MediaPlayer2.playerctld",
+            "reading org.mpris.MediaPlayer2.Identity",
+            ClientError::DBus(dbus::Error::new_custom(
+                "com.github.altdesktop.playerctld.NoActivePlayer",
+                "No player is being controlled by playerctld",
+            )),
+        );
+
+        assert!(is_playerctld_no_active_error(error.client_error()));
+    }
 }

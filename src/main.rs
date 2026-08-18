@@ -204,11 +204,14 @@ impl Mprisence {
         for player in player_finder.iter_players()? {
             let player = match player {
                 Ok(p) => p,
-                Err(err) if is_playerctld_no_active_error(&err) => {
+                Err(err) if is_playerctld_no_active_error(err.client_error()) => {
                     debug!("Skipping playerctld proxy without an active player during discovery");
                     continue;
                 }
-                Err(err) => return Err(err.into()),
+                Err(err) => {
+                    warn!("Skipping MPRIS player after discovery failure: {}", err);
+                    continue;
+                }
             };
 
             let id = PlayerIdentifier::from(&player);
