@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.8.3] - 2026-08-18
+
+### Fixed
+
+- Keep discovering responsive MPRIS players when another player fails to reply,
+  and identify the failing bus name and operation in the warning
+  ([#101](https://github.com/lazykern/mprisence/issues/101)) by
+  @choimadeleine.
+
+  Example warning:
+
+  ```text
+  Warning: failed to initialize MPRIS player 'org.mpris.MediaPlayer2.player' while reading org.mpris.MediaPlayer2.Identity: D-Bus error: Did not receive a reply.
+  ```
+
 ## [1.8.2] - 2026-08-11
 
 ### Fixed
