@@ -9,6 +9,7 @@ flamegraph*
 /dist/
 .SRCINFO
 /aur-mprisence/
+/aur-mprisence-bin/
 /aur-mprisence-git/
 *.pkg.tar.zst
 *.tar.gz
