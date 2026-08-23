@@ -2,7 +2,8 @@ use crate::{
     config::{
         get_config,
         schema::{
-            ActivityType, PlayerConfig, PlayerConfigMatch, StatusDisplayType, WebPlayerConfig,
+            ActivityType, PlayerConfig, PlayerConfigMatch, SourceRoute, StatusDisplayType,
+            WebPlayerConfig,
         },
     },
     error::Error,
@@ -159,7 +160,10 @@ impl Command {
                         );
                         let allowed =
                             config.is_source_allowed(&identity, &player_bus_name, &resolution);
-                        let web_player_match = config.matched_web_player_for_url(url.as_deref());
+                        let web_player_match = resolution
+                            .web_player_key
+                            .as_ref()
+                            .and_then(|_| config.matched_web_player_for_url(url.as_deref()));
 
                         entries.push(PlayerDisplay {
                             id,
@@ -173,6 +177,7 @@ impl Command {
                             url,
                             web_player_match,
                             player_matches: resolution.player_matches,
+                            route: resolution.route,
                             config: resolution.config,
                             allowed,
                             is_duplicate: false,
@@ -336,6 +341,7 @@ impl Command {
                                     }
                                 );
                             }
+                            println!("  Route    : {}", format_source_route(entry.route));
                             println!(
                                 "  Presence : {}",
                                 format_presence(&entry.config, entry.allowed, entry.is_duplicate)
@@ -567,12 +573,21 @@ struct PlayerDisplay {
     /// would project onto this player. None when no web_player matches.
     web_player_match: Option<(String, WebPlayerConfig)>,
     player_matches: Vec<PlayerConfigMatch>,
+    route: SourceRoute,
     config: PlayerConfig,
     allowed: bool,
     /// True when another bus name for the same identity was chosen as the
     /// winner by the deduplication logic; this entry will be skipped by the
     /// daemon.
     is_duplicate: bool,
+}
+
+fn format_source_route(route: SourceRoute) -> &'static str {
+    match route {
+        SourceRoute::Native => "native player",
+        SourceRoute::WebPlayer => "web player",
+        SourceRoute::UnmatchedWeb => "unmatched web URL",
+    }
 }
 
 fn create_divider() -> String {

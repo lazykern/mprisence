@@ -3,6 +3,7 @@ pub mod mpris;
 mod native_messaging;
 pub mod protocol;
 
+use crate::player::native_browser_of;
 use active_source::SourceRegistry;
 use log::{debug, error, info, trace, warn};
 use mpris::{MprisPublisher, PlayerManager, TaggedCommand};
@@ -492,17 +493,7 @@ async fn scan_competing_mpris() -> Result<Vec<String>, String> {
 /// True for MPRIS suffixes belonging to a browser or web-media integration
 /// that mirrors the bridge (not a standalone media app like mpd/vlc).
 fn is_browser_integration(suffix: &str) -> bool {
-    if suffix == "plasma-browser-integration" {
-        return true;
-    }
-    // Browsers expose either a bare name or `<browser>.instanceNNNN`
-    // (Firefox and the Chromium family both use instance suffixes).
-    const BROWSERS: &[&str] = &[
-        "firefox", "chromium", "chrome", "brave", "vivaldi", "edge", "opera",
-    ];
-    BROWSERS
-        .iter()
-        .any(|b| suffix == *b || suffix.starts_with(&format!("{b}.")))
+    native_browser_of(suffix).is_some()
 }
 
 pub async fn debug_fake_player(mpris_name: String) {

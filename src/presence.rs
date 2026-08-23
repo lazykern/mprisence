@@ -33,7 +33,8 @@ use crate::{
     player::{
         canonical_player_bus_name, cmus,
         events::{self, EventOutcome, PlayerEvent, PlayerEventKind},
-        health, PlaybackState, Player, PlayerFinder, PlayerIdentifier,
+        health, is_browser_source as classify_browser_source, PlaybackState, Player, PlayerFinder,
+        PlayerIdentifier,
     },
     template::{ActivityTexts, TemplateManager},
     utils,
@@ -291,18 +292,7 @@ impl Presence {
     /// thresholds and a confirming state that blocks the first push until
     /// position moves.
     fn is_browser_source(bus_name: &str, identity: &str) -> bool {
-        let bus = bus_name.to_ascii_lowercase();
-        let identity = identity.to_ascii_lowercase();
-
-        bus.contains("plasma-browser-integration")
-            || bus.contains("firefox")
-            || bus.contains("chromium")
-            || bus.contains("chrome")
-            || identity == "firefox"
-            || identity == "chromium"
-            || identity == "chrome"
-            || identity == "brave"
-            || identity == "vivaldi"
+        classify_browser_source(bus_name, identity)
     }
 
     /// Returns the identifier of the currently tracked player connection.

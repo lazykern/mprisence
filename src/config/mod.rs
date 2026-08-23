@@ -1,4 +1,4 @@
-use crate::player::{is_mprisence_web_bridge_bus, BRIDGE_CONFIG_KEY};
+use crate::player::{is_browser_source, is_mprisence_web_bridge_bus, BRIDGE_CONFIG_KEY};
 use crate::utils::normalize_player_identity;
 use figment::providers::{Format, Toml};
 use figment::Figment;
@@ -131,12 +131,14 @@ impl ConfigManager {
             .config
             .read()
             .expect("Failed to read config: RwLock poisoned");
-        let (config_identity, config_bus) = if is_mprisence_web_bridge_bus(player_bus_name) {
+        let is_bridge = is_mprisence_web_bridge_bus(player_bus_name);
+        let known_web_source = is_bridge || is_browser_source(player_bus_name, identity);
+        let (config_identity, config_bus) = if is_bridge {
             (BRIDGE_CONFIG_KEY, BRIDGE_CONFIG_KEY)
         } else {
             (identity, player_bus_name)
         };
-        guard.resolve_source(config_identity, config_bus, url, title)
+        guard.resolve_classified_source(config_identity, config_bus, url, title, known_web_source)
     }
 
     pub fn is_source_allowed(
@@ -875,6 +877,118 @@ ttl_hours = 72
         let resolution = manager.resolve_source("Firefox", "firefox", None, None);
         assert!(resolution.web_player_key.is_none());
         // Hidden by [player.default].ignore_unmatched, not by any web rule.
+        assert!(resolution.config.ignore);
+    }
+
+    #[test]
+    fn matched_native_player_with_http_url_stays_native() {
+        let config = parse_config_str(
+            r#"
+[player.ncspot]
+match_patterns = ["ncspot", "bus:ncspot"]
+ignore = false
+allow_streaming = true
+"#,
+        )
+        .expect("config should load");
+        let manager = ConfigManager::new_with_config(config);
+
+        let resolution = manager.resolve_source(
+            "ncspot",
+            "ncspot",
+            Some("https://open.spotify.com/track/abc"),
+            Some("Song"),
+        );
+
+        assert_eq!(resolution.route, schema::SourceRoute::Native);
+        assert_eq!(
+            resolution.player_matches.last().unwrap().config_key,
+            "ncspot"
+        );
+        assert!(resolution.web_player_key.is_none());
+        assert!(!resolution.config.ignore);
+        assert!(resolution.config.allow_streaming);
+    }
+
+    #[test]
+    fn known_browser_with_player_rule_still_uses_web_routing() {
+        let config = parse_config_str(
+            r#"
+[player.firefox]
+match_patterns = ["firefox"]
+ignore = true
+"#,
+        )
+        .expect("config should load");
+        let manager = ConfigManager::new_with_config(config);
+
+        let resolution = manager.resolve_source(
+            "Firefox",
+            "firefox",
+            Some("https://music.youtube.com/watch?v=abc"),
+            Some("Song"),
+        );
+
+        assert_eq!(resolution.route, schema::SourceRoute::WebPlayer);
+        assert_eq!(resolution.web_player_key.as_deref(), Some("youtube_music"));
+        assert!(!resolution.config.ignore);
+    }
+
+    #[test]
+    fn bridge_with_player_rule_still_uses_web_routing() {
+        let config = parse_config_str(
+            r#"
+[player.bridge]
+match_patterns = ["mprisence_web"]
+ignore = true
+"#,
+        )
+        .expect("config should load");
+        let manager = ConfigManager::new_with_config(config);
+
+        let resolution = manager.resolve_source(
+            "YouTube Music",
+            "mprisence_web.youtube_music.habc1234",
+            Some("https://music.youtube.com/watch?v=abc"),
+            Some("Song"),
+        );
+
+        assert_eq!(resolution.route, schema::SourceRoute::WebPlayer);
+        assert_eq!(resolution.web_player_key.as_deref(), Some("youtube_music"));
+        assert!(!resolution.config.ignore);
+    }
+
+    #[test]
+    fn unknown_browser_without_player_rule_uses_web_routing() {
+        let config = parse_config_str("").expect("bundled default config is valid");
+        let manager = ConfigManager::new_with_config(config);
+
+        let resolution = manager.resolve_source(
+            "Zen Browser",
+            "zen_browser",
+            Some("https://soundcloud.com/artist/song"),
+            Some("Song"),
+        );
+
+        assert_eq!(resolution.route, schema::SourceRoute::WebPlayer);
+        assert_eq!(resolution.web_player_key.as_deref(), Some("soundcloud"));
+        assert!(!resolution.config.ignore);
+    }
+
+    #[test]
+    fn unmatched_browser_http_url_reports_unmatched_web_route() {
+        let config = parse_config_str("").expect("bundled default config is valid");
+        let manager = ConfigManager::new_with_config(config);
+
+        let resolution = manager.resolve_source(
+            "Firefox",
+            "firefox",
+            Some("https://example.com/media"),
+            Some("Media"),
+        );
+
+        assert_eq!(resolution.route, schema::SourceRoute::UnmatchedWeb);
+        assert!(resolution.web_player_key.is_none());
         assert!(resolution.config.ignore);
     }
 

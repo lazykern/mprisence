@@ -283,16 +283,17 @@
 #
 # Specificity wins: exact > regex > wildcard > substring.
 #
-# Any http/https URL that does NOT match a `[web_player.*]` entry is
-# auto-ignored, so unknown browser audio (ads, random tabs) stays out
-# of Discord. Opt back in by adding a matching `[web_player.*]` entry.
+# Any web-routed http/https URL that does NOT match a `[web_player.*]` entry
+# is auto-ignored, so unknown browser audio (ads, random tabs) stays out of
+# Discord. Sources matching `[player.*]` stay native even when their metadata
+# contains an http/https URL. Opt web sources back in with a matching entry.
 #
 # Precedence: bundled default < bundled site < user default < user site.
 # User site entries inherit unset bundled fields, including match patterns,
 # so changing one field on a bundled site only takes one line.
 #
 # Most bundled web players are enabled (`ignore = false`). YouTube is ignored
-# by default, and unmatched http/https URLs are always ignored.
+# by default, and unmatched web-routed http/https URLs are ignored.
 
 # Turn website detection off entirely. Browser media then resolves through
 # [player.*] like any other player, and every [web_player.*] rule is inert.

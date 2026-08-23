@@ -296,8 +296,9 @@ app_id = "1125082278339559505"
 icon = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/768px-Youtube_Music_icon.svg.png"
 allow_streaming = true
 
-# Browsers are intentionally omitted: any http/https `xesam:url` without a
-# matching `[web_player.*]` entry is auto-ignored (see `apply_website_overrides`).
+# Browsers are intentionally omitted. Known browsers and unmatched sources use
+# web-player routing; an unknown http/https URL is then auto-ignored. A source
+# matching `[player.*]` stays native even when it exposes an http/https URL.
 # Unknown browsers (Zen, Vivaldi, LibreWolf, etc.) work without per-app config.
 
 # ------------------------------------------------------------------
@@ -314,7 +315,7 @@ allow_streaming = true
 # The browser does not need to be enabled or unhidden separately. Precedence is
 # bundled default < bundled site < user default < user site. Unset user site
 # fields inherit bundled fields, including match patterns.
-# An http/https URL with no matching entry is always hidden.
+# An http/https URL from a web-routed source with no matching entry is hidden.
 # To turn websites off entirely, use top-level `web_player_enabled = false`.
 # ------------------------------------------------------------------
 

@@ -37,12 +37,21 @@ pub struct PlayerResolution {
     pub matches: Vec<PlayerConfigMatch>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceRoute {
+    Native,
+    WebPlayer,
+    UnmatchedWeb,
+}
+
 #[derive(Debug, Clone)]
 pub struct SourceResolution {
     pub config: PlayerConfig,
     pub player_matches: Vec<PlayerConfigMatch>,
     pub web_player_key: Option<String>,
     pub title_suffix: Option<String>,
+    pub route: SourceRoute,
 }
 
 #[derive(Debug, Clone)]
@@ -403,6 +412,7 @@ impl Config {
         }
     }
 
+    #[cfg(test)]
     pub fn resolve_source(
         &self,
         identity: &str,
@@ -411,28 +421,72 @@ impl Config {
         title: Option<&str>,
     ) -> SourceResolution {
         let native = self.resolve_player_config(identity, player_bus_name);
-        let (config, web_player_key, title_suffix) = if let Some(url) = url {
-            let matched = self.matched_web_player_for_url(Some(url));
-            (
-                self.get_player_config_with_url(identity, player_bus_name, Some(url)),
-                matched.map(|(key, _)| key),
-                None,
-            )
-        } else if let Some((key, web, suffix)) = self.matched_web_player_for_title(title) {
-            (web.into_player_config(), Some(key), Some(suffix))
-        } else {
-            (native.config.clone(), None, None)
-        };
+        self.resolve_source_with_native(native, url, title, true)
+    }
+
+    pub fn resolve_classified_source(
+        &self,
+        identity: &str,
+        player_bus_name: &str,
+        url: Option<&str>,
+        title: Option<&str>,
+        known_web_source: bool,
+    ) -> SourceResolution {
+        let native = self.resolve_player_config(identity, player_bus_name);
+        // A matching player rule is an explicit declaration that this is a
+        // native source. Known browsers and bridge players remain web-routed.
+        let allow_web_routing = known_web_source || native.matches.is_empty();
+        self.resolve_source_with_native(native, url, title, allow_web_routing)
+    }
+
+    fn resolve_source_with_native(
+        &self,
+        native: PlayerResolution,
+        url: Option<&str>,
+        title: Option<&str>,
+        allow_web_routing: bool,
+    ) -> SourceResolution {
+        let (config, web_player_key, title_suffix, route) =
+            if !allow_web_routing || !self.web_player_enabled {
+                (native.config.clone(), None, None, SourceRoute::Native)
+            } else if let Some(url) = url {
+                if let Some((key, web)) = self.matched_web_player_for_url(Some(url)) {
+                    (
+                        web.into_player_config(),
+                        Some(key),
+                        None,
+                        SourceRoute::WebPlayer,
+                    )
+                } else if is_http_url(url) {
+                    let mut hidden = native.config.clone();
+                    hidden.ignore = true;
+                    (hidden, None, None, SourceRoute::UnmatchedWeb)
+                } else {
+                    (native.config.clone(), None, None, SourceRoute::Native)
+                }
+            } else if let Some((key, web, suffix)) = self.matched_web_player_for_title(title) {
+                (
+                    web.into_player_config(),
+                    Some(key),
+                    Some(suffix),
+                    SourceRoute::WebPlayer,
+                )
+            } else {
+                (native.config.clone(), None, None, SourceRoute::Native)
+            };
+
         SourceResolution {
             config,
             player_matches: native.matches,
             web_player_key,
             title_suffix,
+            route,
         }
     }
 
     /// Like `get_player_config` but additionally overlays any matching
     /// `[web_player.*]` layers on top when the current track's URL matches.
+    #[cfg(test)]
     pub fn get_player_config_with_url(
         &self,
         identity: &str,
@@ -452,6 +506,7 @@ impl Config {
     ///
     /// No-op when `web_player_enabled = false`: the URL is never inspected and
     /// the browser's own `[player.*]` config stands.
+    #[cfg(test)]
     fn apply_web_player_overrides(&self, base: PlayerConfig, url: Option<&str>) -> PlayerConfig {
         if !self.web_player_enabled {
             return base;

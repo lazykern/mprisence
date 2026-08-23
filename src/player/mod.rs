@@ -182,8 +182,12 @@ const NATIVE_BROWSER_BUSES: &[(&str, &str)] = &[
     ("firefox", "firefox"),
     ("chromium", "chromium"),
     ("chrome", "chromium"),
+    ("google-chrome", "chromium"),
     ("brave", "brave"),
     ("vivaldi", "vivaldi"),
+    ("edge", "chromium"),
+    ("microsoft-edge", "chromium"),
+    ("opera", "chromium"),
     // plasma-browser-integration proxies whichever browser KDE is integrated
     // with; treat it as a native browser bus with unknown specific browser.
     ("plasma-browser-integration", "plasma"),
@@ -192,10 +196,35 @@ const NATIVE_BROWSER_BUSES: &[(&str, &str)] = &[
 /// Maps a native browser bus name to the browser key the bridge reports in
 /// `mprisence:browser` (e.g. `"firefox"`). Returns None for non-browser buses.
 pub fn native_browser_of(canonical_bus_name: &str) -> Option<&'static str> {
+    let canonical_bus_name = canonical_bus_name.to_ascii_lowercase();
     NATIVE_BROWSER_BUSES
         .iter()
-        .find(|(prefix, _)| canonical_bus_name.starts_with(prefix))
+        .find(|(prefix, _)| {
+            canonical_bus_name == *prefix
+                || canonical_bus_name
+                    .strip_prefix(prefix)
+                    .is_some_and(|suffix| suffix.starts_with('.') || suffix.starts_with('-'))
+        })
         .map(|(_, browser)| *browser)
+}
+
+pub fn is_browser_source(raw_bus_name: &str, identity: &str) -> bool {
+    let bus = canonical_player_bus_name(raw_bus_name);
+    if native_browser_of(&bus).is_some() {
+        return true;
+    }
+
+    matches!(
+        utils::normalize_player_identity(identity).as_str(),
+        "firefox"
+            | "chromium"
+            | "chrome"
+            | "brave"
+            | "vivaldi"
+            | "edge"
+            | "microsoft_edge"
+            | "opera"
+    )
 }
 
 /// Pure: should this native browser bus be suppressed because it exposes the
@@ -1070,6 +1099,11 @@ mod bridge_tests {
             Some("firefox")
         );
         assert_eq!(native_browser_of("chromium.instance_2"), Some("chromium"));
+        assert_eq!(native_browser_of("firefox-esr"), Some("firefox"));
+        assert_eq!(native_browser_of("google-chrome"), Some("chromium"));
+        assert_eq!(native_browser_of("edge.instance_2"), Some("chromium"));
+        assert_eq!(native_browser_of("opera.instance_2"), Some("chromium"));
+        assert_eq!(native_browser_of("chromed"), None);
         assert_eq!(native_browser_of("spotify"), None);
 
         let bridged_sources = [(
