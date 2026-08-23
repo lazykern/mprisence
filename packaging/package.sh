@@ -35,10 +35,8 @@ echo "Archive created at: $(pwd)/${DIST_DIR}/${ARCHIVE_NAME}"
 # 3. Build the .deb package
 echo
 echo "--- Building Debian package... ---"
-cargo deb
-DEB_PATH=$(find target/debian -name "*.deb")
-mv "${DEB_PATH}" "${DIST_DIR}/"
-echo "Debian package created at: $(pwd)/${DIST_DIR}/$(basename "${DEB_PATH}")"
+cargo deb --output "${DIST_DIR}/"
+echo "Debian package created in: $(pwd)/${DIST_DIR}/"
 
 
 echo
