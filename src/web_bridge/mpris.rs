@@ -224,6 +224,12 @@ impl PlayerManager {
     }
 }
 
+impl Default for PlayerManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Stable config key all bridge MPRIS players resolve to.
 #[allow(dead_code)]
 pub const BRIDGE_CONFIG_KEY: &str = "mprisence_web";
@@ -296,6 +302,7 @@ impl MprisPublisher {
             .build()
             .await?;
 
+        #[allow(clippy::arc_with_non_send_sync)]
         let arc_player = Arc::new(player);
 
         // Wire D-Bus method callbacks to forward commands to the extension
@@ -405,7 +412,7 @@ impl MprisPublisher {
         let position_us = source
             .map(|s| {
                 let pos = s.playback.position_ms.saturating_mul(1_000);
-                let dur = (s.playback.duration_ms as u64).saturating_mul(1_000);
+                let dur = s.playback.duration_ms.saturating_mul(1_000);
                 if pos > dur && dur > 0 {
                     trace!(
                         "clamping position {}µs > duration {}µs for {}",
@@ -464,9 +471,7 @@ fn stabilize_playback(
         }
     }
 
-    if prev_pos_ms > 5_000 && playback.position_ms + 3_000 < prev_pos_ms {
-        playback.position_ms = prev_pos_ms;
-    } else if prev_pos_ms > 30_000 && playback.position_ms == 0 {
+    if prev_pos_ms > 5_000 && playback.position_ms.saturating_add(3_000) < prev_pos_ms {
         playback.position_ms = prev_pos_ms;
     }
 

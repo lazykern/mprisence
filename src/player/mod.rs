@@ -142,7 +142,7 @@ impl PlaybackState {
             url: metadata.and_then(|m| m.url().map(|s| s.to_string().into_boxed_str())),
             art_url: metadata.and_then(|m| {
                 m.art_url()
-                    .map(|s| utils::normalize_art_url(&s).into_boxed_str())
+                    .map(|s| utils::normalize_art_url(s).into_boxed_str())
             }),
         }
     }

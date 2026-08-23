@@ -852,7 +852,7 @@ impl Presence {
             // the actual image content.
             let art_changed = match (last_art.as_deref(), art_url) {
                 (Some(last), Some(current)) => {
-                    utils::normalize_art_url(last) != utils::normalize_art_url(&current)
+                    utils::normalize_art_url(last) != utils::normalize_art_url(current)
                 }
                 (None, Some(_)) => true,  // first art URL seen
                 (Some(_), None) => false, // art URL disappeared - keep last
@@ -876,7 +876,7 @@ impl Presence {
                 if let Some(ref url) = track_url {
                     *last_url = Some(url.clone());
                 }
-                if let Some(ref art) = art_url {
+                if let Some(art) = art_url {
                     // Store normalized so next poll's comparison is stable.
                     *last_art = Some(utils::normalize_art_url(art));
                 }
@@ -1110,11 +1110,10 @@ impl Presence {
                 .mpris_metadata()
                 .and_then(|m| m.art_url())
                 .filter(|url| crate::cover::CoverManager::is_direct_url_allowed(url))
-                .or_else(|| None)
         } else {
             None
         };
-        if let Some(ref cover_url) = direct_cover {
+        if let Some(cover_url) = direct_cover {
             debug!("Serving direct cover art URL on fast path: {}", cover_url);
             *self.last_resolved_cover_art.lock() =
                 Some((current_generation, cover_url.to_string()));
@@ -1140,7 +1139,7 @@ impl Presence {
         }
         let cover_for_push = cached_cover
             .as_deref()
-            .or(direct_cover.as_deref())
+            .or(direct_cover)
             .or(remembered_cover.as_deref());
         debug!(
             "Artwork source for push: {}",

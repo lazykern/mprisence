@@ -38,7 +38,7 @@ impl TrackFingerprint {
         Self {
             track_id: metadata.track_id().map(|id| id.to_string()),
             url: metadata.url().map(|url| url.to_string()),
-            art_url: metadata.art_url().map(|url| utils::normalize_art_url(&url)),
+            art_url: metadata.art_url().map(utils::normalize_art_url),
             title: metadata.title().map(|title| title.to_string()),
             artists: metadata
                 .artists()
@@ -823,7 +823,7 @@ mod tests {
     // ------------------------------------------------------------------
     #[test]
     fn any_state_goes_healthy_on_pause() {
-        for mut health in vec![
+        for mut health in [
             PlayerHealth::Healthy {
                 generation: 1,
                 last_event: Instant::now(),
@@ -864,7 +864,7 @@ mod tests {
 
     #[test]
     fn any_state_goes_healthy_on_stop() {
-        for mut health in vec![
+        for mut health in [
             PlayerHealth::Healthy {
                 generation: 1,
                 last_event: Instant::now(),

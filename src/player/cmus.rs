@@ -15,6 +15,12 @@ pub struct CmusState {
     pub error_logged: AtomicBool,
 }
 
+impl Default for CmusState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CmusState {
     pub fn new() -> Self {
         Self {

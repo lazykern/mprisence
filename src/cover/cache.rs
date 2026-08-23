@@ -588,7 +588,7 @@ impl CoverCache {
             return Ok(());
         }
 
-        entries.sort_by(|a, b| a.1.cmp(&b.1));
+        entries.sort_by_key(|entry| entry.1);
 
         while entries.len() > self.max_entries || total_size > self.max_size_bytes {
             if entries.is_empty() {
