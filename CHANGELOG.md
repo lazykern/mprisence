@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.8.4] - 2026-08-23
+
+### Fixed
+
+- Keep explicitly matched native players on their `[player.*]` configuration
+  when track metadata contains an HTTP URL. Known browsers, unknown unmatched
+  browsers, and the mprisence web bridge continue to use web-player routing.
+- Use consistent browser detection for source routing, health handling,
+  duplicate suppression, and `mprisence web doctor`.
+
+### Changed
+
+- Show whether each source uses native, web-player, or unmatched-web routing in
+  `mprisence players list -d`.
+
 ## [1.8.3] - 2026-08-18
 
 ### Fixed
