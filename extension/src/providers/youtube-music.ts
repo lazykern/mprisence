@@ -6,6 +6,16 @@ import type {
 } from "../types";
 import type { Provider, ProviderResult } from "./base";
 
+type MediaPlaybackState = Pick<HTMLMediaElement, "paused" | "ended">;
+
+export function isYouTubeMusicPlaying(
+  media: MediaPlaybackState | null | undefined,
+  playButtonTitle: string | null | undefined,
+): boolean {
+  if (media) return !media.paused && !media.ended;
+  return playButtonTitle?.toLowerCase().includes("pause") ?? false;
+}
+
 /**
  * YouTube Music provider.
  *
@@ -115,8 +125,6 @@ export class YouTubeMusicProvider implements Provider {
     }
 
     // ── Playback state ─────────────────────────────────────────
-    const isPaused = video?.paused ?? true;
-
     // YTM <video> spans the entire queue: currentTime/duration can be
     // 30-60 minutes. Per-track position/duration live on the player-bar
     // progress element as aria-valuenow/aria-valuemax. If unavailable,
@@ -146,10 +154,11 @@ export class YouTubeMusicProvider implements Provider {
       return null;
     }
 
-    // ── Status from play button title ──────────────────────────
-    const isPlaying = playBtn
-      ? playBtn.getAttribute("title")?.toLowerCase().includes("pause")
-      : !isPaused;
+    // ── Playback status ─────────────────────────────────────────
+    const isPlaying = isYouTubeMusicPlaying(
+      video,
+      playBtn?.getAttribute("title"),
+    );
 
     const status = isPlaying ? "playing" : "paused";
 
