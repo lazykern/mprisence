@@ -63,6 +63,14 @@ export class YouTubeMusicProvider implements Provider {
     const video = this.qs<HTMLVideoElement>("video");
 
     if (!titleEl && !video) return null;
+    if (
+      !video ||
+      video.readyState < 2 ||
+      !Number.isFinite(video.duration) ||
+      video.duration <= 0
+    ) {
+      return null;
+    }
 
     // ── Title ──────────────────────────────────────────────────
     const title =
@@ -140,8 +148,17 @@ export class YouTubeMusicProvider implements Provider {
       return null;
     }
 
-    let currentSec = trackPositionSec ?? (video?.currentTime || 0);
-    let totalSec = trackDurationSec ?? (video?.duration || 0);
+    const hasStartupProgressPlaceholder =
+      trackPositionSec === 0 &&
+      trackDurationSec === 100 &&
+      Math.abs(video.duration - trackDurationSec) > 1;
+
+    if (hasStartupProgressPlaceholder) {
+      return null;
+    }
+
+    let currentSec = trackPositionSec ?? (video.currentTime || 0);
+    let totalSec = trackDurationSec ?? video.duration;
     ({ positionSec: currentSec, durationSec: totalSec } = this.stabilizePlayback(
       trackId,
       currentSec,

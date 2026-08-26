@@ -466,7 +466,14 @@ fn stabilize_playback(
         playback.duration_ms = prev_dur_ms;
     } else if prev_dur_ms > 0 && playback.duration_ms > 0 {
         let diff = prev_dur_ms.abs_diff(playback.duration_ms);
-        if diff > 10_000 && (diff as f64 / prev_dur_ms as f64) > 0.15 {
+        let replacing_ytm_startup_placeholder = track_id.starts_with("/mprisence/track/ytm_")
+            && prev_dur_ms == 100_000
+            && prev_pos_ms == 0
+            && playback.duration_ms != 100_000;
+        if !replacing_ytm_startup_placeholder
+            && diff > 10_000
+            && (diff as f64 / prev_dur_ms as f64) > 0.15
+        {
             playback.duration_ms = prev_dur_ms;
         }
     }
@@ -863,5 +870,30 @@ mod tests {
 
         assert_eq!(playback.duration_ms, 598_000);
         assert_eq!(playback.position_ms, 156_000);
+    }
+
+    #[test]
+    fn stabilize_playback_accepts_real_duration_after_startup_placeholder() {
+        use super::super::protocol::{PlaybackState, Status};
+
+        let prev = PublishedSnapshot {
+            meta: MetaSnapshot {
+                track_id: "/mprisence/track/ytm_dQw4w9WgXcQ".into(),
+                length_us: 100_000_000,
+                ..Default::default()
+            },
+            last_position_us: 0,
+            ..Default::default()
+        };
+        let mut playback = PlaybackState {
+            status: Status::Playing,
+            position_ms: 0,
+            duration_ms: 214_000,
+        };
+
+        stabilize_playback(&prev, &mut playback, "/mprisence/track/ytm_dQw4w9WgXcQ");
+
+        assert_eq!(playback.duration_ms, 214_000);
+        assert_eq!(playback.position_ms, 0);
     }
 }
