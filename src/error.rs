@@ -19,6 +19,9 @@ pub enum Error {
 
     #[error("MPRIS client error: {0}")]
     MprisClient(#[from] ClientError),
+
+    #[error("Autostart error: {0}")]
+    Autostart(String),
 }
 
 #[derive(Error, Debug)]

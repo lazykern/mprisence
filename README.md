@@ -139,27 +139,28 @@ VLC        vlc_media_player       org.mpris.MediaPlayer2.vlc                  D-
 Strawberry strawberry           org.mpris.MediaPlayer2.strawberry          D-Bus
 ```
 
-### 4. Enable as a service (autostart)
+### 4. Start automatically (optional)
 
 ```bash
-systemctl --user enable --now mprisence.service
+mprisence autostart enable
 ```
 
-If the command above does not work:
+This reuses a packaged systemd user service when available. For source and
+`cargo install` builds, it creates a user service that points to the current
+binary. On systems without a systemd user manager, it creates a freedesktop
+desktop-login entry instead.
+
+Check or disable autostart at any time:
 
 ```bash
-mkdir -p ~/.config/systemd/user
-curl -o ~/.config/systemd/user/mprisence.service \
-  https://raw.githubusercontent.com/lazykern/mprisence/main/mprisence.service
-systemctl --user daemon-reload
-systemctl --user enable --now mprisence.service
+mprisence autostart
+mprisence autostart disable
 ```
 
-Check service status:
+To explicitly choose the desktop-login fallback:
 
 ```bash
-systemctl --user status mprisence
-journalctl --user -u mprisence -f
+mprisence autostart enable --method desktop
 ```
 
 ## Configuration
@@ -400,7 +401,7 @@ Check:
 5. Logs show no errors
 
 ```bash
-systemctl --user status mprisence
+mprisence autostart status
 mprisence players list --detailed
 journalctl --user -u mprisence -f
 ```

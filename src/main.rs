@@ -23,6 +23,7 @@ use tokio::sync::mpsc;
 #[global_allocator]
 static GLOBAL: System = System;
 
+mod autostart;
 mod cli;
 mod config;
 mod cover;

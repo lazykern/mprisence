@@ -2,6 +2,10 @@
 
 ## [1.8.4] - 2026-08-23
 
+### Added
+
+- Manage login autostart from `mprisence autostart` with systemd and desktop-login support.
+
 ### Fixed
 
 - Keep explicitly matched native players on their `[player.*]` configuration

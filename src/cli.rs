@@ -37,6 +37,11 @@ pub enum Command {
         #[command(subcommand)]
         command: PlayersCommand,
     },
+    /// Enable, disable, or inspect login autostart
+    Autostart {
+        #[command(subcommand)]
+        command: Option<AutostartCommand>,
+    },
     Config {
         #[command(subcommand)]
         command: Option<ConfigCommand>,
@@ -55,6 +60,22 @@ pub enum Command {
 pub enum ConfigCommand {
     /// Print the resolved configuration (default)
     Show,
+}
+
+#[derive(Subcommand)]
+pub enum AutostartCommand {
+    /// Start mprisence now and after future logins
+    Enable {
+        /// Backend to use. Auto prefers a systemd user service.
+        #[arg(long, value_enum, default_value_t)]
+        method: crate::autostart::Method,
+    },
+    /// Stop mprisence and disable every detected autostart method
+    Disable,
+    /// Show the configured method and current runtime state
+    Status,
+    /// Restart the systemd user service
+    Restart,
 }
 
 #[derive(Subcommand)]
@@ -356,6 +377,15 @@ impl Command {
                     }
                 }
             },
+            Command::Autostart { command } => {
+                let current = match command.unwrap_or(AutostartCommand::Status) {
+                    AutostartCommand::Enable { method } => crate::autostart::enable(method)?,
+                    AutostartCommand::Disable => crate::autostart::disable()?,
+                    AutostartCommand::Status => crate::autostart::status(),
+                    AutostartCommand::Restart => crate::autostart::restart()?,
+                };
+                crate::autostart::print_status(&current);
+            }
             Command::Config { command } => match command.unwrap_or(ConfigCommand::Show) {
                 ConfigCommand::Show => {
                     let config = get_config();
