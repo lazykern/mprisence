@@ -8,6 +8,8 @@
 
 ### Fixed
 
+- Start mprisence immediately when enabling XDG desktop autostart and report
+  when automatic fallback cannot detect a graphical session.
 - Normalize local cover artwork before provider uploads so recoverable malformed
   images are repaired and oversized images are bounded consistently.
 - Keep explicitly matched native players on their `[player.*]` configuration

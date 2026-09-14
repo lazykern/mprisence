@@ -1,8 +1,9 @@
 use std::env;
+use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 use clap::ValueEnum;
 
@@ -11,6 +12,12 @@ use crate::error::Error;
 const SERVICE_NAME: &str = "mprisence.service";
 const DESKTOP_FILE_NAME: &str = "mprisence.desktop";
 const MANAGED_MARKER: &str = "Managed by `mprisence autostart`";
+const GRAPHICAL_SESSION_VARS: [&str; 4] = [
+    "XDG_CURRENT_DESKTOP",
+    "DESKTOP_SESSION",
+    "WAYLAND_DISPLAY",
+    "DISPLAY",
+];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
 pub enum Method {
@@ -57,7 +64,12 @@ pub fn enable(method: Method) -> Result<Status, Error> {
     let before = status();
     let selected = match method {
         Method::Auto if before.systemd.available => Method::Systemd,
-        Method::Auto => Method::Desktop,
+        Method::Auto if before.desktop.available => Method::Desktop,
+        Method::Auto => {
+            return Err(autostart_error(
+                "no systemd user manager or graphical desktop session was detected; use `--method desktop` to configure XDG autostart explicitly",
+            ));
+        }
         explicit => explicit,
     };
 
@@ -163,16 +175,23 @@ pub fn print_status(current: &Status) {
 
     if current.desktop.installed || current.desktop.enabled {
         println!(
-            "Desktop   : {}",
+            "Desktop   : {}{}",
             if current.desktop.enabled {
                 "enabled at login"
             } else {
                 "disabled"
-            }
+            },
+            if current.desktop.available {
+                ""
+            } else {
+                " (session support not detected)"
+            },
         );
         if let Some(path) = &current.desktop.path {
             println!("Entry     : {}", path.display());
         }
+    } else if !current.desktop.available {
+        println!("Desktop   : session support not detected");
     }
 
     println!();
@@ -262,7 +281,7 @@ fn desktop_status() -> BackendStatus {
         .is_some_and(|text| text.contains(MANAGED_MARKER));
 
     BackendStatus {
-        available: true,
+        available: graphical_session_detected(),
         installed,
         enabled,
         active: None,
@@ -299,18 +318,21 @@ fn disable_systemd() -> Result<(), Error> {
 
 fn enable_desktop() -> Result<(), Error> {
     let user_path = desktop_user_path();
+    let executable = stable_executable()?;
     if user_path.exists() && !file_is_managed(&user_path) {
         let content = fs::read_to_string(&user_path)?;
-        return write_atomic(&user_path, &set_desktop_hidden(&content, false));
+        write_atomic(&user_path, &set_desktop_hidden(&content, false))?;
+    } else if user_path.exists() || !desktop_system_paths().into_iter().any(|path| path.exists()) {
+        let entry = render_desktop_entry(&executable)?;
+        write_atomic(&user_path, &entry)?;
     }
 
-    if !user_path.exists() && desktop_system_paths().into_iter().any(|path| path.exists()) {
-        return Ok(());
-    }
-
-    let executable = stable_executable()?;
-    let entry = render_desktop_entry(&executable)?;
-    write_atomic(&user_path, &entry)
+    Command::new(executable)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    Ok(())
 }
 
 fn disable_desktop(current: &BackendStatus) -> Result<(), Error> {
@@ -348,6 +370,18 @@ fn desktop_system_paths() -> Vec<PathBuf> {
         .into_iter()
         .map(|base| base.join("autostart").join(DESKTOP_FILE_NAME))
         .collect()
+}
+
+fn graphical_session_detected() -> bool {
+    has_nonempty_value(GRAPHICAL_SESSION_VARS.into_iter().filter_map(env::var_os))
+}
+
+fn has_nonempty_value<I, S>(values: I) -> bool
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    values.into_iter().any(|value| !value.as_ref().is_empty())
 }
 
 fn config_home() -> PathBuf {
@@ -570,5 +604,11 @@ mod tests {
         fs::write(&path, "[Service]\nExecStart=/custom/mprisence\n").unwrap();
         assert!(!file_is_legacy_unit(&path));
         fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn graphical_session_detection_requires_a_nonempty_value() {
+        assert!(!has_nonempty_value(["", ""]));
+        assert!(has_nonempty_value(["", "KDE"]));
     }
 }

@@ -147,8 +147,9 @@ mprisence autostart enable
 
 This reuses a packaged systemd user service when available. For source and
 `cargo install` builds, it creates a user service that points to the current
-binary. On systems without a systemd user manager, it creates a freedesktop
-desktop-login entry instead.
+binary. When no systemd user manager is available in a graphical session, it
+uses the freedesktop XDG Autostart specification instead. Standalone window
+managers may require a compatible XDG autostart runner.
 
 Check or disable autostart at any time:
 
