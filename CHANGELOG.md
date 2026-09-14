@@ -8,6 +8,8 @@
 
 ### Fixed
 
+- Normalize local cover artwork before provider uploads so recoverable malformed
+  images are repaired and oversized images are bounded consistently.
 - Keep explicitly matched native players on their `[player.*]` configuration
   when track metadata contains an HTTP URL. Known browsers, unknown unmatched
   browsers, and the mprisence web bridge continue to use web-player routing.

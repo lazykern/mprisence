@@ -1,15 +1,10 @@
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use catbox::{file, litter};
-use image::{imageops::FilterType, ImageFormat, ImageReader, Limits};
 use log::{debug, info, trace, warn};
-use std::io::Cursor;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::fs;
-use tokio::sync::Semaphore;
-use tokio::task::spawn_blocking;
 
 use crate::config::schema::CatboxConfig;
 use crate::cover::error::CoverArtError;
@@ -21,22 +16,12 @@ use super::{CoverArtProvider, CoverResult};
 
 pub struct CatboxProvider {
     config: CatboxConfig,
-    resize_slots: Arc<Semaphore>,
 }
 
 impl CatboxProvider {
     pub fn with_config(config: CatboxConfig) -> Self {
         info!("Initializing Catbox provider");
-        Self {
-            config,
-            resize_slots: Arc::new(Semaphore::new(1)),
-        }
-    }
-
-    pub(crate) fn with_resize_slots(config: CatboxConfig, resize_slots: Arc<Semaphore>) -> Self {
-        let mut provider = Self::with_config(config);
-        provider.resize_slots = resize_slots;
-        provider
+        Self { config }
     }
 
     fn provider_label(&self) -> &'static str {
@@ -129,20 +114,15 @@ impl CatboxProvider {
         Ok(())
     }
 
-    async fn upload_from_bytes(
-        &self,
-        data: &[u8],
-        cancel: &CancellationToken,
-    ) -> Result<String, CoverArtError> {
-        let prepared = self.prepare_upload_bytes(data.to_vec(), cancel).await?;
+    async fn upload_from_bytes(&self, data: &[u8]) -> Result<String, CoverArtError> {
         let temp_path = Self::temp_file_path();
         trace!(
             "Writing {} bytes to temporary file for Catbox upload: {:?}",
-            prepared.len(),
+            data.len(),
             temp_path
         );
 
-        fs::write(&temp_path, &prepared).await.map_err(|e| {
+        fs::write(&temp_path, data).await.map_err(|e| {
             CoverArtError::provider_error(self.provider_label(), &format!("write failed: {e}"))
         })?;
 
@@ -154,91 +134,6 @@ impl CatboxProvider {
             );
         }
         result
-    }
-
-    /// Decode + resize if larger than `MAX_DIM` on either axis or oversized
-    /// in bytes. Skips work for small images. Re-encodes as JPEG q=85 because
-    /// album covers don't need alpha and JPEG shrinks far better than PNG.
-    /// CPU-bound; runs on a blocking task so the async runtime stays free.
-    async fn prepare_upload_bytes(
-        &self,
-        bytes: Vec<u8>,
-        cancel: &CancellationToken,
-    ) -> Result<Vec<u8>, CoverArtError> {
-        const MAX_DIM: u32 = 512;
-        const MAX_BYTES: usize = 256 * 1024;
-
-        if bytes.len() <= MAX_BYTES {
-            // Cheap path: trust small files - quick check would have to decode
-            // anyway, and album cover thumbnails are commonly already small.
-            return Ok(bytes);
-        }
-
-        let provider = self.provider_label();
-        let original_len = bytes.len();
-
-        if cancel.is_cancelled() {
-            debug!("{} image resize cancelled", provider);
-            return Err(CoverArtError::other("cancelled"));
-        }
-
-        let resize_slot = tokio::select! {
-            permit = self.resize_slots.clone().acquire_owned() => permit.map_err(|_| {
-                CoverArtError::provider_error(provider, "image resize queue closed")
-            })?,
-            _ = cancel.cancelled() => return Err(CoverArtError::other("cancelled")),
-        };
-
-        spawn_blocking(move || -> Result<Vec<u8>, CoverArtError> {
-            let _resize_slot = resize_slot;
-            let mut reader = ImageReader::new(Cursor::new(bytes.as_slice()))
-                .with_guessed_format()
-                .map_err(|e| {
-                    CoverArtError::provider_error(
-                        provider,
-                        &format!("image format detection failed: {e}"),
-                    )
-                })?;
-            let mut limits = Limits::default();
-            limits.max_image_width = Some(8192);
-            limits.max_image_height = Some(8192);
-            limits.max_alloc = Some(128 * 1024 * 1024);
-            reader.limits(limits);
-            let img = reader.decode().map_err(|e| {
-                CoverArtError::provider_error(provider, &format!("image decode failed: {e}"))
-            })?;
-            let (w, h) = (img.width(), img.height());
-
-            if w <= MAX_DIM && h <= MAX_DIM {
-                return Ok(bytes);
-            }
-
-            let resized = img.resize(MAX_DIM, MAX_DIM, FilterType::Lanczos3);
-            let (nw, nh) = (resized.width(), resized.height());
-            let mut out: Vec<u8> = Vec::with_capacity(64 * 1024);
-            let mut cursor = Cursor::new(&mut out);
-            resized
-                .into_rgb8()
-                .write_to(&mut cursor, ImageFormat::Jpeg)
-                .map_err(|e| {
-                    CoverArtError::provider_error(provider, &format!("image re-encode failed: {e}"))
-                })?;
-            debug!(
-                "{} resized cover art {}x{} ({} B) -> {}x{} ({} B JPEG)",
-                provider,
-                w,
-                h,
-                original_len,
-                nw,
-                nh,
-                out.len()
-            );
-            Ok(out)
-        })
-        .await
-        .map_err(|e| {
-            CoverArtError::provider_error(self.provider_label(), &format!("resize task: {e}"))
-        })?
     }
 
     fn temp_file_path() -> PathBuf {
@@ -280,12 +175,12 @@ impl CatboxProvider {
                         &format!("read {:?}: {e}", path),
                     )
                 })?;
-                Some(self.upload_from_bytes(&bytes, cancel).await?)
+                Some(self.upload_from_bytes(&bytes).await?)
             }
-            ArtSource::Bytes(data) => Some(self.upload_from_bytes(data, cancel).await?),
+            ArtSource::Bytes(data) => Some(self.upload_from_bytes(data).await?),
             ArtSource::Base64(data) => {
                 let bytes = self.base64_to_bytes(data)?;
-                Some(self.upload_from_bytes(&bytes, cancel).await?)
+                Some(self.upload_from_bytes(&bytes).await?)
             }
             ArtSource::Url(_) => return Ok(None),
         };
@@ -341,39 +236,5 @@ impl CoverArtProvider for CatboxProvider {
         cancel: &CancellationToken,
     ) -> Result<Option<CoverResult>, CoverArtError> {
         self.process_source(source, cancel).await
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::CatboxProvider;
-    use crate::config::schema::CatboxConfig;
-    use image::{DynamicImage, ImageFormat, Rgb, RgbImage};
-    use std::io::Cursor;
-    use tokio_util::sync::CancellationToken;
-
-    #[tokio::test]
-    async fn large_upload_images_are_resized() {
-        let image = RgbImage::from_fn(1024, 1024, |x, y| {
-            let value = x
-                .wrapping_mul(1_664_525)
-                .wrapping_add(y.wrapping_mul(1_013_904_223));
-            Rgb([value as u8, (value >> 8) as u8, (value >> 16) as u8])
-        });
-        let mut encoded = Vec::new();
-        DynamicImage::ImageRgb8(image)
-            .write_to(&mut Cursor::new(&mut encoded), ImageFormat::Png)
-            .unwrap();
-        assert!(encoded.len() > 256 * 1024);
-
-        let provider = CatboxProvider::with_config(CatboxConfig::default());
-        let resized = provider
-            .prepare_upload_bytes(encoded, &CancellationToken::new())
-            .await
-            .unwrap();
-        let decoded = image::load_from_memory(&resized).unwrap();
-
-        assert!(decoded.width() <= 512);
-        assert!(decoded.height() <= 512);
     }
 }

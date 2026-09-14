@@ -75,18 +75,18 @@ impl ArtSource {
                 hasher.update(url.as_bytes());
             }
             Self::File(path) => {
-                hasher.update(b"mprisence-cover-content-v1\0");
+                hasher.update(b"mprisence-cover-content-v2\0");
                 hasher.update_reader(File::open(path)?)?;
             }
             Self::Base64(data) => {
-                hasher.update(b"mprisence-cover-content-v1\0");
+                hasher.update(b"mprisence-cover-content-v2\0");
                 let bytes = STANDARD
                     .decode(data.as_bytes())
                     .map_err(|e| CoverArtError::other(format!("invalid base64 cover art: {e}")))?;
                 hasher.update(&bytes);
             }
             Self::Bytes(data) => {
-                hasher.update(b"mprisence-cover-content-v1\0");
+                hasher.update(b"mprisence-cover-content-v2\0");
                 hasher.update(data);
             }
         }

@@ -12,6 +12,7 @@ use crate::metadata::MetadataSource;
 
 pub mod cache;
 pub mod error;
+mod image;
 pub mod providers;
 pub mod sources;
 
@@ -89,12 +90,9 @@ impl CoverManager {
                 }
                 "catbox" => {
                     debug!("Adding Catbox provider");
-                    providers.push(Box::new(
-                        providers::catbox::CatboxProvider::with_resize_slots(
-                            cover_config.provider.catbox.clone(),
-                            artwork_slots.clone(),
-                        ),
-                    ));
+                    providers.push(Box::new(providers::catbox::CatboxProvider::with_config(
+                        cover_config.provider.catbox.clone(),
+                    )));
                 }
                 unknown => warn!("Skipping unknown provider: {}", unknown),
             }
@@ -480,8 +478,8 @@ impl CoverManager {
         cancel: &CancellationToken,
     ) -> Result<Option<String>, CoverArtError> {
         let dummy = ArtSource::Url(String::new());
-        let process_source = source.unwrap_or(&dummy);
         let source_cache_key = source.and_then(Self::source_cache_key);
+        let mut normalized_source: Option<Option<ArtSource>> = None;
 
         for provider in &self.providers {
             let supported = match source {
@@ -506,6 +504,34 @@ impl CoverManager {
                     return Ok(Some(url));
                 }
             }
+
+            let process_source = match provider.cache_key_scope() {
+                CacheKeyScope::Source => {
+                    if normalized_source.is_none() {
+                        normalized_source = Some(match source {
+                            Some(source) => {
+                                match self.normalize_upload_source(source, cancel).await {
+                                    Ok(source) => source,
+                                    Err(err) => {
+                                        warn!("Skipping invalid upload artwork: {err}");
+                                        None
+                                    }
+                                }
+                            }
+                            None => None,
+                        });
+                    }
+                    normalized_source.as_ref().and_then(Option::as_ref)
+                }
+                CacheKeyScope::Metadata => source.or(Some(&dummy)),
+            };
+            let Some(process_source) = process_source else {
+                trace!(
+                    "Provider {} has no valid artwork source to upload",
+                    provider.name()
+                );
+                continue;
+            };
 
             debug!("Attempting cover art retrieval with {}", provider.name());
             let upload_slot = if provider.cache_key_scope() == CacheKeyScope::Source {
@@ -537,7 +563,7 @@ impl CoverManager {
                         continue;
                     }
                     info!("Successfully retrieved cover art from {}", provider_name);
-                    let cache_payload = match (provider.cache_key_scope(), source) {
+                    let cache_payload = match (provider.cache_key_scope(), Some(process_source)) {
                         (CacheKeyScope::Source, Some(src)) => {
                             Self::prepare_cache_payload(src, &url).await?
                         }
@@ -560,6 +586,40 @@ impl CoverManager {
 
         debug!("No cover art found from any source");
         Ok(None)
+    }
+
+    async fn normalize_upload_source(
+        &self,
+        source: &ArtSource,
+        cancel: &CancellationToken,
+    ) -> Result<Option<ArtSource>, CoverArtError> {
+        let Some(bytes) = source.materialize_bytes().await? else {
+            return Ok(None);
+        };
+        if cancel.is_cancelled() {
+            return Ok(None);
+        }
+
+        let artwork_slot = tokio::select! {
+            permit = self.artwork_slots.clone().acquire_owned() => permit.map_err(|_| {
+                CoverArtError::other("Artwork processing queue closed")
+            })?,
+            _ = cancel.cancelled() => return Ok(None),
+        };
+        let original_len = bytes.len();
+        let normalized = spawn_blocking(move || {
+            let _artwork_slot = artwork_slot;
+            image::normalize_upload_bytes(&bytes)
+        })
+        .await
+        .map_err(|e| CoverArtError::other(format!("Artwork normalization task failed: {e}")))??;
+        debug!(
+            "Normalized upload artwork from {} to {} bytes",
+            original_len,
+            normalized.len()
+        );
+
+        Ok(Some(ArtSource::Bytes(normalized)))
     }
 
     fn source_cache_key(source: &ArtSource) -> Option<String> {
