@@ -1,10 +1,11 @@
 # Changelog
 
-## [1.8.4] - 2026-08-23
+## [1.8.5] - 2026-09-15
 
 ### Added
 
-- Manage login autostart from `mprisence autostart` with systemd and desktop-login support.
+- Manage login autostart from `mprisence autostart` with systemd user services
+  and XDG desktop autostart.
 
 ### Fixed
 
@@ -12,6 +13,17 @@
   when automatic fallback cannot detect a graphical session.
 - Normalize local cover artwork before provider uploads so recoverable malformed
   images are repaired and oversized images are bounded consistently.
+- Use YouTube Music's actual media playback state and reject transient duration
+  placeholders during track changes.
+
+### Changed
+
+- Automate source and binary AUR package updates for releases.
+
+## [1.8.4] - 2026-08-23
+
+### Fixed
+
 - Keep explicitly matched native players on their `[player.*]` configuration
   when track metadata contains an HTTP URL. Known browsers, unknown unmatched
   browsers, and the mprisence web bridge continue to use web-player routing.
