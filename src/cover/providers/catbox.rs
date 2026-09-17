@@ -143,7 +143,7 @@ impl CatboxProvider {
             .map(|dur| dur.as_nanos())
             .unwrap_or(0);
         let pid = std::process::id();
-        path.push(format!("mprisence-catbox-{pid}-{timestamp}.img"));
+        path.push(format!("mprisence-catbox-{pid}-{timestamp}.jpg"));
         path
     }
 
@@ -236,5 +236,20 @@ impl CoverArtProvider for CatboxProvider {
         cancel: &CancellationToken,
     ) -> Result<Option<CoverResult>, CoverArtError> {
         self.process_source(source, cancel).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CatboxProvider;
+
+    #[test]
+    fn temporary_upload_filename_matches_normalized_jpeg() {
+        assert_eq!(
+            CatboxProvider::temp_file_path()
+                .extension()
+                .and_then(|extension| extension.to_str()),
+            Some("jpg")
+        );
     }
 }

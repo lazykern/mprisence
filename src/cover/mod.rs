@@ -265,6 +265,10 @@ impl CoverManager {
                 continue;
             }
 
+            if Self::is_legacy_catbox_image_url(&entry) {
+                continue;
+            }
+
             return Some(entry.url);
         }
 
@@ -695,6 +699,8 @@ impl CoverManager {
 
         if url.len() > 512 || !(url.starts_with("https://") || url.starts_with("http://")) {
             drop_reason = Some("malformed_url");
+        } else if Self::is_legacy_catbox_image_url(&entry) {
+            drop_reason = Some("legacy_catbox_img_url");
         } else if entry.provider.eq_ignore_ascii_case("direct") {
             let policy = Self::direct_url_policy(&url);
             if !policy.allow_direct {
@@ -728,6 +734,12 @@ impl CoverManager {
         let recovered_bytes = self.cache_load_bytes(entry).await?;
         self.cache_remove_entry(cache_key).await?;
         Ok(CacheLookup::Miss(recovered_bytes))
+    }
+
+    fn is_legacy_catbox_image_url(entry: &CacheEntry) -> bool {
+        matches!(entry.provider.as_str(), "catbox" | "litterbox")
+            && Url::parse(&entry.url)
+                .is_ok_and(|url| url.path().to_ascii_lowercase().ends_with(".img"))
     }
 
     async fn validate_cover_url(url: &str) -> bool {
@@ -903,7 +915,31 @@ pub async fn clean_cache() -> Result<(), CoverArtError> {
 
 #[cfg(test)]
 mod tests {
-    use super::CoverManager;
+    use super::{CacheEntry, CoverManager};
+    use std::time::SystemTime;
+
+    #[test]
+    fn rejects_only_legacy_catbox_image_urls() {
+        let mut entry = CacheEntry {
+            url: "https://files.catbox.moe/cover.img".to_string(),
+            provider: "catbox".to_string(),
+            expires_at: SystemTime::now(),
+            last_validated: SystemTime::now(),
+            data_file: Some("cover.bin".to_string()),
+        };
+
+        assert!(CoverManager::is_legacy_catbox_image_url(&entry));
+
+        entry.provider = "litterbox".to_string();
+        assert!(CoverManager::is_legacy_catbox_image_url(&entry));
+
+        entry.url = "https://files.catbox.moe/cover.jpg".to_string();
+        assert!(!CoverManager::is_legacy_catbox_image_url(&entry));
+
+        entry.url = "https://files.catbox.moe/cover.img".to_string();
+        entry.provider = "imgbb".to_string();
+        assert!(!CoverManager::is_legacy_catbox_image_url(&entry));
+    }
 
     #[test]
     fn denies_local_private_hosts_for_direct_usage() {
