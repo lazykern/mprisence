@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.6] - 2026-09-17
+
+### Fixed
+
+- Upload normalized JPEG covers to Catbox and Litterbox with a `.jpg` filename
+  and refresh cached `.img` uploads that Discord cannot render
+  ([#107](https://github.com/lazykern/mprisence/issues/107)).
+
 ## [1.8.5] - 2026-09-15
 
 ### Added
