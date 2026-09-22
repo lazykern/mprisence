@@ -72,7 +72,6 @@ impl UpdateSnapshot {
 fn track_identity_changed(previous: &TrackFingerprint, current: &TrackFingerprint) -> bool {
     previous.track_id != current.track_id
         || previous.url != current.url
-        || previous.art_url != current.art_url
         || previous.title != current.title
         || previous.artists != current.artists
 }
@@ -1852,5 +1851,14 @@ mod tests {
             &track("Same title", 180),
             &track("Same title", 181)
         ));
+    }
+
+    #[test]
+    fn metadata_identity_ignores_artwork_refreshes() {
+        let previous = track("Same title", 180);
+        let mut current = previous.clone();
+        current.art_url = Some("https://example.com/new-cover.jpg".into());
+
+        assert!(!track_identity_changed(&previous, &current));
     }
 }

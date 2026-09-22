@@ -130,8 +130,8 @@ pub enum PlayerHealth {
     },
 
     /// Player reports `Playing` but position hasn't advanced for ≥ threshold,
-    /// OR position ≥ track length.  Clears Discord activity until position
-    /// moves, status changes, or a new track arrives.
+    /// or a native player reaches its track length. Clears Discord activity
+    /// until position moves, status changes, or a new track arrives.
     Stalled {
         generation: u64,
         since: Instant,
@@ -357,7 +357,7 @@ impl PlayerHealth {
                 last_event,
                 last_position,
             } => {
-                if Self::is_ended(input) {
+                if !input.is_browser_source && Self::is_ended(input) {
                     (
                         Self::Stalled {
                             generation,
@@ -734,6 +734,37 @@ mod tests {
         let outcome = health.transition(&inp);
         assert!(matches!(outcome, TransitionOutcome::Clear));
         assert!(matches!(health, PlayerHealth::Stalled { .. }));
+    }
+
+    #[test]
+    fn healthy_browser_waits_for_a_loop_reset_at_track_end() {
+        let mut health = PlayerHealth::Healthy {
+            generation: 1,
+            last_event: Instant::now(),
+            last_position: Duration::from_secs(178),
+        };
+        let mut t = track(
+            "Song",
+            "Artist",
+            "https://youtube.com/watch?v=abc",
+            "",
+            "id1",
+        );
+        t.length = Some(Duration::from_secs(180));
+        let now = Instant::now();
+        let inp = make_input(
+            PlaybackStatus::Playing,
+            &t,
+            Duration::from_secs(179),
+            true,
+            1,
+            now,
+            now,
+        );
+
+        let outcome = health.transition(&inp);
+        assert!(matches!(outcome, TransitionOutcome::Push { .. }));
+        assert!(matches!(health, PlayerHealth::Healthy { .. }));
     }
 
     #[test]

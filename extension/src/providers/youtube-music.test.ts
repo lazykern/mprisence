@@ -6,7 +6,7 @@ import {
 } from "./youtube-music.ts";
 
 function installYouTubeMusicDom(
-  elements: Record<string, unknown>,
+  elements: Record<string, unknown | unknown[]>,
   search = "?v=dQw4w9WgXcQ",
 ): () => void {
   const previousDocument = globalThis.document;
@@ -16,7 +16,14 @@ function installYouTubeMusicDom(
     configurable: true,
     value: {
       title: "Never Gonna Give You Up - YouTube Music",
-      querySelector: (selector: string) => elements[selector] ?? null,
+      querySelector: (selector: string) => {
+        const value = elements[selector];
+        return Array.isArray(value) ? value[0] ?? null : value ?? null;
+      },
+      querySelectorAll: (selector: string) => {
+        const value = elements[selector];
+        return Array.isArray(value) ? value : value ? [value] : [];
+      },
     },
   });
   Object.defineProperty(globalThis, "window", {
@@ -187,6 +194,165 @@ test("publishes a real 100-second track", () => {
 
   try {
     assert.equal(new YouTubeMusicProvider().extract()?.playback.duration_ms, 100_000);
+  } finally {
+    restore();
+  }
+});
+
+test("preserves a YTM loop reset on the same track", () => {
+  const provider = new YouTubeMusicProvider();
+  const restoreNearEnd = installYouTubeMusicDom({
+    ".title.ytmusic-player-bar": { textContent: "Looping Track" },
+    ".byline.ytmusic-player-bar": { textContent: "Looping Artist" },
+    "#progress-bar": {
+      getAttribute: (name: string) => name === "aria-valuemax" ? "214" : "212",
+    },
+    video: {
+      paused: false,
+      ended: false,
+      readyState: 4,
+      currentTime: 212,
+      duration: 213.061,
+    },
+  });
+
+  try {
+    assert.equal(provider.extract()?.playback.position_ms, 212_000);
+  } finally {
+    restoreNearEnd();
+  }
+
+  const restoreLoopReset = installYouTubeMusicDom({
+    ".title.ytmusic-player-bar": { textContent: "Looping Track" },
+    ".byline.ytmusic-player-bar": { textContent: "Looping Artist" },
+    "#progress-bar": {
+      getAttribute: (name: string) => name === "aria-valuemax" ? "214" : "0",
+    },
+    video: {
+      paused: false,
+      ended: false,
+      readyState: 4,
+      currentTime: 0,
+      duration: 213.061,
+    },
+  });
+
+  try {
+    assert.equal(provider.extract()?.playback.position_ms, 0);
+  } finally {
+    restoreLoopReset();
+  }
+});
+
+test("uses hqdefault when no YTM thumbnail element is available", () => {
+  const restore = installYouTubeMusicDom({
+    ".title.ytmusic-player-bar": { textContent: "Fallback Art" },
+    ".byline.ytmusic-player-bar": { textContent: "Artist" },
+    "#progress-bar": {
+      getAttribute: (name: string) => name === "aria-valuemax" ? "214" : "10",
+    },
+    video: {
+      paused: false,
+      ended: false,
+      readyState: 4,
+      currentTime: 10,
+      duration: 213.061,
+    },
+  }, "?v=jNQXAC9IVRw");
+
+  try {
+    assert.equal(
+      new YouTubeMusicProvider().extract()?.metadata.art_url,
+      "https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg",
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("prefers a player thumbnail with a YTM video ID over a channel avatar", () => {
+  const restore = installYouTubeMusicDom({
+    ".title.ytmusic-player-bar": { textContent: "Compact Track" },
+    ".byline.ytmusic-player-bar": { textContent: "Compact Artist" },
+    "ytmusic-player-bar img": [
+      { src: "https://yt3.googleusercontent.com/channel-avatar" },
+      { src: "https://i.ytimg.com/vi/videoId12345/hqdefault.jpg" },
+    ],
+    "#progress-bar": {
+      getAttribute: (name: string) => name === "aria-valuemax" ? "149" : "13",
+    },
+    video: {
+      paused: false,
+      ended: false,
+      readyState: 4,
+      currentTime: 13,
+      duration: 149,
+    },
+  });
+
+  try {
+    const result = new YouTubeMusicProvider().extract();
+    assert.equal(result?.metadata.track_id, "ytm:videoId12345");
+    assert.equal(result?.metadata.art_url, "https://i.ytimg.com/vi/videoId12345/hqdefault.jpg");
+  } finally {
+    restore();
+  }
+});
+
+test("uses the active queue item's video ID when compact art is a channel avatar", () => {
+  const restore = installYouTubeMusicDom({
+    ".title.ytmusic-player-bar": { textContent: "Compact Track" },
+    ".byline.ytmusic-player-bar": { textContent: "Compact Artist" },
+    "ytmusic-player-bar img": [{ src: "https://yt3.googleusercontent.com/channel-avatar" }],
+    "ytmusic-player-queue-item[video-id][play-button-state='playing']": {
+      getAttribute: (name: string) => name === "video-id" ? "queueVideo123" : null,
+    },
+    "#progress-bar": {
+      getAttribute: (name: string) => name === "aria-valuemax" ? "149" : "13",
+    },
+    video: {
+      paused: false,
+      ended: false,
+      readyState: 4,
+      currentTime: 13,
+      duration: 149,
+    },
+  });
+
+  try {
+    const result = new YouTubeMusicProvider().extract();
+    assert.equal(result?.metadata.track_id, "ytm:queueVideo123");
+    assert.equal(result?.metadata.art_url, "https://i.ytimg.com/vi/queueVideo123/hqdefault.jpg");
+  } finally {
+    restore();
+  }
+});
+
+test("uses the visible YTM progress bar in compact mode", () => {
+  const restore = installYouTubeMusicDom({
+    ".title.ytmusic-player-bar": { textContent: "Compact Track" },
+    ".byline.ytmusic-player-bar": { textContent: "Compact Artist" },
+    "#progress-bar": [
+      {
+        getClientRects: () => [],
+        getAttribute: (name: string) => name === "aria-valuemax" ? "149" : "8",
+      },
+      {
+        getClientRects: () => [{}],
+        getAttribute: (name: string) => name === "aria-valuemax" ? "149" : "13",
+      },
+    ],
+    video: {
+      paused: false,
+      ended: false,
+      readyState: 4,
+      currentTime: 13,
+      duration: 149,
+    },
+  });
+
+  try {
+    assert.equal(new YouTubeMusicProvider().extract()?.playback.position_ms, 13_000);
   } finally {
     restore();
   }

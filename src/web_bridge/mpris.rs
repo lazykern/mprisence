@@ -448,8 +448,7 @@ impl MprisPublisher {
     }
 }
 
-/// Reject transient YTM progress-bar glitches and page-world art dispatches
-/// that zero out position/duration while the track identity is unchanged.
+/// Preserve a known track duration when a metadata-only update omits it.
 fn stabilize_playback(
     prev: &PublishedSnapshot,
     playback: &mut super::protocol::PlaybackState,
@@ -460,26 +459,9 @@ fn stabilize_playback(
     }
 
     let prev_dur_ms = (prev.meta.length_us / 1000).max(0) as u64;
-    let prev_pos_ms = (prev.last_position_us / 1000).max(0) as u64;
 
     if prev_dur_ms > 0 && playback.duration_ms == 0 {
         playback.duration_ms = prev_dur_ms;
-    } else if prev_dur_ms > 0 && playback.duration_ms > 0 {
-        let diff = prev_dur_ms.abs_diff(playback.duration_ms);
-        let replacing_ytm_startup_placeholder = track_id.starts_with("/mprisence/track/ytm_")
-            && prev_dur_ms == 100_000
-            && prev_pos_ms == 0
-            && playback.duration_ms != 100_000;
-        if !replacing_ytm_startup_placeholder
-            && diff > 10_000
-            && (diff as f64 / prev_dur_ms as f64) > 0.15
-        {
-            playback.duration_ms = prev_dur_ms;
-        }
-    }
-
-    if prev_pos_ms > 5_000 && playback.position_ms.saturating_add(3_000) < prev_pos_ms {
-        playback.position_ms = prev_pos_ms;
     }
 
     if playback.duration_ms > 0 {
@@ -848,7 +830,7 @@ mod tests {
     }
 
     #[test]
-    fn stabilize_playback_rejects_transient_ytm_glitch() {
+    fn stabilize_playback_accepts_loop_reset_with_a_valid_duration() {
         use super::super::protocol::{PlaybackState, Status};
 
         let prev = PublishedSnapshot {
@@ -863,13 +845,38 @@ mod tests {
         let mut playback = PlaybackState {
             status: Status::Playing,
             position_ms: 0,
-            duration_ms: 100_000,
+            duration_ms: 598_000,
         };
 
         stabilize_playback(&prev, &mut playback, "/mprisence/track/ytm_pbDY7Bsbxwk");
 
         assert_eq!(playback.duration_ms, 598_000);
-        assert_eq!(playback.position_ms, 156_000);
+        assert_eq!(playback.position_ms, 0);
+    }
+
+    #[test]
+    fn stabilize_playback_preserves_missing_duration() {
+        use super::super::protocol::{PlaybackState, Status};
+
+        let prev = PublishedSnapshot {
+            meta: MetaSnapshot {
+                track_id: "/mprisence/track/ytm_pbDY7Bsbxwk".into(),
+                length_us: 598_000_000,
+                ..Default::default()
+            },
+            last_position_us: 156_000_000,
+            ..Default::default()
+        };
+        let mut playback = PlaybackState {
+            status: Status::Playing,
+            position_ms: 0,
+            duration_ms: 0,
+        };
+
+        stabilize_playback(&prev, &mut playback, "/mprisence/track/ytm_pbDY7Bsbxwk");
+
+        assert_eq!(playback.duration_ms, 598_000);
+        assert_eq!(playback.position_ms, 0);
     }
 
     #[test]

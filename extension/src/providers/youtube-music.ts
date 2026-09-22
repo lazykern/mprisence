@@ -32,7 +32,7 @@ export function isYouTubeMusicPlaying(
  *   - No MediaSession API - must use DOM scraping
  *   - Byline has NO album - only "Artist • views • likes"
  *   - Album art is HTTPS (i.ytimg.com) - no blob: issue
- *   - Upgrade to /maxresdefault/ for 1280x720 clean art (no black bar)
+ *   - Keep YTM's supplied thumbnail; maxresdefault is not universal
  *   - videoId in thumbnail URL, not always in ?v= param
  *   - No <audio> - YTM uses <video>
  */
@@ -40,11 +40,6 @@ export class YouTubeMusicProvider implements Provider {
   readonly siteKey = "youtube_music";
   private readonly origin = "https://music.youtube.com";
   private readonly videoIdRegex = /\/vi\/([a-zA-Z0-9_-]+)\//;
-  private stablePlayback: {
-    trackId: string;
-    positionSec: number;
-    durationSec: number;
-  } | null = null;
 
   matches(url: URL): boolean {
     return url.origin === this.origin;
@@ -56,9 +51,7 @@ export class YouTubeMusicProvider implements Provider {
 
     const titleEl = this.qs<HTMLElement>(".title.ytmusic-player-bar");
     const artistEl = this.qs<HTMLElement>(".byline.ytmusic-player-bar");
-    const artImg = this.qs<HTMLImageElement>(
-      "ytmusic-player-bar img.image, ytmusic-player-bar img"
-    );
+    const artImg = this.playerArtImage();
     const playBtn = this.qs<HTMLElement>("#play-pause-button");
     const video = this.qs<HTMLVideoElement>("video");
 
@@ -95,6 +88,9 @@ export class YouTubeMusicProvider implements Provider {
     // ── Video ID from thumbnail URL or page URL ────────────────
     const thumbSrc = artImg?.src || "";
     let videoId = (thumbSrc.match(this.videoIdRegex) || [])[1] || "";
+    if (!videoId) {
+      videoId = this.currentVideoId();
+    }
     // Fallback: extract videoId from page URL params.
     // YTM's <img> sometimes shows a channel avatar (yt3 URL) instead
     // of a video thumbnail - the regex won't match, so we need the
@@ -112,24 +108,22 @@ export class YouTubeMusicProvider implements Provider {
     if (artUrl) {
       if (artUrl.includes("yt3.googleusercontent.com")) {
         // Channel avatar - not the track's cover art.
-        // Prefer video thumbnail constructed from video ID.
+        // Prefer a guaranteed video thumbnail over the channel avatar.
         // Only keep channel avatar if we have no video ID.
         if (videoId) {
-          artUrl = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+          artUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
         } else {
           // Strip size params to get default 512x512.
           artUrl = artUrl.replace(/=[a-z0-9-]+$/, "");
         }
       } else {
-        // i.ytimg.com thumbnail - upgrade to maxresdefault.
-        // hqdefault/sddefault are 4:3 and often include top/bottom
-        // black bars; maxresdefault is 16:9 and clean when available.
-        artUrl = artUrl.replace(/\/[a-z]+default\./g, "/maxresdefault.");
+        // Keep YouTube's supplied thumbnail. maxresdefault is absent for
+        // many videos, which leaves MPRIS clients with a 404 artwork URL.
       }
     } else if (videoId) {
       // No img element src but we have a video ID - construct
-      // thumbnail URL using maxresdefault to avoid black bars.
-      artUrl = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+      // thumbnail URL. hqdefault is available when maxresdefault is not.
+      artUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
     }
 
     // ── Playback state ─────────────────────────────────────────
@@ -137,7 +131,7 @@ export class YouTubeMusicProvider implements Provider {
     // 30-60 minutes. Per-track position/duration live on the player-bar
     // progress element as aria-valuenow/aria-valuemax. If unavailable,
     // skip instead of publishing queue time as track time.
-    const progressBar = this.qs<HTMLElement>("#progress-bar");
+    const progressBar = this.visibleProgressBar();
     const progressNow = progressBar ? parseFloat(progressBar.getAttribute("aria-valuenow") ?? "") : NaN;
     const progressMax = progressBar ? parseFloat(progressBar.getAttribute("aria-valuemax") ?? "") : NaN;
     const trackPositionSec = (isFinite(progressNow) && progressNow >= 0) ? progressNow : undefined;
@@ -159,12 +153,6 @@ export class YouTubeMusicProvider implements Provider {
 
     let currentSec = trackPositionSec ?? (video.currentTime || 0);
     let totalSec = trackDurationSec ?? video.duration;
-    ({ positionSec: currentSec, durationSec: totalSec } = this.stabilizePlayback(
-      trackId,
-      currentSec,
-      totalSec,
-    ));
-
     // If video exists but duration is invalid (NaN/0/Infinity), skip -
     // metadata hasn't loaded yet. We'll retry on next poll.
     if (video && (totalSec === 0 || !isFinite(totalSec))) {
@@ -245,40 +233,29 @@ export class YouTubeMusicProvider implements Provider {
     return document.querySelector<T>(selector);
   }
 
-  private stabilizePlayback(
-    trackId: string | undefined,
-    positionSec: number,
-    durationSec: number,
-  ): { positionSec: number; durationSec: number } {
-    if (!trackId || durationSec <= 0 || !isFinite(durationSec)) {
-      return { positionSec, durationSec };
-    }
+  private playerArtImage(): HTMLImageElement | null {
+    const images = Array.from(document.querySelectorAll<HTMLImageElement>("ytmusic-player-bar img"));
+    return images.find((image) => this.videoIdRegex.test(image.src))
+      ?? images[0]
+      ?? this.qs<HTMLImageElement>("ytmusic-player-bar img.image, ytmusic-player-bar img");
+  }
 
-    const prev = this.stablePlayback;
-    if (!prev || prev.trackId !== trackId) {
-      this.stablePlayback = { trackId, positionSec, durationSec };
-      return { positionSec, durationSec };
+  private currentVideoId(): string {
+    const selectors = [
+      "ytmusic-player-bar[video-id]",
+      "ytmusic-player-queue-item[video-id][play-button-state='playing']",
+      "ytmusic-player-queue-item[video-id][selected]",
+      "ytmusic-player-queue-item[video-id][aria-selected='true']",
+    ];
+    for (const selector of selectors) {
+      const videoId = this.qs<HTMLElement>(selector)?.getAttribute("video-id");
+      if (videoId) return videoId;
     }
+    return "";
+  }
 
-    let pos = positionSec;
-    let dur = durationSec;
-
-    const durDiff = Math.abs(dur - prev.durationSec);
-    if (prev.durationSec > 0 && durDiff > 10 && durDiff / prev.durationSec > 0.15) {
-      dur = prev.durationSec;
-    }
-
-    if (prev.positionSec > 5 && pos + 3 < prev.positionSec) {
-      pos = prev.positionSec;
-    }
-    if (prev.positionSec > 30 && pos === 0) {
-      pos = prev.positionSec;
-    }
-    if (dur > 0 && pos > dur) {
-      pos = Math.min(prev.positionSec, dur);
-    }
-
-    this.stablePlayback = { trackId, positionSec: pos, durationSec: dur };
-    return { positionSec: pos, durationSec: dur };
+  private visibleProgressBar(): HTMLElement | null {
+    const bars = Array.from(document.querySelectorAll<HTMLElement>("#progress-bar"));
+    return bars.find((bar) => !bar.getClientRects || bar.getClientRects().length > 0) ?? bars[0] ?? null;
   }
 }

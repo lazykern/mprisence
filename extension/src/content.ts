@@ -47,6 +47,11 @@ let lastDurationMs = -1;
 let lastAlbum = "";
 let lastAlbumArtist = "";
 let lastTrackId = "";
+let ytmEnhancedArt: {
+  trackId: string;
+  url: string;
+  canonicalUrl: string;
+} | null = null;
 
 const browser = detectBrowser();
 const tabId = getTabId();
@@ -102,6 +107,7 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
       metadata,
       playback: data.playback || { status: "stopped", position_ms: 0, duration_ms: 0 },
       capabilities: data.capabilities || { play_pause: true, next: false, previous: false, seek: false, set_position: false },
+      canonicalUrl: typeof data.canonical_url === "string" ? data.canonical_url : undefined,
     };
 
     // Art-only merge: page-world sends square yt3 cover art from
@@ -113,11 +119,27 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
     const pwArtUrl = result.metadata.art_url ?? "";
     const isArtOnly = !pwTitle && !pwArtist && !!pwArtUrl &&
       lastProviderMetadata !== null;
-    if (isArtOnly) {
+    const incomingYtmTrackId = result.metadata.track_id;
+    const isYtmArt = isArtOnly && incomingYtmTrackId?.startsWith("ytm:");
+    const providerTrackId = lastProviderMetadata?.track_id ?? lastTrackId;
+    const isStaleYtmArt = isYtmArt &&
+      providerTrackId.startsWith("ytm:") &&
+      providerTrackId !== incomingYtmTrackId;
+    if (isYtmArt && !isStaleYtmArt) {
+      ytmEnhancedArt = {
+        trackId: incomingYtmTrackId,
+        url: pwArtUrl,
+        canonicalUrl: result.canonicalUrl
+          ?? `https://music.youtube.com/watch?v=${incomingYtmTrackId.slice(4)}`,
+      };
       result.metadata = {
         ...lastProviderMetadata,
         art_url: pwArtUrl,
+        track_id: incomingYtmTrackId,
       };
+      result.canonicalUrl = ytmEnhancedArt.canonicalUrl;
+    } else if (isYtmArt) {
+      return;
     }
 
     // Page-world art/InnerTube dispatches carry position/duration 0.
@@ -243,7 +265,18 @@ function extractFromProviders(): ProviderResult | null {
 
 function triggerUpdate(force = false): void {
   const result = extractFromProviders();
-  if (result) sendUpdate(result, force);
+  if (result) {
+    const providerTrackId = result.metadata.track_id;
+    const canUseEnhancedYtmArt = ytmEnhancedArt &&
+      (!providerTrackId || providerTrackId === ytmEnhancedArt.trackId);
+    if (canUseEnhancedYtmArt) {
+      result.metadata.track_id = ytmEnhancedArt.trackId;
+      result.metadata.art_url = ytmEnhancedArt.url;
+      result.canonicalUrl = ytmEnhancedArt.canonicalUrl;
+      result.pageUrl = ytmEnhancedArt.canonicalUrl;
+    }
+    sendUpdate(result, force);
+  }
 }
 
 /** Media-element events that always warrant an immediate update. */
