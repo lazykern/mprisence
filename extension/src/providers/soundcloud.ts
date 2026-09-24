@@ -5,16 +5,14 @@
  *   - MediaSession API (primary - always set on track pages)
  *   - DOM selectors (fallback for playback state, controls)
  *
- * SoundCloud uses Web Audio API - NO `<audio>`/`<video>` element.
- * Metadata comes from MediaSession API. Playback state from button UI.
- * Controls via DOM clicks on play/pause/next/prev buttons.
+ * Playback timing is read from the DOM timeline (time-passed / duration text),
+ * polled every second by content.ts.
  *
  * SoundCloud web player structure (soundcloud.com):
  *   - Metadata: `navigator.mediaSession.metadata` set on EVERY track page
  *   - Controls: `.playControls__play` (bottom bar, appears after first play)
  *   - Track page: `.soundTitle` area with `.sc-button-play` button
  *   - Artwork: `.soundTitle__artwork img` or `soundTitleArt__artwork img`
- *   - No audio/video DOM elements - Web Audio API only
  */
 
 import type {
@@ -76,6 +74,16 @@ export class SoundCloudProvider implements Provider {
       /* MediaSession not available */
     }
 
+    // Now-playing permalink from the player bar. Unlike the page URL it
+    // changes on every track, including on list pages (stream, likes,
+    // playlists), so the bridge keys per-track state on the right track.
+    const nowPlaying = document.querySelector<HTMLAnchorElement>(
+      ".playbackSoundBadge__titleLink[href]"
+    );
+    const canonicalUrl = nowPlaying?.href
+      ? nowPlaying.href.split(/[?#]/)[0]
+      : undefined;
+
     // ── Fallback: DOM selectors ────────────────────────────────
     if (!meta.title) {
       // Track page: `.soundTitle__title` or `.soundTitle__title > span`
@@ -114,39 +122,39 @@ export class SoundCloudProvider implements Provider {
       document.querySelector(".playControls__play.playing") !== null;
 
     // Parse duration from DOM timeline:
-    //   "Duration: 8 minutes 11 seconds" or aria-hidden "8:11"
+    //   Prefer aria-hidden "8:11" format over sc-visuallyhidden text (which can lag)
     let durationMs = 0;
-    const durHidden = document.querySelector<HTMLElement>(
-      ".playbackTimeline__duration .sc-visuallyhidden"
+    const durSpan = document.querySelector<HTMLElement>(
+      ".playbackTimeline__duration span[aria-hidden=true]"
     );
-    if (durHidden?.textContent) {
-      durationMs = parseSoundCloudDuration(durHidden.textContent);
+    if (durSpan?.textContent) {
+      durationMs = parseMmSsDuration(durSpan.textContent);
     }
     if (durationMs === 0) {
-      // Fallback: parse "8:11" format
-      const durSpan = document.querySelector<HTMLElement>(
-        ".playbackTimeline__duration span[aria-hidden=true]"
+      const durHidden = document.querySelector<HTMLElement>(
+        ".playbackTimeline__duration .sc-visuallyhidden"
       );
-      if (durSpan?.textContent) {
-        durationMs = parseMmSsDuration(durSpan.textContent);
+      if (durHidden?.textContent) {
+        durationMs = parseSoundCloudDuration(durHidden.textContent);
       }
     }
 
-    // Estimate position from progress bar width percentage
+    // Position: read time-passed text from DOM timeline first, then progress bar ratio
     let positionMs = 0;
-    if (durationMs > 0) {
-      const progressBar = document.querySelector<HTMLElement>(
-        ".playbackTimeline__progressBar"
-      );
-      if (progressBar) {
-        const style = progressBar.getAttribute("style") || "";
-        const m = style.match(/width\s*:\s*([\d.]+)%/);
-        if (m) {
-          positionMs = Math.floor((parseFloat(m[1]) / 100) * durationMs);
-        }
-      }
+    const timePassedSpan =
+      document.querySelector<HTMLElement>(
+        ".playbackTimeline__timePassed span[aria-hidden=true]"
+      ) ?? document.querySelector<HTMLElement>(".playbackTimeline__timePassed");
+    if (timePassedSpan?.textContent) {
+      positionMs = parseMmSsDuration(timePassedSpan.textContent);
     }
-
+    if (positionMs === 0 && durationMs > 0) {
+      const bar = document.querySelector<HTMLElement>(".playbackTimeline__progressBar");
+      const wrap = document.querySelector<HTMLElement>(".playbackTimeline__progressWrapper");
+      const barW = bar?.getBoundingClientRect().width ?? 0;
+      const wrapW = wrap?.getBoundingClientRect().width ?? 0;
+      if (wrapW > 0) positionMs = Math.floor(Math.min(1, barW / wrapW) * durationMs);
+    }
     playback = {
       status: isPlaying ? "playing" : hasMs ? "paused" : "stopped",
       position_ms: positionMs,
@@ -168,7 +176,7 @@ export class SoundCloudProvider implements Provider {
       play_pause: hasPlayBtn,
       next: hasNext,
       previous: hasPrev,
-      seek: false,    // no audio element for seeking
+      seek: false,    // no media element to seek
       set_position: false,
     };
 
@@ -180,6 +188,7 @@ export class SoundCloudProvider implements Provider {
       playback,
       capabilities,
       pageUrl,
+      canonicalUrl,
     };
   }
 

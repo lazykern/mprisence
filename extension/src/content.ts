@@ -142,9 +142,14 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
       return;
     }
 
+    const isNewTrack =
+      lastPageWorldMeta !== null &&
+      (pwTitle !== lastPageWorldMeta.title || pwArtist !== lastPageWorldMeta.artist);
+
     // Page-world art/InnerTube dispatches carry position/duration 0.
     // Preserve the last provider playback so Discord timestamps don't reset.
     if (
+      !isNewTrack &&
       lastDurationMs > 0 &&
       (result.playback.duration_ms === 0 ||
         (isArtOnly && result.playback.position_ms === 0))
@@ -167,10 +172,6 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
     // or artist differs from last page-world send), DON'T carry over
     // the old track_id - let the next isolated-world update supply the
     // correct one instead of sending stale data.
-    const isNewTrack =
-      lastPageWorldMeta !== null &&
-      (pwTitle !== lastPageWorldMeta.title || pwArtist !== lastPageWorldMeta.artist);
-
     if (!isNewTrack) {
       if (lastPageWorldMeta && !result.metadata.track_id) {
         result.metadata.track_id = lastPageWorldMeta.track_id;
@@ -179,7 +180,6 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
         result.canonicalUrl = lastCanonicalUrlPageWorld;
       }
     }
-
     sendUpdate(result, data.keepalive === true);
 
     // Snapshot the fields we preserved so consecutive page-world
@@ -333,6 +333,13 @@ function startObserving(): void {
   // unchanged re-send emits no D-Bus signal - the bridge's diffing publisher
   // drops it - it only refreshes the source's last_seen.
   keepaliveInterval = setInterval(() => triggerUpdate(true), 30_000);
+
+  const isSoundCloud =
+    window.location.hostname === "soundcloud.com" ||
+    window.location.hostname.endsWith(".soundcloud.com");
+  if (isSoundCloud) {
+    setInterval(() => triggerUpdate(), 1000);
+  }
 }
 
 // ─── Message sending ─────────────────────────────────────────────
