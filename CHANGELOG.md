@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.8.7] - 2026-09-25
+
+Pair with browser extension 1.1.2 for the full set of fixes.
+
+### Fixed
+
+- Keep YouTube Music detected in the compact player, keep its album art
+  stable, and follow track loops and track-end transitions instead of
+  freezing the position
+  ([#108](https://github.com/lazykern/mprisence/issues/108)).
+- Update SoundCloud length and position on every track change, including on
+  stream, likes and playlist pages
+  ([#110](https://github.com/lazykern/mprisence/pull/110)).
+- Keep a paused YouTube Music track paused when its cover art arrives.
+
 ## [1.8.6] - 2026-09-17
 
 ### Fixed
