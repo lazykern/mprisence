@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.8.8] - 2026-09-26
+
+### Changed
+
+- Update Rust dependencies to their latest releases, including `lofty` 0.25,
+  `dirs` 7 and `base64` 0.23, and replace the yanked `chacha20` 0.10.1 with
+  0.10.2.
+- Building from source now requires Rust 1.89 or newer.
+
 ## [1.8.7] - 2026-09-25
 
 ### Fixed
