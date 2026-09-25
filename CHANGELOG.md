@@ -2,18 +2,15 @@
 
 ## [1.8.7] - 2026-09-25
 
-Pair with browser extension 1.1.2 for the full set of fixes.
-
 ### Fixed
 
-- Keep YouTube Music detected in the compact player, keep its album art
-  stable, and follow track loops and track-end transitions instead of
-  freezing the position
+- Follow track loops and track changes in browser players instead of freezing
+  the position or keeping the previous track's length
   ([#108](https://github.com/lazykern/mprisence/issues/108)).
-- Update SoundCloud length and position on every track change, including on
-  stream, likes and playlist pages
-  ([#110](https://github.com/lazykern/mprisence/pull/110)).
-- Keep a paused YouTube Music track paused when its cover art arrives.
+- Keep browser players on Discord when they reach the end of a track, so a
+  looping or advancing track is no longer cleared as ended.
+- Stop treating a cover art refresh as a new track, so Discord no longer
+  restarts the activity when only the artwork changes.
 
 ## [1.8.6] - 2026-09-17
 
