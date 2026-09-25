@@ -22,43 +22,43 @@ exclude = [
 ]
 
 [dependencies]
-clap = { version = "4.6.1", features = ["derive"] }
-dirs = "6.0.0"
-env_logger = "0.11.10"
+clap = { version = "4.6.7", features = ["derive"] }
+dirs = "7.0.0"
+env_logger = "0.11.11"
 figment = { version = "0.10.19", features = ["toml"] }
-handlebars = "6.4.1"
+handlebars = "6.4.4"
 handlebars_misc_helpers = { version = "0.17.0", features = ["string", "regex"] }
-log = "0.4.32"
+log = "0.4.34"
 mime_guess = "2.0.5"
-dbus = "0.9.11"
+dbus = "0.9.12"
 mpris = "2.1.0"
 notify = "8.2.0"
 parking_lot = "0.12"
-serde = { version = "1.0.228", features = ["derive"] }
-smallvec = "1.15"
+serde = { version = "1.0.229", features = ["derive"] }
+smallvec = "1.16"
 smol_str = "0.3.6"
-thiserror = "2.0.18"
-tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "process", "io-std"] }
+thiserror = "2.0.21"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "process", "io-std"] }
 tokio-util = { version = "0.7", features = ["rt"] }
-toml = "1.1.2"
+toml = "1.1.6"
 url = "2.5.8"
-blake3 = "1.8.5"
-async-trait = "0.1.89"
-reqwest = { version = "0.13.4", features = ["json", "multipart"] }
+blake3 = "1.8.7"
+async-trait = "0.1.92"
+reqwest = { version = "0.13.5", features = ["json", "multipart"] }
 imgbb = "1.4.0"
 serde_json = "1.0"
 discord-rich-presence = "1.1.0"
 urlencoding = "2.1.3"
-futures = "0.3.32"
-base64 = "0.22.1"
-lofty = "0.24.0"
+futures = "0.3.34"
+base64 = "0.23.1"
+lofty = "0.25.4"
 semver = "1.0.28"
 walkdir = "2.5.0"
 regex = "1"
 catbox = "0.8.2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 mpris-server = { version = "0.10", default-features = false, features = ["tokio"] }
-toml_edit = "0.25.13"
+toml_edit = "0.25.15"
 
 [dev-dependencies]
 
