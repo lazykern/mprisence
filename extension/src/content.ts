@@ -143,6 +143,7 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
     }
 
     const isNewTrack =
+      !isArtOnly &&
       lastPageWorldMeta !== null &&
       (pwTitle !== lastPageWorldMeta.title || pwArtist !== lastPageWorldMeta.artist);
 
