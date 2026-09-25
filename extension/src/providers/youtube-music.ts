@@ -241,6 +241,10 @@ export class YouTubeMusicProvider implements Provider {
   }
 
   private currentVideoId(): string {
+    const fromPageWorld = document.documentElement
+      ?.getAttribute("data-mprisence-ytm-video-id");
+    if (fromPageWorld && /^[a-zA-Z0-9_-]+$/.test(fromPageWorld)) return fromPageWorld;
+
     const selectors = [
       "ytmusic-player-bar[video-id]",
       "ytmusic-player-queue-item[video-id][play-button-state='playing']",

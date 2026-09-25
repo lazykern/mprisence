@@ -47,11 +47,8 @@ let lastDurationMs = -1;
 let lastAlbum = "";
 let lastAlbumArtist = "";
 let lastTrackId = "";
-let ytmEnhancedArt: {
-  trackId: string;
-  url: string;
-  canonicalUrl: string;
-} | null = null;
+const YTM_ART_CACHE_LIMIT = 20;
+const ytmArtByTrack = new Map<string, { url: string; canonicalUrl: string }>();
 
 const browser = detectBrowser();
 const tabId = getTabId();
@@ -117,29 +114,31 @@ window.addEventListener("mprisence-media-state", ((event: CustomEvent) => {
     const pwTitle = result.metadata.title ?? "";
     const pwArtist = result.metadata.artist.join(",");
     const pwArtUrl = result.metadata.art_url ?? "";
-    const isArtOnly = !pwTitle && !pwArtist && !!pwArtUrl &&
-      lastProviderMetadata !== null;
     const incomingYtmTrackId = result.metadata.track_id;
-    const isYtmArt = isArtOnly && incomingYtmTrackId?.startsWith("ytm:");
-    const providerTrackId = lastProviderMetadata?.track_id ?? lastTrackId;
-    const isStaleYtmArt = isYtmArt &&
-      providerTrackId.startsWith("ytm:") &&
-      providerTrackId !== incomingYtmTrackId;
-    if (isYtmArt && !isStaleYtmArt) {
-      ytmEnhancedArt = {
-        trackId: incomingYtmTrackId,
+    // YTM art arrives once per video, possibly during an ad or before the
+    // provider has seen the track. Keep it by track id and let the provider
+    // path apply it whenever that track is the one playing.
+    if (!pwTitle && !pwArtist && pwArtUrl && incomingYtmTrackId?.startsWith("ytm:")) {
+      ytmArtByTrack.delete(incomingYtmTrackId);
+      ytmArtByTrack.set(incomingYtmTrackId, {
         url: pwArtUrl,
         canonicalUrl: result.canonicalUrl
           ?? `https://music.youtube.com/watch?v=${incomingYtmTrackId.slice(4)}`,
-      };
+      });
+      if (ytmArtByTrack.size > YTM_ART_CACHE_LIMIT) {
+        ytmArtByTrack.delete(ytmArtByTrack.keys().next().value!);
+      }
+      triggerUpdate();
+      return;
+    }
+
+    const isArtOnly = !pwTitle && !pwArtist && !!pwArtUrl &&
+      lastProviderMetadata !== null;
+    if (isArtOnly) {
       result.metadata = {
         ...lastProviderMetadata,
         art_url: pwArtUrl,
-        track_id: incomingYtmTrackId,
       };
-      result.canonicalUrl = ytmEnhancedArt.canonicalUrl;
-    } else if (isYtmArt) {
-      return;
     }
 
     const isNewTrack =
@@ -267,14 +266,13 @@ function extractFromProviders(): ProviderResult | null {
 function triggerUpdate(force = false): void {
   const result = extractFromProviders();
   if (result) {
-    const providerTrackId = result.metadata.track_id;
-    const canUseEnhancedYtmArt = ytmEnhancedArt &&
-      (!providerTrackId || providerTrackId === ytmEnhancedArt.trackId);
-    if (canUseEnhancedYtmArt) {
-      result.metadata.track_id = ytmEnhancedArt.trackId;
-      result.metadata.art_url = ytmEnhancedArt.url;
-      result.canonicalUrl = ytmEnhancedArt.canonicalUrl;
-      result.pageUrl = ytmEnhancedArt.canonicalUrl;
+    const ytmArt = result.metadata.track_id
+      ? ytmArtByTrack.get(result.metadata.track_id)
+      : undefined;
+    if (ytmArt) {
+      result.metadata.art_url = ytmArt.url;
+      result.canonicalUrl = ytmArt.canonicalUrl;
+      result.pageUrl = ytmArt.canonicalUrl;
     }
     sendUpdate(result, force);
   }

@@ -357,3 +357,33 @@ test("uses the visible YTM progress bar in compact mode", () => {
     restore();
   }
 });
+
+test("uses the page-world video ID when the collapsed player drops ?v=", () => {
+  const restore = installYouTubeMusicDom({
+    ".title.ytmusic-player-bar": { textContent: "Calamity" },
+    ".byline.ytmusic-player-bar": { textContent: "Yakui The Maid • Goodnight World • 2011" },
+    "ytmusic-player-bar img": [{ src: "https://yt3.googleusercontent.com/album-art=w60-h60-l90-rj" }],
+    "#progress-bar": {
+      getAttribute: (name: string) => name === "aria-valuemax" ? "220" : "13",
+    },
+    video: {
+      paused: false,
+      ended: false,
+      readyState: 4,
+      currentTime: 13,
+      duration: 220,
+    },
+  }, "");
+  (globalThis.document as any).documentElement = {
+    getAttribute: (name: string) =>
+      name === "data-mprisence-ytm-video-id" ? "HHjdNFdinUg" : null,
+  };
+
+  try {
+    const result = new YouTubeMusicProvider().extract();
+    assert.equal(result?.metadata.track_id, "ytm:HHjdNFdinUg");
+    assert.equal(result?.canonicalUrl, "https://music.youtube.com/watch?v=HHjdNFdinUg");
+  } finally {
+    restore();
+  }
+});

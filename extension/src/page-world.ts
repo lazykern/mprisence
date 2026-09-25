@@ -355,11 +355,21 @@ import {
 
   function ytmMediaSessionArtwork(videoId: string): string | null {
     try {
-      const artwork = (navigator as any).mediaSession?.metadata?.artwork ?? [];
+      const metadata = (navigator as any).mediaSession?.metadata;
+      const artwork: { src?: string; sizes?: string }[] = metadata?.artwork ?? [];
       for (const image of artwork) {
         if (typeof image?.src === "string" && image.src.includes(`/vi/${videoId}/`)) {
           return image.src;
         }
+      }
+      // Songs carry square album art without a video ID in the URL. Trust it
+      // only once Media Session describes the track shown in the player bar.
+      const title = document.querySelector(".title.ytmusic-player-bar")?.textContent?.trim();
+      if (title && metadata?.title === title && artwork.length > 0) {
+        const largest = artwork.reduce((a, b) =>
+          (parseInt(b.sizes ?? "") || 0) > (parseInt(a.sizes ?? "") || 0) ? b : a
+        );
+        if (typeof largest.src === "string") return largest.src;
       }
     } catch {
       // Media Session metadata is optional.
@@ -370,9 +380,15 @@ import {
   /** YTM: detect video ID changes, including while compacted. */
   async function checkYtmVideoId(): Promise<void> {
     if (window.location.hostname !== "music.youtube.com") return;
+    // The player API reports the ad's video ID during ads.
+    if (isYoutubeAdPlaying()) return;
 
     var videoId = currentYtmVideoId();
     if (!videoId) return;
+
+    // The collapsed player drops `?v=` from the URL and the isolated-world
+    // provider cannot reach the player API, so publish the ID in the DOM.
+    document.documentElement.setAttribute("data-mprisence-ytm-video-id", videoId);
 
     if (videoId !== lastYtmVideoId) {
       lastYtmVideoId = videoId;
@@ -382,7 +398,12 @@ import {
       // own Media Session artwork instead of using the channel avatar.
       const squareArt = await fetchSquareArt(videoId);
       if (videoId !== lastYtmVideoId || squareArt) return;
-      const mediaSessionArt = ytmMediaSessionArtwork(videoId);
+      let mediaSessionArt = ytmMediaSessionArtwork(videoId);
+      for (let attempt = 0; !mediaSessionArt && attempt < 5; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        if (videoId !== lastYtmVideoId) return;
+        mediaSessionArt = ytmMediaSessionArtwork(videoId);
+      }
       dispatchYtmArt(
         videoId,
         mediaSessionArt ?? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
