@@ -317,6 +317,22 @@ import {
     });
   }
 
+  function ytmPlayerVideoData(): { video_id?: unknown; title?: unknown } | undefined {
+    try {
+      const playerBar = document.querySelector("ytmusic-player-bar") as (
+        HTMLElement & {
+          queue?: {
+            playerApi?: { getVideoData?: () => { video_id?: unknown; title?: unknown } };
+          };
+        }
+      ) | null;
+      return playerBar?.queue?.playerApi?.getVideoData?.();
+    } catch {
+      // The player API is absent while YTM is initializing.
+      return undefined;
+    }
+  }
+
   function currentYtmVideoId(): string {
     const fromUrl = new URLSearchParams(window.location.search).get("v");
     if (fromUrl) return fromUrl;
@@ -327,18 +343,9 @@ import {
     const fromImage = image?.src.match(/\/vi\/([a-zA-Z0-9_-]+)\//)?.[1];
     if (fromImage) return fromImage;
 
-    try {
-      const playerBar = document.querySelector("ytmusic-player-bar") as (
-        HTMLElement & {
-          queue?: { playerApi?: { getVideoData?: () => { video_id?: unknown } } };
-        }
-      ) | null;
-      const videoId = playerBar?.queue?.playerApi?.getVideoData?.().video_id;
-      if (typeof videoId === "string" && /^[a-zA-Z0-9_-]+$/.test(videoId)) {
-        return videoId;
-      }
-    } catch {
-      // The player API is absent while YTM is initializing.
+    const videoId = ytmPlayerVideoData()?.video_id;
+    if (typeof videoId === "string" && /^[a-zA-Z0-9_-]+$/.test(videoId)) {
+      return videoId;
     }
 
     try {
@@ -387,8 +394,18 @@ import {
     if (!videoId) return;
 
     // The collapsed player drops `?v=` from the URL and the isolated-world
-    // provider cannot reach the player API, so publish the ID in the DOM.
-    document.documentElement.setAttribute("data-mprisence-ytm-video-id", videoId);
+    // provider cannot reach the player API, so publish the ID in the DOM,
+    // paired with the player API's title so the provider can tell when the
+    // ID lags a track change.
+    const root = document.documentElement;
+    root.setAttribute("data-mprisence-ytm-video-id", videoId);
+    const videoData = ytmPlayerVideoData();
+    const videoTitle = videoData?.video_id === videoId ? videoData.title : undefined;
+    if (typeof videoTitle === "string" && videoTitle) {
+      root.setAttribute("data-mprisence-ytm-video-title", videoTitle);
+    } else {
+      root.removeAttribute("data-mprisence-ytm-video-title");
+    }
 
     if (videoId !== lastYtmVideoId) {
       lastYtmVideoId = videoId;
@@ -411,9 +428,17 @@ import {
     }
   }
 
-  // Poll for YTM video ID changes (1s interval alongside MediaSession check)
+  // Poll for YTM video ID changes (1s interval alongside MediaSession check),
+  // and re-check as soon as the player bar changes on a track switch.
+  let observedPlayerBar: Element | null = null;
   setInterval(function () {
     checkYtmVideoId();
+    const playerBar = document.querySelector("ytmusic-player-bar");
+    if (playerBar && playerBar !== observedPlayerBar) {
+      observedPlayerBar = playerBar;
+      new MutationObserver(() => checkYtmVideoId())
+        .observe(playerBar, { childList: true, subtree: true, characterData: true });
+    }
   }, 1000);
 
   // Initial dispatch (skip during ads)

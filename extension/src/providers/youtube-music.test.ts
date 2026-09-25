@@ -387,3 +387,39 @@ test("uses the page-world video ID when the collapsed player drops ?v=", () => {
     restore();
   }
 });
+
+test("waits while the page-world video ID still belongs to the previous track", () => {
+  const restore = installYouTubeMusicDom({
+    ".title.ytmusic-player-bar": { textContent: "Clutter" },
+    ".byline.ytmusic-player-bar": { textContent: "Yakui The Maid • Goodnight World • 2011" },
+    "ytmusic-player-bar img": [{ src: "https://yt3.googleusercontent.com/album-art=w60-h60-l90-rj" }],
+    "#progress-bar": {
+      getAttribute: (name: string) => name === "aria-valuemax" ? "180" : "1",
+    },
+    video: {
+      paused: false,
+      ended: false,
+      readyState: 4,
+      currentTime: 1,
+      duration: 180,
+    },
+  }, "");
+  const attributes: Record<string, string> = {
+    "data-mprisence-ytm-video-id": "HHjdNFdinUg",
+    "data-mprisence-ytm-video-title": "Calamity",
+  };
+  (globalThis.document as any).documentElement = {
+    getAttribute: (name: string) => attributes[name] ?? null,
+  };
+
+  try {
+    const provider = new YouTubeMusicProvider();
+    assert.equal(provider.extract(), null);
+
+    attributes["data-mprisence-ytm-video-id"] = "UKP3I2Tot8s";
+    attributes["data-mprisence-ytm-video-title"] = "Clutter";
+    assert.equal(provider.extract()?.metadata.track_id, "ytm:UKP3I2Tot8s");
+  } finally {
+    restore();
+  }
+});

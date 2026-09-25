@@ -40,6 +40,7 @@ export class YouTubeMusicProvider implements Provider {
   readonly siteKey = "youtube_music";
   private readonly origin = "https://music.youtube.com";
   private readonly videoIdRegex = /\/vi\/([a-zA-Z0-9_-]+)\//;
+  private mismatchedTitle: { title: string; since: number } | null = null;
 
   matches(url: URL): boolean {
     return url.origin === this.origin;
@@ -66,10 +67,11 @@ export class YouTubeMusicProvider implements Provider {
     }
 
     // ── Title ──────────────────────────────────────────────────
-    const title =
-      titleEl?.textContent?.trim() ||
-      document.title.replace(" - YouTube Music", "").trim() ||
-      undefined;
+    // A bare "YouTube Music" document title means no track is shown yet.
+    const docTitle = document.title?.endsWith(" - YouTube Music")
+      ? document.title.slice(0, -" - YouTube Music".length).trim()
+      : "";
+    const title = titleEl?.textContent?.trim() || docTitle || undefined;
 
     // ── Artist & Album from byline ───────────────────────────
     // Format: "Artist • Album • Year" or "Artist • ## views • ## likes"
@@ -89,7 +91,10 @@ export class YouTubeMusicProvider implements Provider {
     const thumbSrc = artImg?.src || "";
     let videoId = (thumbSrc.match(this.videoIdRegex) || [])[1] || "";
     if (!videoId) {
-      videoId = this.currentVideoId();
+      const current = this.currentVideoId(title);
+      // Page-world's ID still belongs to the previous track; wait for it.
+      if (current === null) return null;
+      videoId = current;
     }
     // Fallback: extract videoId from page URL params.
     // YTM's <img> sometimes shows a channel avatar (yt3 URL) instead
@@ -240,10 +245,22 @@ export class YouTubeMusicProvider implements Provider {
       ?? this.qs<HTMLImageElement>("ytmusic-player-bar img.image, ytmusic-player-bar img");
   }
 
-  private currentVideoId(): string {
-    const fromPageWorld = document.documentElement
-      ?.getAttribute("data-mprisence-ytm-video-id");
-    if (fromPageWorld && /^[a-zA-Z0-9_-]+$/.test(fromPageWorld)) return fromPageWorld;
+  /** Returns null while page-world's video ID lags a track change. */
+  private currentVideoId(title: string | undefined): string | null {
+    const root = document.documentElement;
+    const fromPageWorld = root?.getAttribute("data-mprisence-ytm-video-id");
+    if (fromPageWorld && /^[a-zA-Z0-9_-]+$/.test(fromPageWorld)) {
+      const idTitle = root?.getAttribute("data-mprisence-ytm-video-title");
+      if (!idTitle || !title || idTitle === title) {
+        this.mismatchedTitle = null;
+        return fromPageWorld;
+      }
+      // Don't stall forever if the player API and player bar never agree.
+      if (this.mismatchedTitle?.title !== title) {
+        this.mismatchedTitle = { title, since: Date.now() };
+      }
+      return Date.now() - this.mismatchedTitle.since > 3000 ? fromPageWorld : null;
+    }
 
     const selectors = [
       "ytmusic-player-bar[video-id]",
