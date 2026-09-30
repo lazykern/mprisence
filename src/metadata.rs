@@ -20,9 +20,34 @@ use mpris::Metadata;
 use serde::Serialize;
 use url::Url;
 
+fn mpris_value_as_u32(value: &mpris::MetadataValue) -> Option<u32> {
+    value
+        .as_u64()
+        .and_then(|v| u32::try_from(v).ok())
+        .or_else(|| value.as_i64().and_then(|v| u32::try_from(v).ok()))
+        .or_else(|| value.as_str().and_then(|s| s.trim().parse().ok()))
+}
+
+fn parse_year(s: &str) -> Option<u32> {
+    let digits = s.trim().get(..4)?;
+    if !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse().ok().filter(|&y| y > 0)
+}
+
+fn mpris_value_as_string(value: &mpris::MetadataValue) -> Option<String> {
+    let parts: Vec<&str> = value
+        .as_str_array()?
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect();
+    (!parts.is_empty()).then(|| parts.join(", "))
+}
+
 macro_rules! impl_metadata_getter {
-    // String getter with both MPRIS and Lofty
-    ($name:ident, $mpris_key:expr, $lofty_key:expr) => {
+    // String getter with both MPRIS and Lofty (first matching tag key wins)
+    ($name:ident, $mpris_key:expr, [$($lofty_key:expr),+]) => {
         pub fn $name(&self) -> Option<String> {
             trace!(concat!(
                 "Getting ",
@@ -31,15 +56,19 @@ macro_rules! impl_metadata_getter {
             ));
             self.mpris_metadata
                 .as_ref()
-                .and_then(|m| m.get($mpris_key).and_then(|v| v.as_str()).map(String::from))
+                .and_then(|m| m.get($mpris_key))
+                .and_then(mpris_value_as_string)
                 .or_else(|| {
-                    self.tagged_file
-                        .as_ref()
-                        .and_then(|t| t.primary_tag())
-                        .and_then(|tag| tag.get_string($lofty_key))
+                    let tag = self.tagged_file.as_ref()?.primary_tag()?;
+                    [$($lofty_key),+]
+                        .into_iter()
+                        .find_map(|key| tag.get_string(key))
                         .map(String::from)
                 })
         }
+    };
+    ($name:ident, $mpris_key:expr, $lofty_key:expr) => {
+        impl_metadata_getter!($name, $mpris_key, [$lofty_key]);
     };
     // u32 getter with parsing for both MPRIS and Lofty
     ($name:ident, $mpris_key:expr, $lofty_key:expr, parse_u32) => {
@@ -51,11 +80,8 @@ macro_rules! impl_metadata_getter {
             ));
             self.mpris_metadata
                 .as_ref()
-                .and_then(|m| {
-                    m.get($mpris_key)
-                        .and_then(|v| v.as_str())
-                        .and_then(|s| s.parse().ok())
-                })
+                .and_then(|m| m.get($mpris_key))
+                .and_then(mpris_value_as_u32)
                 .or_else(|| {
                     self.tagged_file
                         .as_ref()
@@ -76,20 +102,9 @@ macro_rules! impl_metadata_getter {
             self.mpris_metadata
                 .as_ref()
                 .and_then(|m| m.get($mpris_key))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|g| g.as_str())
-                        .map(String::from)
-                        .collect()
-                })
-                .or_else(|| {
-                    self.tagged_file
-                        .as_ref()
-                        .and_then(|t| t.primary_tag())
-                        .and_then(|tag| tag.get_string($lofty_key))
-                        .map(|s| vec![s.to_string()])
-                })
+                .and_then(|v| v.as_str_array())
+                .map(|arr| arr.into_iter().map(String::from).collect())
+                .or_else(|| self.tag_strings($lofty_key))
         }
     };
     // MPRIS-only string getter
@@ -103,8 +118,7 @@ macro_rules! impl_metadata_getter {
             self.mpris_metadata
                 .as_ref()
                 .and_then(|m| m.get($mpris_key))
-                .and_then(|v| v.as_str())
-                .map(String::from)
+                .and_then(mpris_value_as_string)
         }
     };
     // MPRIS-only u32 getter
@@ -118,8 +132,7 @@ macro_rules! impl_metadata_getter {
             self.mpris_metadata
                 .as_ref()
                 .and_then(|m| m.get($mpris_key))
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse().ok())
+                .and_then(mpris_value_as_u32)
         }
     };
 }
@@ -270,7 +283,25 @@ impl MetadataSource {
     impl_metadata_getter!(title, "xesam:title", ItemKey::TrackTitle);
     impl_metadata_getter!(album, "xesam:album", ItemKey::AlbumTitle);
     impl_metadata_getter!(initial_key, "xesam:initialKey", ItemKey::InitialKey);
-    impl_metadata_getter!(bpm, "xesam:bpm", ItemKey::Bpm);
+    pub fn bpm(&self) -> Option<String> {
+        trace!("Getting bpm from metadata sources");
+        self.mpris_metadata
+            .as_ref()
+            .and_then(|m| {
+                m.get("xesam:audioBPM")
+                    .and_then(mpris_value_as_u32)
+                    .filter(|&bpm| bpm > 0)
+                    .map(|bpm| bpm.to_string())
+                    .or_else(|| m.get("xesam:bpm").and_then(mpris_value_as_string))
+            })
+            .or_else(|| {
+                self.tagged_file
+                    .as_ref()?
+                    .primary_tag()?
+                    .get_string(ItemKey::Bpm)
+                    .map(String::from)
+            })
+    }
     impl_metadata_getter!(mood, "xesam:mood", ItemKey::Mood);
 
     impl_metadata_getter!(isrc, "xesam:isrc", ItemKey::Isrc);
@@ -285,7 +316,7 @@ impl MetadataSource {
     impl_metadata_getter!(
         musicbrainz_track_id,
         "xesam:musicbrainzTrackID",
-        ItemKey::MusicBrainzTrackId
+        [ItemKey::MusicBrainzRecordingId, ItemKey::MusicBrainzTrackId]
     );
     impl_metadata_getter!(
         musicbrainz_album_id,
@@ -327,7 +358,35 @@ impl MetadataSource {
         parse_u32
     );
     impl_metadata_getter!(disc_total, "xesam:discTotal", ItemKey::DiscTotal, parse_u32);
-    impl_metadata_getter!(year, "xesam:year", ItemKey::Year, parse_u32);
+    pub fn year(&self) -> Option<u32> {
+        trace!("Getting year from metadata sources");
+        self.mpris_metadata
+            .as_ref()
+            .and_then(|m| {
+                m.get("xesam:year")
+                    .and_then(|v| {
+                        mpris_value_as_u32(v)
+                            .filter(|&y| y > 0)
+                            .or_else(|| v.as_str().and_then(parse_year))
+                    })
+                    .or_else(|| {
+                        m.get("xesam:contentCreated")
+                            .and_then(|v| v.as_str())
+                            .and_then(parse_year)
+                    })
+            })
+            .or_else(|| {
+                let tag = self.tagged_file.as_ref()?.primary_tag()?;
+                [
+                    ItemKey::RecordingDate,
+                    ItemKey::Year,
+                    ItemKey::ReleaseDate,
+                    ItemKey::OriginalReleaseDate,
+                ]
+                .into_iter()
+                .find_map(|key| tag.get_string(key).and_then(parse_year))
+            })
+    }
 
     impl_metadata_getter!(composer, "xesam:composer", ItemKey::Composer);
     impl_metadata_getter!(lyricist, "xesam:lyricist", ItemKey::Lyricist);
@@ -340,11 +399,15 @@ impl MetadataSource {
         "xesam:encoderSettings",
         ItemKey::EncoderSettings
     );
-    impl_metadata_getter!(comment, "xesam:comment", ItemKey::Comment);
+    impl_metadata_getter!(
+        comment,
+        "xesam:comment",
+        [ItemKey::Comment, ItemKey::Description]
+    );
 
     impl_metadata_getter!(genres, "xesam:genre", ItemKey::Genre, array);
-    impl_metadata_getter!(copyright, "xesam:copyright");
-    impl_metadata_getter!(publisher, "xesam:publisher");
+    impl_metadata_getter!(copyright, "xesam:copyright", ItemKey::CopyrightMessage);
+    impl_metadata_getter!(publisher, "xesam:publisher", ItemKey::Publisher);
     impl_metadata_getter!(movement, "xesam:movement");
     impl_metadata_getter!(movement_number, "xesam:movementNumber", _);
     impl_metadata_getter!(movement_total, "xesam:movementTotal", _);
@@ -356,13 +419,7 @@ impl MetadataSource {
             .as_ref()
             .and_then(|m| m.artists())
             .map(|artists| artists.iter().map(|s| s.to_string()).collect())
-            .or_else(|| {
-                self.tagged_file
-                    .as_ref()
-                    .and_then(|t| t.primary_tag())
-                    .and_then(|tag| tag.get_string(ItemKey::TrackArtist))
-                    .map(|artist| vec![artist.to_string()])
-            })
+            .or_else(|| self.tag_strings(ItemKey::TrackArtist))
     }
 
     pub fn album_artists(&self) -> Option<Vec<String>> {
@@ -371,13 +428,18 @@ impl MetadataSource {
             .as_ref()
             .and_then(|m| m.album_artists())
             .map(|artists| artists.iter().map(|s| s.to_string()).collect())
-            .or_else(|| {
-                self.tagged_file
-                    .as_ref()
-                    .and_then(|t| t.primary_tag())
-                    .and_then(|tag| tag.get_string(ItemKey::AlbumArtist))
-                    .map(|artist| vec![artist.to_string()])
-            })
+            .or_else(|| self.tag_strings(ItemKey::AlbumArtist))
+    }
+
+    fn tag_strings(&self, key: ItemKey) -> Option<Vec<String>> {
+        let values: Vec<String> = self
+            .tagged_file
+            .as_ref()?
+            .primary_tag()?
+            .get_strings(key)
+            .map(String::from)
+            .collect();
+        (!values.is_empty()).then_some(values)
     }
 
     pub fn length(&self) -> Option<Duration> {
@@ -754,6 +816,128 @@ mod tests {
             ArtSource::Bytes(bytes) => assert_eq!(bytes, picture),
             other => panic!("expected embedded bytes, got {other:?}"),
         }
+    }
+
+    fn mpris_source(entries: Vec<(&str, mpris::MetadataValue)>) -> super::MetadataSource {
+        let data: HashMap<String, mpris::MetadataValue> = entries
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        super::MetadataSource::new(Some(Metadata::from(data)), None)
+    }
+
+    fn str_array(values: &[&str]) -> mpris::MetadataValue {
+        mpris::MetadataValue::Array(values.iter().map(|&v| v.into()).collect())
+    }
+
+    fn tagged_source(items: &[(lofty::tag::ItemKey, &str)]) -> super::MetadataSource {
+        let mut tag = lofty::tag::Tag::new(lofty::tag::TagType::VorbisComments);
+        for (key, value) in items {
+            assert!(tag.insert_text(*key, value.to_string()));
+        }
+        let tagged = lofty::file::TaggedFile::new(
+            lofty::file::FileType::Flac,
+            Default::default(),
+            vec![tag],
+        );
+        super::MetadataSource::new(None, Some(tagged))
+    }
+
+    #[test]
+    fn year_from_integer_mpris_value() {
+        let source = mpris_source(vec![("xesam:year", mpris::MetadataValue::I32(2019))]);
+        assert_eq!(source.year(), Some(2019));
+    }
+
+    #[test]
+    fn year_from_string_mpris_value() {
+        let source = mpris_source(vec![("xesam:year", "2022-08-05".into())]);
+        assert_eq!(source.year(), Some(2022));
+    }
+
+    #[test]
+    fn year_falls_back_to_content_created() {
+        let source = mpris_source(vec![(
+            "xesam:contentCreated",
+            "2022-08-05T00:00:00+07:00".into(),
+        )]);
+        assert_eq!(source.year(), Some(2022));
+    }
+
+    #[test]
+    fn year_from_full_date_tags() {
+        use lofty::tag::ItemKey;
+        assert_eq!(
+            tagged_source(&[(ItemKey::RecordingDate, "2019-05-12")]).year(),
+            Some(2019)
+        );
+        assert_eq!(
+            tagged_source(&[(ItemKey::Year, "2022-08-05")]).year(),
+            Some(2022)
+        );
+        assert_eq!(tagged_source(&[(ItemKey::Year, "unknown")]).year(), None);
+    }
+
+    #[test]
+    fn integer_track_number_from_mpris() {
+        let source = mpris_source(vec![("xesam:trackNumber", mpris::MetadataValue::I32(3))]);
+        assert_eq!(source.track_number(), Some(3));
+    }
+
+    #[test]
+    fn string_array_mpris_values_are_joined() {
+        let source = mpris_source(vec![
+            ("xesam:composer", str_array(&["Comp1", "Comp2"])),
+            ("xesam:comment", str_array(&["hello"])),
+        ]);
+        assert_eq!(source.composer().as_deref(), Some("Comp1, Comp2"));
+        assert_eq!(source.comment().as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn bpm_from_spec_audio_bpm_key() {
+        let source = mpris_source(vec![("xesam:audioBPM", mpris::MetadataValue::I32(128))]);
+        assert_eq!(source.bpm().as_deref(), Some("128"));
+    }
+
+    #[test]
+    fn tag_fallbacks_cover_alternate_keys() {
+        use lofty::tag::ItemKey;
+        let source = tagged_source(&[
+            (ItemKey::Description, "hello comment"),
+            (ItemKey::CopyrightMessage, "Cpy"),
+            (ItemKey::Publisher, "Pub"),
+            (ItemKey::MusicBrainzRecordingId, "mbt"),
+        ]);
+        assert_eq!(source.comment().as_deref(), Some("hello comment"));
+        assert_eq!(source.copyright().as_deref(), Some("Cpy"));
+        assert_eq!(source.publisher().as_deref(), Some("Pub"));
+        assert_eq!(source.musicbrainz_track_id().as_deref(), Some("mbt"));
+    }
+
+    #[test]
+    fn multi_value_tags_keep_every_value() {
+        use lofty::tag::{ItemKey, ItemValue, Tag, TagItem, TagType};
+        let mut tag = Tag::new(TagType::VorbisComments);
+        for (key, value) in [
+            (ItemKey::TrackArtist, "A1"),
+            (ItemKey::TrackArtist, "A2"),
+            (ItemKey::Genre, "Dance"),
+            (ItemKey::Genre, "Electronica"),
+        ] {
+            assert!(tag.push(TagItem::new(key, ItemValue::Text(value.to_string()))));
+        }
+        let tagged = lofty::file::TaggedFile::new(
+            lofty::file::FileType::Flac,
+            Default::default(),
+            vec![tag],
+        );
+        let source = super::MetadataSource::new(None, Some(tagged));
+        assert_eq!(source.artists(), Some(vec!["A1".into(), "A2".into()]));
+        assert_eq!(
+            source.genres(),
+            Some(vec!["Dance".into(), "Electronica".into()])
+        );
     }
 
     fn metadata_with_art_url(art_url: &str) -> super::MetadataSource {
