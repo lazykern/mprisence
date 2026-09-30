@@ -25,6 +25,7 @@ default = "listening"
 [cover]
 file_names = ["cover", "folder", "front", "album", "art"]
 local_search_depth = 2
+normalize_uploads = true
 
 [cover.cache]
 max_size_mb = 32

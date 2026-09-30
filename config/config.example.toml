@@ -155,6 +155,10 @@
 # for local cover art. 0 means only search in the same directory.
 # local_search_depth = 2
 
+# Re-encode cover art to fit 512x512 JPEG q85 before uploading.
+# Set to false to upload at full resolution. Each mode caches its URL separately.
+# normalize_uploads = true
+
 [cover.cache]
 # Maximum total disk usage in MiB. The oldest entries are evicted first.
 # max_size_mb = 32

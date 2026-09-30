@@ -99,6 +99,7 @@ const DEFAULT_TEMPLATE_SMALL_TEXT: &str = "{{{player}}}";
 const DEFAULT_COVER_FILE_NAMES: [&str; 5] = ["cover", "folder", "front", "album", "art"];
 const DEFAULT_COVER_PROVIDERS: [&str; 2] = ["catbox", "musicbrainz"];
 const DEFAULT_COVER_LOCAL_SEARCH_DEPTH: usize = 2;
+const DEFAULT_COVER_NORMALIZE_UPLOADS: bool = true;
 const DEFAULT_COVER_CACHE_MAX_SIZE_MB: u64 = 32;
 const DEFAULT_COVER_CACHE_MAX_ENTRIES: usize = 1024;
 const DEFAULT_COVER_CACHE_TTL_HOURS: u64 = 24;
@@ -1432,6 +1433,21 @@ mod wildcard_tests {
     }
 
     #[test]
+    fn cover_normalize_uploads_defaults_on_and_is_overridable() {
+        let default: CoverConfig =
+            toml::from_str("").expect("empty cover config should deserialize");
+        assert!(default.normalize_uploads);
+
+        let disabled: CoverConfig = toml::from_str(
+            r#"
+normalize_uploads = false
+"#,
+        )
+        .expect("cover.normalize_uploads should deserialize");
+        assert!(!disabled.normalize_uploads);
+    }
+
+    #[test]
     fn template_details_key_is_supported() {
         let template: TemplateConfig = toml::from_str(
             r#"
@@ -1579,6 +1595,10 @@ pub struct CoverConfig {
     #[serde(default = "default_cover_local_search_depth")]
     pub local_search_depth: usize,
 
+    /// Re-encode artwork to 512px JPEG q85 before upload. Disable to upload as-is.
+    #[serde(default = "default_cover_normalize_uploads")]
+    pub normalize_uploads: bool,
+
     #[serde(default)]
     pub cache: CoverCacheConfig,
 }
@@ -1594,12 +1614,17 @@ fn default_cover_local_search_depth() -> usize {
     DEFAULT_COVER_LOCAL_SEARCH_DEPTH
 }
 
+fn default_cover_normalize_uploads() -> bool {
+    DEFAULT_COVER_NORMALIZE_UPLOADS
+}
+
 impl Default for CoverConfig {
     fn default() -> Self {
         CoverConfig {
             file_names: default_cover_file_names(),
             provider: CoverProviderConfig::default(),
             local_search_depth: default_cover_local_search_depth(),
+            normalize_uploads: default_cover_normalize_uploads(),
             cache: CoverCacheConfig::default(),
         }
     }

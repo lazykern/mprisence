@@ -483,6 +483,7 @@ impl CoverManager {
     ) -> Result<Option<String>, CoverArtError> {
         let dummy = ArtSource::Url(String::new());
         let source_cache_key = source.and_then(Self::source_cache_key);
+        let normalize_uploads = self.config.cover_config().normalize_uploads;
         let mut normalized_source: Option<Option<ArtSource>> = None;
 
         for provider in &self.providers {
@@ -502,6 +503,7 @@ impl CoverManager {
                 provider.as_ref(),
                 source_cache_key.as_deref(),
                 metadata_source,
+                normalize_uploads,
             );
             if read_cache {
                 if let CacheLookup::Hit(url) = self.lookup_cached_cover(&cache_key).await? {
@@ -597,6 +599,11 @@ impl CoverManager {
         source: &ArtSource,
         cancel: &CancellationToken,
     ) -> Result<Option<ArtSource>, CoverArtError> {
+        if !self.config.cover_config().normalize_uploads {
+            debug!("Upload normalization disabled; uploading artwork unchanged");
+            return Ok(Some(source.clone()));
+        }
+
         let Some(bytes) = source.materialize_bytes().await? else {
             return Ok(None);
         };
@@ -640,11 +647,21 @@ impl CoverManager {
         provider: &dyn CoverArtProvider,
         source_cache_key: Option<&str>,
         metadata_source: &MetadataSource,
+        normalize_uploads: bool,
     ) -> String {
         match provider.cache_key_scope() {
-            CacheKeyScope::Source => source_cache_key
-                .map(str::to_string)
-                .unwrap_or_else(|| metadata_source.cache_key().to_string()),
+            CacheKeyScope::Source => {
+                let key = source_cache_key
+                    .map(str::to_string)
+                    .unwrap_or_else(|| metadata_source.cache_key().to_string());
+                // Uploaded bytes differ between normalized and raw mode, so the
+                // hosted URL does too. Keep the two in separate cache entries.
+                if normalize_uploads {
+                    key
+                } else {
+                    format!("{key}-raw")
+                }
+            }
             CacheKeyScope::Metadata => metadata_source.cover_cache_key().to_string(),
         }
     }
@@ -655,6 +672,7 @@ impl CoverManager {
         metadata_source: &MetadataSource,
     ) -> Vec<String> {
         let source_cache_key = source.and_then(Self::source_cache_key);
+        let normalize_uploads = self.config.cover_config().normalize_uploads;
         let mut keys = Vec::new();
 
         if matches!(source, Some(ArtSource::Url(url)) if Self::direct_url_policy(url).allow_direct)
@@ -677,6 +695,7 @@ impl CoverManager {
                 provider.as_ref(),
                 source_cache_key.as_deref(),
                 metadata_source,
+                normalize_uploads,
             );
             if !keys.contains(&key) {
                 keys.push(key);
@@ -917,6 +936,24 @@ pub async fn clean_cache() -> Result<(), CoverArtError> {
 mod tests {
     use super::{CacheEntry, CoverManager};
     use std::time::SystemTime;
+
+    #[test]
+    fn raw_and_normalized_uploads_use_distinct_cache_keys() {
+        use super::providers::catbox::CatboxProvider;
+        use crate::config::schema::CatboxConfig;
+        use crate::metadata::MetadataSource;
+
+        let provider = CatboxProvider::with_config(CatboxConfig::default());
+        let metadata = MetadataSource::new(None, None);
+
+        let normalized =
+            CoverManager::provider_cache_key(&provider, Some("abc123"), &metadata, true);
+        let raw = CoverManager::provider_cache_key(&provider, Some("abc123"), &metadata, false);
+
+        assert_eq!(normalized, "abc123");
+        assert_eq!(raw, "abc123-raw");
+        assert_ne!(normalized, raw);
+    }
 
     #[test]
     fn rejects_only_legacy_catbox_image_urls() {
