@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.9.0] - 2026-09-30
+
+### Added
+
+- Add `cover.normalize_uploads` to control whether cover art is re-encoded to
+  a 512x512 JPEG before upload. It stays enabled by default; set it to `false`
+  to upload artwork at full resolution. Each mode keeps its own cached URL.
+
+### Fixed
+
+- Read MPRIS track and disc numbers sent as integers, and text fields such as
+  composer or lyricist sent as lists, instead of leaving template fields empty.
+- Show `{{{year}}}` for players that send the release date only as
+  `xesam:contentCreated` or send `xesam:year` as a number
+  ([#111](https://github.com/lazykern/mprisence/issues/111)) by @Gonaah.
+- Read BPM from `xesam:audioBPM` when players provide it.
+- Fall back to the MusicBrainz track ID tag when a file has no recording ID.
+
 ## [1.8.8] - 2026-09-26
 
 ### Changed
