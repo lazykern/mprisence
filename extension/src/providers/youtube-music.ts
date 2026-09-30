@@ -53,18 +53,10 @@ export class YouTubeMusicProvider implements Provider {
     const titleEl = this.qs<HTMLElement>(".title.ytmusic-player-bar");
     const artistEl = this.qs<HTMLElement>(".byline.ytmusic-player-bar");
     const artImg = this.playerArtImage();
-    const playBtn = this.qs<HTMLElement>("#play-pause-button");
+    const playBtn = this.visibleControl("#play-pause-button");
     const video = this.qs<HTMLVideoElement>("video");
 
     if (!titleEl && !video) return null;
-    if (
-      !video ||
-      video.readyState < 2 ||
-      !Number.isFinite(video.duration) ||
-      video.duration <= 0
-    ) {
-      return null;
-    }
 
     // ── Title ──────────────────────────────────────────────────
     // A bare "YouTube Music" document title means no track is shown yet.
@@ -142,27 +134,23 @@ export class YouTubeMusicProvider implements Provider {
     const trackPositionSec = (isFinite(progressNow) && progressNow >= 0) ? progressNow : undefined;
     const trackDurationSec = (isFinite(progressMax) && progressMax > 0) ? progressMax : undefined;
 
-    // Without both values, fallback would use queue-wide video time.
-    if (video && (trackPositionSec === undefined || trackDurationSec === undefined) && video.duration > 600) {
-      return null;
+    const validVideoDuration = video && video.readyState >= 2 &&
+      Number.isFinite(video.duration) && video.duration > 0;
+    if (trackPositionSec === undefined || trackDurationSec === undefined) {
+      if (!validVideoDuration || video.duration > 600) return null;
     }
 
     const hasStartupProgressPlaceholder =
       trackPositionSec === 0 &&
       trackDurationSec === 100 &&
-      Math.abs(video.duration - trackDurationSec) > 1;
+      (!validVideoDuration || Math.abs(video.duration - trackDurationSec) > 1);
 
     if (hasStartupProgressPlaceholder) {
       return null;
     }
 
-    let currentSec = trackPositionSec ?? (video.currentTime || 0);
-    let totalSec = trackDurationSec ?? video.duration;
-    // If video exists but duration is invalid (NaN/0/Infinity), skip -
-    // metadata hasn't loaded yet. We'll retry on next poll.
-    if (video && (totalSec === 0 || !isFinite(totalSec))) {
-      return null;
-    }
+    const currentSec = trackPositionSec ?? (video?.currentTime || 0);
+    const totalSec = trackDurationSec ?? video!.duration;
 
     // ── Playback status ─────────────────────────────────────────
     const isPlaying = isYouTubeMusicPlaying(
@@ -229,13 +217,20 @@ export class YouTubeMusicProvider implements Provider {
 
     const selector = btnMap[cmd];
     if (selector) {
-      const btn = document.querySelector<HTMLElement>(selector);
+      const btn = this.visibleControl(selector);
       btn?.click();
     }
   }
 
   private qs<T extends HTMLElement>(selector: string): T | null {
     return document.querySelector<T>(selector);
+  }
+
+  private visibleControl(selector: string): HTMLElement | null {
+    const controls = Array.from(document.querySelectorAll<HTMLElement>(selector));
+    return controls.find((control) => !control.getClientRects || control.getClientRects().length > 0)
+      ?? controls[0]
+      ?? null;
   }
 
   private playerArtImage(): HTMLImageElement | null {
@@ -277,6 +272,10 @@ export class YouTubeMusicProvider implements Provider {
 
   private visibleProgressBar(): HTMLElement | null {
     const bars = Array.from(document.querySelectorAll<HTMLElement>("#progress-bar"));
-    return bars.find((bar) => !bar.getClientRects || bar.getClientRects().length > 0) ?? bars[0] ?? null;
+    const visible = bars.filter((bar) => !bar.getClientRects || bar.getClientRects().length > 0);
+    return visible.find((bar) => bar.getAttribute("aria-disabled") !== "true")
+      ?? visible[0]
+      ?? bars[0]
+      ?? null;
   }
 }

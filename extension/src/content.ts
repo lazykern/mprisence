@@ -333,10 +333,11 @@ function startObserving(): void {
   // drops it - it only refreshes the source's last_seen.
   keepaliveInterval = setInterval(() => triggerUpdate(true), 30_000);
 
-  const isSoundCloud =
+  const needsDomPolling =
+    window.location.hostname === "music.youtube.com" ||
     window.location.hostname === "soundcloud.com" ||
     window.location.hostname.endsWith(".soundcloud.com");
-  if (isSoundCloud) {
+  if (needsDomPolling) {
     setInterval(() => triggerUpdate(), 1000);
   }
 }

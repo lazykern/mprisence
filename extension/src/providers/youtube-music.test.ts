@@ -69,6 +69,50 @@ test("falls back to the play button when media is unavailable", () => {
   assert.equal(isYouTubeMusicPlaying(null, "Play"), false);
 });
 
+test("publishes player-bar timing when the video element is absent", () => {
+  const restore = installYouTubeMusicDom({
+    ".title.ytmusic-player-bar": { textContent: "New Player Track" },
+    ".byline.ytmusic-player-bar": { textContent: "Artist" },
+    "#play-pause-button": { getAttribute: () => "Pause" },
+    "#progress-bar": {
+      getAttribute: (name: string) => name === "aria-valuemax" ? "214" : "13",
+    },
+  });
+
+  try {
+    const result = new YouTubeMusicProvider().extract();
+    assert.equal(result?.metadata.title, "New Player Track");
+    assert.equal(result?.playback.status, "playing");
+    assert.equal(result?.playback.position_ms, 13_000);
+    assert.equal(result?.playback.duration_ms, 214_000);
+  } finally {
+    restore();
+  }
+});
+
+test("uses player-bar timing while video metadata is unavailable", () => {
+  const restore = installYouTubeMusicDom({
+    ".title.ytmusic-player-bar": { textContent: "New Player Track" },
+    ".byline.ytmusic-player-bar": { textContent: "Artist" },
+    "#progress-bar": {
+      getAttribute: (name: string) => name === "aria-valuemax" ? "214" : "13",
+    },
+    video: {
+      paused: false,
+      ended: false,
+      readyState: 0,
+      currentTime: 0,
+      duration: NaN,
+    },
+  });
+
+  try {
+    assert.equal(new YouTubeMusicProvider().extract()?.playback.duration_ms, 214_000);
+  } finally {
+    restore();
+  }
+});
+
 test("ignores the startup progress placeholder until media is ready", () => {
   const restore = installYouTubeMusicDom({
     ".title.ytmusic-player-bar": { textContent: "Never Gonna Give You Up" },
@@ -353,6 +397,55 @@ test("uses the visible YTM progress bar in compact mode", () => {
 
   try {
     assert.equal(new YouTubeMusicProvider().extract()?.playback.position_ms, 13_000);
+  } finally {
+    restore();
+  }
+});
+
+test("prefers the enabled progress bar in the new player layout", () => {
+  const restore = installYouTubeMusicDom({
+    ".title.ytmusic-player-bar": { textContent: "New Player Track" },
+    ".byline.ytmusic-player-bar": { textContent: "Artist" },
+    "#progress-bar": [
+      {
+        getClientRects: () => [{}],
+        getAttribute: (name: string) => name === "aria-disabled" ? "true" : name === "aria-valuemax" ? "100" : "0",
+      },
+      {
+        getClientRects: () => [{}],
+        getAttribute: (name: string) => name === "aria-disabled" ? "false" : name === "aria-valuemax" ? "214" : "13",
+      },
+    ],
+    video: {
+      paused: false,
+      ended: false,
+      readyState: 4,
+      currentTime: 13,
+      duration: 214,
+    },
+  });
+
+  try {
+    assert.equal(new YouTubeMusicProvider().extract()?.playback.position_ms, 13_000);
+  } finally {
+    restore();
+  }
+});
+
+test("sends play command to the visible player button", async () => {
+  let hiddenClicks = 0;
+  let visibleClicks = 0;
+  const restore = installYouTubeMusicDom({
+    "#play-pause-button": [
+      { getClientRects: () => [], click: () => hiddenClicks++ },
+      { getClientRects: () => [{}], click: () => visibleClicks++ },
+    ],
+  });
+
+  try {
+    await new YouTubeMusicProvider().command("play_pause");
+    assert.equal(hiddenClicks, 0);
+    assert.equal(visibleClicks, 1);
   } finally {
     restore();
   }
