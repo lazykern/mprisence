@@ -2,12 +2,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   isYouTubeMusicPlaying,
+  sameYouTubeMusicTitle,
   YouTubeMusicProvider,
 } from "./youtube-music.ts";
 
 function installYouTubeMusicDom(
   elements: Record<string, unknown | unknown[]>,
   search = "?v=dQw4w9WgXcQ",
+  page: {
+    title?: string;
+    rootAttrs?: Record<string, string>;
+    onEvent?: (event: Event) => void;
+  } = {},
 ): () => void {
   const previousDocument = globalThis.document;
   const previousWindow = globalThis.window;
@@ -15,7 +21,11 @@ function installYouTubeMusicDom(
   Object.defineProperty(globalThis, "document", {
     configurable: true,
     value: {
-      title: "Never Gonna Give You Up - YouTube Music",
+      title: page.title ?? "Never Gonna Give You Up - YouTube Music",
+      documentElement: {
+        getAttribute: (name: string) => page.rootAttrs?.[name] ?? null,
+        hasAttribute: (name: string) => page.rootAttrs?.[name] !== undefined,
+      },
       querySelector: (selector: string) => {
         const value = elements[selector];
         return Array.isArray(value) ? value[0] ?? null : value ?? null;
@@ -28,7 +38,13 @@ function installYouTubeMusicDom(
   });
   Object.defineProperty(globalThis, "window", {
     configurable: true,
-    value: { location: { search } },
+    value: {
+      location: { search },
+      dispatchEvent: (event: Event) => {
+        page.onEvent?.(event);
+        return true;
+      },
+    },
   });
 
   return () => {
@@ -512,6 +528,153 @@ test("waits while the page-world video ID still belongs to the previous track", 
     attributes["data-mprisence-ytm-video-id"] = "UKP3I2Tot8s";
     attributes["data-mprisence-ytm-video-title"] = "Clutter";
     assert.equal(provider.extract()?.metadata.track_id, "ytm:UKP3I2Tot8s");
+  } finally {
+    restore();
+  }
+});
+
+// Wiz miniplayer layout (`music_web_enable_wiz_miniplayer`): ytmusic-miniplayer
+// replaces ytmusic-player-bar and #progress-bar in both player states.
+function miniplayerDom(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    "ytmusic-miniplayer .ytmusicTrackInfoTitle": {
+      textContent: "Never Did Coke (feat. Swae Lee)",
+      getAttribute: () => "Never Did Coke (feat. Swae Lee)",
+    },
+    "ytmusic-miniplayer .ytmusicTrackInfoBylineItem": {
+      textContent: "Lil Yachty • Michigan Boy Boat • 2021",
+      getAttribute: () => "Lil Yachty • Michigan Boy Boat • 2021",
+    },
+    "ytmusic-miniplayer img.ytmusicTrackInfoThumbnail": {
+      src: "https://yt3.googleusercontent.com/aQCe2PgsGlQAw49Xu9prK8p4Le=w544-h544-l90-rj",
+    },
+    "ytmusic-miniplayer .ytmusicPlayerControlsPlayPauseButton button": {
+      getAttribute: () => "Pause",
+    },
+    "ytmusic-miniplayer input.ytMusicMiniPlayerProgressBar": { value: "25", max: "184" },
+    video: {
+      paused: false,
+      ended: false,
+      readyState: 4,
+      currentTime: 25.4,
+      duration: 183,
+    },
+    ...overrides,
+  };
+}
+
+test("reads track info and timing from the miniplayer layout", () => {
+  const restore = installYouTubeMusicDom(miniplayerDom(), "?v=8eS0ehGtRy0", {
+    title: "Never Did Coke (feat. Swae Lee) | YouTube Music",
+  });
+
+  try {
+    const result = new YouTubeMusicProvider().extract();
+    assert.equal(result?.metadata.title, "Never Did Coke (feat. Swae Lee)");
+    assert.deepEqual(result?.metadata.artist, ["Lil Yachty"]);
+    assert.equal(result?.metadata.album, "Michigan Boy Boat");
+    assert.equal(result?.metadata.track_id, "ytm:8eS0ehGtRy0");
+    assert.equal(result?.playback.status, "playing");
+    assert.equal(result?.playback.position_ms, 25_000);
+    assert.equal(result?.playback.duration_ms, 184_000);
+  } finally {
+    restore();
+  }
+});
+
+test("uses the page-world video ID in the compact miniplayer", () => {
+  const restore = installYouTubeMusicDom(miniplayerDom(), "", {
+    rootAttrs: {
+      "data-mprisence-ytm-video-id": "igpHMXzXJE0",
+      "data-mprisence-ytm-video-title": "Never Did Coke",
+    },
+  });
+
+  try {
+    const result = new YouTubeMusicProvider().extract();
+    assert.equal(result?.metadata.track_id, "ytm:igpHMXzXJE0");
+    assert.equal(result?.canonicalUrl, "https://music.youtube.com/watch?v=igpHMXzXJE0");
+  } finally {
+    restore();
+  }
+});
+
+test("falls back to the page title and player API author without a player bar", () => {
+  const restore = installYouTubeMusicDom({
+    video: { paused: false, ended: false, readyState: 4, currentTime: 5, duration: 183 },
+  }, "?v=8eS0ehGtRy0", {
+    title: "Never Did Coke (feat. Swae Lee) | YouTube Music",
+    rootAttrs: {
+      "data-mprisence-ytm-video-id": "8eS0ehGtRy0",
+      "data-mprisence-ytm-video-title": "Never Did Coke",
+      "data-mprisence-ytm-video-author": "Lil Yachty",
+    },
+  });
+
+  try {
+    const result = new YouTubeMusicProvider().extract();
+    assert.equal(result?.metadata.title, "Never Did Coke (feat. Swae Lee)");
+    assert.deepEqual(result?.metadata.artist, ["Lil Yachty"]);
+  } finally {
+    restore();
+  }
+});
+
+for (const [command, selector] of [
+  ["play_pause", "ytmusic-miniplayer .ytmusicPlayerControlsPlayPauseButton button"],
+  ["next", "ytmusic-miniplayer .ytmusicPlayerControlsNextButton button"],
+  ["previous", "ytmusic-miniplayer .ytmusicPlayerControlsPreviousButton button"],
+] as const) {
+  test(`sends ${command} to the miniplayer button`, async () => {
+    let clicks = 0;
+    const restore = installYouTubeMusicDom({
+      [selector]: { getClientRects: () => [{}], click: () => clicks++ },
+    });
+
+    try {
+      await new YouTubeMusicProvider().command(command);
+      assert.equal(clicks, 1);
+    } finally {
+      restore();
+    }
+  });
+}
+
+test("matches player-bar titles with a featured-artist suffix", () => {
+  assert.equal(sameYouTubeMusicTitle("Never Did Coke", "Never Did Coke (feat. Swae Lee)"), true);
+  assert.equal(sameYouTubeMusicTitle("never did coke", "Never Did Coke"), true);
+  // A stale API title with a suffix must not match a newly shown shorter title.
+  assert.equal(sameYouTubeMusicTitle("Song (remix)", "Song"), false);
+  assert.equal(sameYouTubeMusicTitle("Concrete Goonies", "Never Did Coke"), false);
+  assert.equal(sameYouTubeMusicTitle("", "Never Did Coke"), false);
+});
+
+test("seeks through the page-world player API when it is available", async () => {
+  const events: Event[] = [];
+  const video = { currentTime: 214 };
+  const restore = installYouTubeMusicDom({ video }, "", {
+    rootAttrs: { "data-mprisence-ytm-video-id": "tbmKG-vJank" },
+    onEvent: (event) => events.push(event),
+  });
+
+  try {
+    await new YouTubeMusicProvider().command("set_position", 30_000);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, "mprisence-ytm-seek");
+    assert.equal((events[0] as CustomEvent).detail, 30_000);
+    assert.equal(video.currentTime, 214);
+  } finally {
+    restore();
+  }
+});
+
+test("seeks the video element when page-world is absent", async () => {
+  const video = { currentTime: 0 };
+  const restore = installYouTubeMusicDom({ video });
+
+  try {
+    await new YouTubeMusicProvider().command("set_position", 30_000);
+    assert.equal(video.currentTime, 30);
   } finally {
     restore();
   }

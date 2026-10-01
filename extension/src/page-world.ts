@@ -13,6 +13,7 @@ import {
   isNotificationSound,
   hasPublishableIdentity,
 } from "./utils/generic-media";
+import { sameYouTubeMusicTitle } from "./providers/youtube-music";
 
 (function () {
   // Prevent double injection
@@ -317,13 +318,20 @@ import {
     });
   }
 
-  function ytmPlayerVideoData(): { video_id?: unknown; title?: unknown } | undefined {
+  type YtmVideoData = { video_id?: unknown; title?: unknown; author?: unknown };
+
+  function ytmPlayerVideoData(): YtmVideoData | undefined {
     try {
+      // #movie_player exists in both the classic player bar and the Wiz
+      // miniplayer layout; the player bar's queue API only in the former.
+      const moviePlayer = document.querySelector("#movie_player") as (
+        HTMLElement & { getVideoData?: () => YtmVideoData }
+      ) | null;
+      const data = moviePlayer?.getVideoData?.();
+      if (data?.video_id) return data;
       const playerBar = document.querySelector("ytmusic-player-bar") as (
         HTMLElement & {
-          queue?: {
-            playerApi?: { getVideoData?: () => { video_id?: unknown; title?: unknown } };
-          };
+          queue?: { playerApi?: { getVideoData?: () => YtmVideoData } };
         }
       ) | null;
       return playerBar?.queue?.playerApi?.getVideoData?.();
@@ -333,12 +341,20 @@ import {
     }
   }
 
+  function ytmPlayerBarTitle(): string {
+    return (
+      document.querySelector(".title.ytmusic-player-bar")?.textContent?.trim()
+      || document.querySelector("ytmusic-miniplayer .ytmusicTrackInfoTitle")?.textContent?.trim()
+      || ""
+    );
+  }
+
   function currentYtmVideoId(): string {
     const fromUrl = new URLSearchParams(window.location.search).get("v");
     if (fromUrl) return fromUrl;
 
     const image = document.querySelector<HTMLImageElement>(
-      "ytmusic-player-bar img.image, ytmusic-player-bar img",
+      "ytmusic-player-bar img.image, ytmusic-player-bar img, ytmusic-miniplayer img.ytmusicTrackInfoThumbnail",
     );
     const fromImage = image?.src.match(/\/vi\/([a-zA-Z0-9_-]+)\//)?.[1];
     if (fromImage) return fromImage;
@@ -371,8 +387,10 @@ import {
       }
       // Songs carry square album art without a video ID in the URL. Trust it
       // only once Media Session describes the track shown in the player bar.
-      const title = document.querySelector(".title.ytmusic-player-bar")?.textContent?.trim();
-      if (title && metadata?.title === title && artwork.length > 0) {
+      // Player-bar titles may carry a "(feat. X)" suffix Media Session lacks.
+      const title = ytmPlayerBarTitle();
+      if (title && typeof metadata?.title === "string"
+        && sameYouTubeMusicTitle(metadata.title, title) && artwork.length > 0) {
         const largest = artwork.reduce((a, b) =>
           (parseInt(b.sizes ?? "") || 0) > (parseInt(a.sizes ?? "") || 0) ? b : a
         );
@@ -400,11 +418,13 @@ import {
     const root = document.documentElement;
     root.setAttribute("data-mprisence-ytm-video-id", videoId);
     const videoData = ytmPlayerVideoData();
-    const videoTitle = videoData?.video_id === videoId ? videoData.title : undefined;
-    if (typeof videoTitle === "string" && videoTitle) {
-      root.setAttribute("data-mprisence-ytm-video-title", videoTitle);
-    } else {
-      root.removeAttribute("data-mprisence-ytm-video-title");
+    const sameVideo = videoData?.video_id === videoId;
+    for (const [attr, value] of [
+      ["data-mprisence-ytm-video-title", sameVideo ? videoData.title : undefined],
+      ["data-mprisence-ytm-video-author", sameVideo ? videoData.author : undefined],
+    ] as const) {
+      if (typeof value === "string" && value) root.setAttribute(attr, value);
+      else root.removeAttribute(attr);
     }
 
     if (videoId !== lastYtmVideoId) {
@@ -428,12 +448,31 @@ import {
     }
   }
 
+  // YTM seek: the <video> timeline can span the queue, so seek through the
+  // player API, which works in per-track time.
+  if (window.location.hostname === "music.youtube.com") {
+    window.addEventListener("mprisence-ytm-seek", ((e: CustomEvent) => {
+      const positionMs = e.detail;
+      if (typeof positionMs !== "number" || !Number.isFinite(positionMs)) return;
+      const seconds = Math.max(0, positionMs / 1000);
+      const moviePlayer = document.querySelector("#movie_player") as (
+        HTMLElement & { seekTo?: (seconds: number, allowSeekAhead: boolean) => void }
+      ) | null;
+      if (typeof moviePlayer?.seekTo === "function") {
+        moviePlayer.seekTo(seconds, true);
+        return;
+      }
+      const video = document.querySelector("video");
+      if (video) video.currentTime = seconds;
+    }) as EventListener);
+  }
+
   // Poll for YTM video ID changes (1s interval alongside MediaSession check),
   // and re-check as soon as the player bar changes on a track switch.
   let observedPlayerBar: Element | null = null;
   setInterval(function () {
     checkYtmVideoId();
-    const playerBar = document.querySelector("ytmusic-player-bar");
+    const playerBar = document.querySelector("ytmusic-player-bar, ytmusic-miniplayer");
     if (playerBar && playerBar !== observedPlayerBar) {
       observedPlayerBar = playerBar;
       new MutationObserver(() => checkYtmVideoId())

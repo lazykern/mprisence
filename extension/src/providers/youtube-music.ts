@@ -16,21 +16,55 @@ export function isYouTubeMusicPlaying(
   return playButtonTitle?.toLowerCase().includes("pause") ?? false;
 }
 
+const MINIPLAYER = "ytmusic-miniplayer";
+
+/** Player-bar selectors, classic layout first, then the Wiz miniplayer. */
+const SELECTORS = {
+  title: [".title.ytmusic-player-bar", `${MINIPLAYER} .ytmusicTrackInfoTitle`],
+  byline: [".byline.ytmusic-player-bar", `${MINIPLAYER} .ytmusicTrackInfoBylineItem`],
+  art: ["ytmusic-player-bar img", `${MINIPLAYER} img.ytmusicTrackInfoThumbnail`],
+  playPause: ["#play-pause-button", `${MINIPLAYER} .ytmusicPlayerControlsPlayPauseButton button`],
+  next: ["yt-icon-button.next-button button", `${MINIPLAYER} .ytmusicPlayerControlsNextButton button`],
+  previous: ["yt-icon-button.previous-button button", `${MINIPLAYER} .ytmusicPlayerControlsPreviousButton button`],
+} as const;
+
+/**
+ * True when the shown title names the player API's track. The player bar may
+ * add a suffix the API lacks ("Song" → "Song (feat. X)"), never drop one, so a
+ * stale "Song (remix)" doesn't match a newly shown "Song".
+ */
+export function sameYouTubeMusicTitle(apiTitle: string, shownTitle: string): boolean {
+  const api = apiTitle.trim().toLowerCase();
+  const shown = shownTitle.trim().toLowerCase();
+  return !!api && !!shown && shown.startsWith(api);
+}
+
 /**
  * YouTube Music provider.
  *
- * Real DOM structure (verified via zenctl on live YTM):
+ * Classic layout (verified live):
  *   titleEl:  .title.ytmusic-player-bar
- *   artistEl: .byline.ytmusic-player-bar  → "Artist • ## views • ## likes"
- *   artImg:   .ytmusic-player-bar img.image
+ *   artistEl: .byline.ytmusic-player-bar  → "Artist • Album • Year" | "Artist • ## views • ## likes"
+ *   artImg:   ytmusic-player-bar img
  *   prevBtn:  yt-icon-button.previous-button
  *   nextBtn:  yt-icon-button.next-button
  *   playBtn:  #play-pause-button  → title="Play"|"Pause"
- *   video:    video  (blob URL, has currentTime/duration)
+ *   progress: #progress-bar  → aria-valuenow/aria-valuemax
+ *
+ * Wiz miniplayer layout (`music_web_enable_wiz_miniplayer`, verified live):
+ *   ytmusic-miniplayer replaces ytmusic-player-bar in both player states.
+ *   titleEl:  .ytmusicTrackInfoTitle[title]
+ *   artistEl: .ytmusicTrackInfoBylineItem[title]  → "Artist • Album • Year"
+ *   artImg:   img.ytmusicTrackInfoThumbnail
+ *   buttons:  .ytmusicPlayerControls{PlayPause,Next,Previous}Button button
+ *   progress: input.ytMusicMiniPlayerProgressBar  → value/max in seconds
+ *
+ * Both layouts: video (blob URL, has currentTime/duration)
  *
  * Key findings:
- *   - No MediaSession API - must use DOM scraping
- *   - Byline has NO album - only "Artist • views • likes"
+ *   - The isolated world can't reach the player API; page-world publishes
+ *     its video ID/title/author as data-mprisence-ytm-* attributes
+ *   - Video bylines have no album - only "Artist • views • likes"
  *   - Album art is HTTPS (i.ytimg.com) - no blob: issue
  *   - Keep YTM's supplied thumbnail; maxresdefault is not universal
  *   - videoId in thumbnail URL, not always in ?v= param
@@ -50,24 +84,25 @@ export class YouTubeMusicProvider implements Provider {
     // Skip extraction during YouTube Music ads.
     if (document.querySelector('.ad-showing')) return null;
 
-    const titleEl = this.qs<HTMLElement>(".title.ytmusic-player-bar");
-    const artistEl = this.qs<HTMLElement>(".byline.ytmusic-player-bar");
+    const titleText = this.firstText(SELECTORS.title);
     const artImg = this.playerArtImage();
-    const playBtn = this.visibleControl("#play-pause-button");
+    const playBtn = this.firstVisibleControl(SELECTORS.playPause);
     const video = this.qs<HTMLVideoElement>("video");
 
-    if (!titleEl && !video) return null;
+    if (!titleText && !video) return null;
 
     // ── Title ──────────────────────────────────────────────────
     // A bare "YouTube Music" document title means no track is shown yet.
-    const docTitle = document.title?.endsWith(" - YouTube Music")
-      ? document.title.slice(0, -" - YouTube Music".length).trim()
-      : "";
-    const title = titleEl?.textContent?.trim() || docTitle || undefined;
+    const docTitle = document.title?.match(/^(.*\S)\s+[-|]\s+YouTube Music$/)?.[1] ?? "";
+    const pageWorldTitle = document.documentElement
+      ?.getAttribute("data-mprisence-ytm-video-title") ?? "";
+    const title = titleText || docTitle || pageWorldTitle || undefined;
 
     // ── Artist & Album from byline ───────────────────────────
     // Format: "Artist • Album • Year" or "Artist • ## views • ## likes"
-    const byline = artistEl?.textContent?.trim() || "";
+    const byline = this.firstText(SELECTORS.byline)
+      || document.documentElement?.getAttribute("data-mprisence-ytm-video-author")
+      || "";
     const parts = byline.split("•").map(s => s.trim()).filter(Boolean);
     const artist = parts[0] || "";
     // Album is the middle segment if it doesn't look like a view/like count
@@ -126,11 +161,10 @@ export class YouTubeMusicProvider implements Provider {
     // ── Playback state ─────────────────────────────────────────
     // YTM <video> spans the entire queue: currentTime/duration can be
     // 30-60 minutes. Per-track position/duration live on the player-bar
-    // progress element as aria-valuenow/aria-valuemax. If unavailable,
-    // skip instead of publishing queue time as track time.
-    const progressBar = this.visibleProgressBar();
-    const progressNow = progressBar ? parseFloat(progressBar.getAttribute("aria-valuenow") ?? "") : NaN;
-    const progressMax = progressBar ? parseFloat(progressBar.getAttribute("aria-valuemax") ?? "") : NaN;
+    // progress element (aria-valuenow/aria-valuemax, or the miniplayer's
+    // range input). If unavailable, skip instead of publishing queue time
+    // as track time.
+    const { now: progressNow, max: progressMax } = this.trackProgress();
     const trackPositionSec = (isFinite(progressNow) && progressNow >= 0) ? progressNow : undefined;
     const trackDurationSec = (isFinite(progressMax) && progressMax > 0) ? progressMax : undefined;
 
@@ -194,10 +228,15 @@ export class YouTubeMusicProvider implements Provider {
   async command(cmd: string, positionMs?: number): Promise<void> {
     // Class-selector map (verified live - there are no #id selectors for prev/next)
     if (cmd === "set_position") {
-      const video = this.qs<HTMLVideoElement>("video");
-      if (video && typeof positionMs === "number" && isFinite(positionMs)) {
-        video.currentTime = Math.max(0, positionMs / 1000);
+      if (typeof positionMs !== "number" || !isFinite(positionMs)) return;
+      // Page-world seeks via the player API; the <video> timeline can span
+      // the whole queue, so currentTime is only a fallback.
+      if (document.documentElement?.hasAttribute?.("data-mprisence-ytm-video-id")) {
+        window.dispatchEvent(new CustomEvent("mprisence-ytm-seek", { detail: positionMs }));
+        return;
       }
+      const video = this.qs<HTMLVideoElement>("video");
+      if (video) video.currentTime = Math.max(0, positionMs / 1000);
       return;
     }
 
@@ -207,18 +246,17 @@ export class YouTubeMusicProvider implements Provider {
       if (cmd === "pause" && video?.paused) return;
     }
 
-    const btnMap: Record<string, string> = {
-      play_pause: "#play-pause-button",
-      play: "#play-pause-button",
-      pause: "#play-pause-button",
-      next: "yt-icon-button.next-button button",
-      previous: "yt-icon-button.previous-button button",
+    const btnMap: Record<string, readonly string[]> = {
+      play_pause: SELECTORS.playPause,
+      play: SELECTORS.playPause,
+      pause: SELECTORS.playPause,
+      next: SELECTORS.next,
+      previous: SELECTORS.previous,
     };
 
-    const selector = btnMap[cmd];
-    if (selector) {
-      const btn = this.visibleControl(selector);
-      btn?.click();
+    const selectors = btnMap[cmd];
+    if (selectors) {
+      this.firstVisibleControl(selectors)?.click();
     }
   }
 
@@ -226,18 +264,47 @@ export class YouTubeMusicProvider implements Provider {
     return document.querySelector<T>(selector);
   }
 
+  private isVisible(el: HTMLElement): boolean {
+    return !el.getClientRects || el.getClientRects().length > 0;
+  }
+
   private visibleControl(selector: string): HTMLElement | null {
     const controls = Array.from(document.querySelectorAll<HTMLElement>(selector));
-    return controls.find((control) => !control.getClientRects || control.getClientRects().length > 0)
+    return controls.find((control) => this.isVisible(control))
       ?? controls[0]
       ?? null;
   }
 
+  private firstVisibleControl(selectors: readonly string[]): HTMLElement | null {
+    for (const selector of selectors) {
+      const control = this.visibleControl(selector);
+      if (control) return control;
+    }
+    return null;
+  }
+
+  /** Text of the first visible non-empty match, trying layouts in order. */
+  private firstText(selectors: readonly string[]): string {
+    for (const selector of selectors) {
+      const texts = Array.from(document.querySelectorAll<HTMLElement>(selector))
+        .map((el) => ({
+          el,
+          text: el.textContent?.trim() || el.getAttribute?.("title")?.trim() || "",
+        }))
+        .filter(({ text }) => text);
+      const match = texts.find(({ el }) => this.isVisible(el)) ?? texts[0];
+      if (match) return match.text;
+    }
+    return "";
+  }
+
   private playerArtImage(): HTMLImageElement | null {
-    const images = Array.from(document.querySelectorAll<HTMLImageElement>("ytmusic-player-bar img"));
-    return images.find((image) => this.videoIdRegex.test(image.src))
-      ?? images[0]
-      ?? this.qs<HTMLImageElement>("ytmusic-player-bar img.image, ytmusic-player-bar img");
+    for (const selector of SELECTORS.art) {
+      const images = Array.from(document.querySelectorAll<HTMLImageElement>(selector));
+      const image = images.find((img) => this.videoIdRegex.test(img.src)) ?? images[0];
+      if (image) return image;
+    }
+    return null;
   }
 
   /** Returns null while page-world's video ID lags a track change. */
@@ -246,7 +313,7 @@ export class YouTubeMusicProvider implements Provider {
     const fromPageWorld = root?.getAttribute("data-mprisence-ytm-video-id");
     if (fromPageWorld && /^[a-zA-Z0-9_-]+$/.test(fromPageWorld)) {
       const idTitle = root?.getAttribute("data-mprisence-ytm-video-title");
-      if (!idTitle || !title || idTitle === title) {
+      if (!idTitle || !title || sameYouTubeMusicTitle(idTitle, title)) {
         this.mismatchedTitle = null;
         return fromPageWorld;
       }
@@ -270,9 +337,25 @@ export class YouTubeMusicProvider implements Provider {
     return "";
   }
 
+  /** Per-track position/duration in seconds (NaN when unavailable). */
+  private trackProgress(): { now: number; max: number } {
+    const bar = this.visibleProgressBar();
+    if (bar) {
+      return {
+        now: parseFloat(bar.getAttribute("aria-valuenow") ?? ""),
+        max: parseFloat(bar.getAttribute("aria-valuemax") ?? ""),
+      };
+    }
+    const slider = this.qs<HTMLInputElement>(`${MINIPLAYER} input.ytMusicMiniPlayerProgressBar`);
+    return {
+      now: slider ? parseFloat(slider.value) : NaN,
+      max: slider ? parseFloat(slider.max) : NaN,
+    };
+  }
+
   private visibleProgressBar(): HTMLElement | null {
     const bars = Array.from(document.querySelectorAll<HTMLElement>("#progress-bar"));
-    const visible = bars.filter((bar) => !bar.getClientRects || bar.getClientRects().length > 0);
+    const visible = bars.filter((bar) => this.isVisible(bar));
     return visible.find((bar) => bar.getAttribute("aria-disabled") !== "true")
       ?? visible[0]
       ?? bars[0]
