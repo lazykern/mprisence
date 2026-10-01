@@ -119,7 +119,6 @@ pub enum MprisCommand {
     PlayPause,
     Next,
     Previous,
-    Seek(i64),
     SetPosition(i64),
     Stop,
     Play,
@@ -326,8 +325,11 @@ impl MprisPublisher {
 
         let sid = source_id.to_string();
         let tx = cmd_tx.clone();
-        arc_player.connect_seek(move |_player, offset: Time| {
-            let _ = tx.try_send((sid.clone(), MprisCommand::Seek(offset.as_micros())));
+        // Extensions only take absolute positions, so resolve the relative
+        // offset against the last published position.
+        arc_player.connect_seek(move |player, offset: Time| {
+            let target = seek_target_us(player.position().as_micros(), offset.as_micros());
+            let _ = tx.try_send((sid.clone(), MprisCommand::SetPosition(target)));
         });
 
         let sid = source_id.to_string();
@@ -478,6 +480,11 @@ fn duration_to_length_us(duration_ms: u64) -> Option<i64> {
     } else {
         None
     }
+}
+
+/// Absolute position for an MPRIS relative `Seek`, never before the start.
+fn seek_target_us(position_us: i64, offset_us: i64) -> i64 {
+    position_us.saturating_add(offset_us).max(0)
 }
 
 fn format_site_name(site: &str) -> String {
@@ -679,6 +686,14 @@ fn make_track_id(s: &SourceState, meta: &MediaMetadata) -> String {
 mod tests {
     use super::super::protocol::{Capabilities, PlaybackState};
     use super::*;
+
+    #[test]
+    fn seek_offsets_resolve_to_absolute_positions() {
+        assert_eq!(seek_target_us(60_000_000, 10_000_000), 70_000_000);
+        assert_eq!(seek_target_us(60_000_000, -10_000_000), 50_000_000);
+        assert_eq!(seek_target_us(5_000_000, -10_000_000), 0);
+        assert_eq!(seek_target_us(i64::MAX, 1), i64::MAX);
+    }
 
     fn source(site: &str, source_id: &str, url: &str) -> SourceState {
         SourceState {

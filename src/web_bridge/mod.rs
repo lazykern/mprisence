@@ -128,7 +128,6 @@ fn bridge_command_for(source_id: &str, cmd: &mpris::MprisCommand) -> BridgeMessa
         MprisCommand::Pause => protocol::CommandKind::Pause,
         MprisCommand::Next => protocol::CommandKind::Next,
         MprisCommand::Previous => protocol::CommandKind::Previous,
-        MprisCommand::Seek(_) => protocol::CommandKind::Seek,
         MprisCommand::SetPosition(_) => protocol::CommandKind::SetPosition,
         MprisCommand::Stop => protocol::CommandKind::Pause,
     };
