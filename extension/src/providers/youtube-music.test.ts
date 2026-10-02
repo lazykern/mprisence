@@ -679,3 +679,38 @@ test("seeks the video element when page-world is absent", async () => {
     restore();
   }
 });
+
+test("uses page-world Media Session art for the current track", () => {
+  const art = "https://yt3.googleusercontent.com/coS4JvqJ1s=w544-h544-l90-rj";
+  const restore = installYouTubeMusicDom(miniplayerDom(), "", {
+    rootAttrs: {
+      "data-mprisence-ytm-video-id": "bfDSsk0xeO0",
+      "data-mprisence-ytm-art": `bfDSsk0xeO0 ${art}`,
+    },
+  });
+
+  try {
+    const result = new YouTubeMusicProvider().extract();
+    assert.equal(result?.metadata.art_url, art);
+    assert.equal(result?.trackArt, true);
+  } finally {
+    restore();
+  }
+});
+
+test("ignores Media Session art published for another track", () => {
+  const restore = installYouTubeMusicDom(miniplayerDom(), "", {
+    rootAttrs: {
+      "data-mprisence-ytm-video-id": "bfDSsk0xeO0",
+      "data-mprisence-ytm-art": "3QAQtb9HCuw https://yt3.googleusercontent.com/s_alvg-EXR=w544-h544-l90-rj",
+    },
+  });
+
+  try {
+    const result = new YouTubeMusicProvider().extract();
+    assert.equal(result?.metadata.art_url, "https://i.ytimg.com/vi/bfDSsk0xeO0/hqdefault.jpg");
+    assert.equal(result?.trackArt, false);
+  } finally {
+    restore();
+  }
+});

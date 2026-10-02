@@ -270,7 +270,9 @@ function triggerUpdate(force = false): void {
       ? ytmArtByTrack.get(result.metadata.track_id)
       : undefined;
     if (ytmArt) {
-      result.metadata.art_url = ytmArt.url;
+      // Replacing the track's own art with an equivalent image would push a
+      // second cover change for the same track.
+      if (!result.trackArt) result.metadata.art_url = ytmArt.url;
       result.canonicalUrl = ytmArt.canonicalUrl;
       result.pageUrl = ytmArt.canonicalUrl;
     }

@@ -376,7 +376,7 @@ import { sameYouTubeMusicTitle } from "./providers/youtube-music";
     return "";
   }
 
-  function ytmMediaSessionArtwork(videoId: string): string | null {
+  function ytmMediaSessionArtwork(videoId: string, apiTitle?: unknown): string | null {
     try {
       const metadata = (navigator as any).mediaSession?.metadata;
       const artwork: { src?: string; sizes?: string }[] = metadata?.artwork ?? [];
@@ -386,11 +386,14 @@ import { sameYouTubeMusicTitle } from "./providers/youtube-music";
         }
       }
       // Songs carry square album art without a video ID in the URL. Trust it
-      // only once Media Session describes the track shown in the player bar.
-      // Player-bar titles may carry a "(feat. X)" suffix Media Session lacks.
+      // only once Media Session describes this video: its title matches the
+      // player API's, or the player bar's (which may add a "(feat. X)" suffix).
       const title = ytmPlayerBarTitle();
-      if (title && typeof metadata?.title === "string"
-        && sameYouTubeMusicTitle(metadata.title, title) && artwork.length > 0) {
+      const describesVideo = typeof metadata?.title === "string" && (
+        (typeof apiTitle === "string" && apiTitle !== "" && metadata.title === apiTitle)
+        || (title !== "" && sameYouTubeMusicTitle(metadata.title, title))
+      );
+      if (describesVideo && artwork.length > 0) {
         const largest = artwork.reduce((a, b) =>
           (parseInt(b.sizes ?? "") || 0) > (parseInt(a.sizes ?? "") || 0) ? b : a
         );
@@ -426,6 +429,12 @@ import { sameYouTubeMusicTitle } from "./providers/youtube-music";
       if (typeof value === "string" && value) root.setAttribute(attr, value);
       else root.removeAttribute(attr);
     }
+    // Media Session already has this track's artwork when the ID changes;
+    // publish it with the ID so the provider never falls back to a 16:9
+    // thumbnail while the InnerTube lookup below is still in flight.
+    const sessionArt = sameVideo ? ytmMediaSessionArtwork(videoId, videoData.title) : null;
+    if (sessionArt) root.setAttribute("data-mprisence-ytm-art", `${videoId} ${sessionArt}`);
+    else root.removeAttribute("data-mprisence-ytm-art");
 
     if (videoId !== lastYtmVideoId) {
       lastYtmVideoId = videoId;

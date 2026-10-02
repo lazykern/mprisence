@@ -133,11 +133,21 @@ export class YouTubeMusicProvider implements Provider {
     const trackId = videoId ? `ytm:${videoId}` : undefined;
 
     // ── Album art ──────────────────────────────────────────────
-    let artUrl = artImg?.src || undefined;
+    // Page-world publishes Media Session artwork paired with its video ID.
+    // When it matches, it is this track's own art: use it as-is.
+    const [sessionArtId, sessionArtUrl] =
+      document.documentElement?.getAttribute("data-mprisence-ytm-art")?.split(" ") ?? [];
+    const sessionArt = videoId && sessionArtId === videoId && sessionArtUrl
+      ? sessionArtUrl
+      : undefined;
+
+    let artUrl = sessionArt ?? (artImg?.src || undefined);
     // Skip 1×1 placeholder GIFs
     if (artUrl && artUrl.startsWith("data:")) artUrl = undefined;
 
-    if (artUrl) {
+    if (sessionArt) {
+      // Already the track's artwork.
+    } else if (artUrl) {
       if (artUrl.includes("yt3.googleusercontent.com")) {
         // Channel avatar - not the track's cover art.
         // Prefer a guaranteed video thumbnail over the channel avatar.
@@ -222,6 +232,7 @@ export class YouTubeMusicProvider implements Provider {
       playback,
       capabilities,
       canonicalUrl: videoId ? `https://music.youtube.com/watch?v=${videoId}` : undefined,
+      trackArt: !!sessionArt,
     };
   }
 

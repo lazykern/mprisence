@@ -12,6 +12,8 @@ export interface ProviderResult {
   pageUrl?: string;
   /** Canonical track/page URL when distinct from the visible page URL. */
   canonicalUrl?: string;
+  /** `art_url` is the track's own artwork, not a fallback thumbnail. */
+  trackArt?: boolean;
 }
 
 /**
