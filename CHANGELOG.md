@@ -28,6 +28,10 @@
 - Give uploads a timeout (2 minutes, longer for large files) and URL checks a
   10 second one, so a stalled host cannot hold up other uploads.
 - Leave the ImgBB API key out of logged upload errors.
+- When Catbox hands back an empty file for an upload, upload the cover once
+  more with altered bytes to get a working URL. A check that cannot reach
+  Catbox no longer causes a second upload, and only JPEG covers are retried,
+  since other formats would have to be re-encoded.
 
 ### Changed
 

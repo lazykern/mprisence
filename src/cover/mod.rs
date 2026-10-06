@@ -71,6 +71,18 @@ enum Expect {
     Upload { len: Option<u64> },
 }
 
+/// Check a URL right after its upload. A CDN can briefly answer 404 for a file
+/// it has just accepted, so a "gone" result is probed once more after a wait.
+async fn check_fresh_url(url: &str, expect: Expect, timeouts: Timeouts) -> (UrlCheck, Option<u64>) {
+    let first = CoverManager::check_cover_url(url, expect, timeouts.url_check).await;
+    if first.0 != UrlCheck::Gone {
+        return first;
+    }
+    debug!("Fresh cover art at {} looks gone; probing again", url);
+    tokio::time::sleep(timeouts.fresh_upload_recheck).await;
+    CoverManager::check_cover_url(url, expect, timeouts.url_check).await
+}
+
 /// Time allowed for one upload of `size` bytes.
 fn upload_deadline(base: Duration, size: Option<u64>) -> Duration {
     let needed = Duration::from_secs(size.unwrap_or(0) / MIN_UPLOAD_BYTES_PER_SEC);
@@ -779,17 +791,7 @@ impl CoverManager {
         };
         // Record the size the host serves now, for later diagnostics. Providers
         // may alter the bytes they send, so the source size is not it.
-        let (mut check, mut served_len) =
-            Self::check_cover_url(&url, expect, timeouts.url_check).await;
-        if check == UrlCheck::Gone {
-            // A CDN can briefly answer 404 for a file it has just accepted.
-            debug!(
-                "Fresh cover art from {} looks gone; probing again",
-                provider_name
-            );
-            tokio::time::sleep(timeouts.fresh_upload_recheck).await;
-            (check, served_len) = Self::check_cover_url(&url, expect, timeouts.url_check).await;
-        }
+        let (check, served_len) = check_fresh_url(&url, expect, timeouts).await;
         let served_len = served_len.filter(|_| upload);
         let verified = match check {
             UrlCheck::Alive => true,

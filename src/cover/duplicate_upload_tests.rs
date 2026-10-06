@@ -1450,3 +1450,161 @@ async fn live_catbox_uploads_each_cover_once() {
     }));
     live_scenarios(&h).await;
 }
+
+/// What the fake Catbox endpoint does with one upload.
+#[derive(Debug, Clone, Copy)]
+enum CatboxReply {
+    Intact,
+    Empty,
+    Hangs,
+    LateVisible,
+}
+
+/// Drives `CatboxProvider::upload_checked` with a fake upload endpoint that
+/// publishes each upload on the fake CDN, whose HEAD says 0 like Catbox's.
+struct FakeCatbox {
+    cdn: Arc<Cdn>,
+    provider: CatboxProvider,
+    replies: Vec<CatboxReply>,
+    sent: Mutex<Vec<Vec<u8>>>,
+}
+
+impl FakeCatbox {
+    fn new(replies: &[CatboxReply]) -> Self {
+        let cdn = Cdn::spawn();
+        cdn.head_reports_zero.store(true, SeqCst);
+        let mut provider = CatboxProvider::with_config(CatboxConfig {
+            use_litter: false,
+            ..CatboxConfig::default()
+        });
+        provider.timeouts = Timeouts {
+            url_check: Duration::from_secs(1),
+            upload: Duration::from_secs(2),
+            fresh_upload_recheck: Duration::from_millis(400),
+        };
+        Self {
+            cdn,
+            provider,
+            replies: replies.to_vec(),
+            sent: Mutex::default(),
+        }
+    }
+
+    async fn upload(&self, data: &[u8]) -> Result<String, CoverArtError> {
+        self.provider
+            .upload_checked(data, |bytes: Vec<u8>| {
+                let mut sent = self.sent.lock().unwrap();
+                sent.push(bytes.clone());
+                let n = sent.len();
+                let url = format!("{}/catbox-{n}.jpg", self.cdn.base);
+                let served = match self
+                    .replies
+                    .get(n - 1)
+                    .copied()
+                    .unwrap_or(CatboxReply::Intact)
+                {
+                    CatboxReply::Intact => Served::File(bytes.len()),
+                    CatboxReply::Empty => Served::Empty,
+                    CatboxReply::Hangs => Served::Hangs,
+                    CatboxReply::LateVisible => {
+                        let (cdn, url, len) = (Arc::clone(&self.cdn), url.clone(), bytes.len());
+                        std::thread::spawn(move || {
+                            std::thread::sleep(Duration::from_millis(150));
+                            cdn.set(&url, Served::File(len));
+                        });
+                        Served::Missing
+                    }
+                };
+                self.cdn.set(&url, served);
+                async move { Ok(url) }
+            })
+            .await
+    }
+
+    fn uploads(&self) -> usize {
+        self.sent.lock().unwrap().len()
+    }
+}
+
+fn jpeg_bytes() -> Vec<u8> {
+    let ArtSource::Bytes(bytes) = cover([12, 34, 56]) else {
+        unreachable!()
+    };
+    bytes
+}
+
+/// A good Catbox upload is checked once and used.
+#[tokio::test]
+async fn catbox_good_upload_is_used() {
+    let catbox = FakeCatbox::new(&[CatboxReply::Intact]);
+    let url = catbox.upload(&jpeg_bytes()).await.unwrap();
+    assert!(url.ends_with("/catbox-1.jpg"), "{url}");
+    assert_eq!(catbox.uploads(), 1);
+}
+
+/// Catbox handing back an empty file is fixed by one upload of altered bytes;
+/// the image itself is unchanged.
+#[tokio::test]
+async fn catbox_empty_upload_is_retried_with_altered_bytes() {
+    let catbox = FakeCatbox::new(&[CatboxReply::Empty, CatboxReply::Intact]);
+    let url = catbox.upload(&jpeg_bytes()).await.unwrap();
+    assert!(url.ends_with("/catbox-2.jpg"), "{url}");
+    assert_eq!(catbox.uploads(), 2);
+
+    let sent = catbox.sent.lock().unwrap();
+    assert_ne!(sent[0], sent[1]);
+    assert_eq!(
+        image::load_from_memory(&sent[1]).unwrap().into_rgb8(),
+        image::load_from_memory(&sent[0]).unwrap().into_rgb8()
+    );
+}
+
+/// A check that cannot reach Catbox says nothing about the file; the URL is
+/// used unverified instead of uploading the cover again.
+#[tokio::test]
+async fn catbox_unreachable_check_does_not_upload_again() {
+    let catbox = FakeCatbox::new(&[CatboxReply::Hangs]);
+    let url = catbox.upload(&jpeg_bytes()).await.unwrap();
+    assert!(url.ends_with("/catbox-1.jpg"), "{url}");
+    assert_eq!(catbox.uploads(), 1);
+}
+
+/// A fresh upload that answers 404 for a moment is probed again, not
+/// replaced.
+#[tokio::test]
+async fn catbox_briefly_missing_upload_is_not_retried() {
+    let catbox = FakeCatbox::new(&[CatboxReply::LateVisible]);
+    let url = catbox.upload(&jpeg_bytes()).await.unwrap();
+    assert!(url.ends_with("/catbox-1.jpg"), "{url}");
+    assert_eq!(catbox.uploads(), 1);
+}
+
+/// Two empty files in a row is an error; there is no third upload.
+#[tokio::test]
+async fn catbox_empty_twice_is_an_error() {
+    let catbox = FakeCatbox::new(&[CatboxReply::Empty, CatboxReply::Empty]);
+    assert!(catbox.upload(&jpeg_bytes()).await.is_err());
+    assert_eq!(catbox.uploads(), 2);
+}
+
+/// When the retried upload cannot be checked, its URL is used unverified;
+/// there is no third upload.
+#[tokio::test]
+async fn catbox_retry_with_unreachable_check_uses_that_url() {
+    let catbox = FakeCatbox::new(&[CatboxReply::Empty, CatboxReply::Hangs]);
+    let url = catbox.upload(&jpeg_bytes()).await.unwrap();
+    assert!(url.ends_with("/catbox-2.jpg"), "{url}");
+    assert_eq!(catbox.uploads(), 2);
+}
+
+/// Only JPEG bytes can be altered without changing the image, so other
+/// formats (`normalize_uploads = false`) are not retried.
+#[tokio::test]
+async fn catbox_non_jpeg_upload_is_not_retried() {
+    let catbox = FakeCatbox::new(&[CatboxReply::Empty]);
+    let ArtSource::Bytes(png) = noisy_png(7) else {
+        unreachable!()
+    };
+    assert!(catbox.upload(&png).await.is_err());
+    assert_eq!(catbox.uploads(), 1);
+}
