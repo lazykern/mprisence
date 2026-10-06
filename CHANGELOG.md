@@ -4,45 +4,23 @@
 
 ### Fixed
 
-- Stop uploading the same cover art again and again to hosts that keep files
-  (ImgBB with `expiration = 0`, Catbox) (#109). `cover.cache.ttl_hours` now
-  sets how long a cached URL is trusted before it is checked again; uploads
-  that still exist are reused, and entries are dropped only when the host
-  deletes the file. Covers on Litterbox (the default) or on ImgBB with an
-  `expiration` are still uploaded again after the host deletes them.
-- Keep a cover's URL when the track changes mid-upload, and let concurrent
-  lookups for the same cover share one upload, also across config reloads.
-- Keep cached cover URLs through network errors during revalidation; only a
-  404 or 410 drops them. A URL whose host cannot be reached is served for an
-  hour before it is checked again.
-- Cache a replacement upload under the cover's own key so it is reused.
-- Never cache an uploaded cover whose host serves an empty file (as Catbox
-  does for a broken upload), and upload a cached cover again once its file
-  turns empty. Catbox reports every file as empty to HEAD requests, so an
-  empty HEAD is confirmed with a one-byte GET, and a fresh upload that looks
-  gone is probed once more before it is thrown away.
-- Stop retrying a cover that could not be resolved on every presence update;
-  it is tried again after 10 minutes.
-- Do not upload a local cover file a second time in the same lookup when the
-  player also reports it as its artwork and the first upload failed.
-- Give uploads a timeout (2 minutes, longer for large files) and URL checks a
-  10 second one, so a stalled host cannot hold up other uploads.
-- Leave the ImgBB API key out of logged upload errors.
-- When Catbox hands back an empty file for an upload, upload the cover once
-  more with altered bytes to get a working URL. A check that cannot reach
-  Catbox no longer causes a second upload, and only JPEG covers are retried,
-  since other formats would have to be re-encoded.
+- Stop re-uploading the same cover every day
+  ([#109](https://github.com/lazykern/mprisence/issues/109)). A cached URL is
+  now rechecked after `cover.cache.ttl_hours` and reused while it still works.
+- Keep the uploaded URL when the track changes mid-upload; concurrent lookups
+  share one upload.
+- Keep cached URLs through network errors; only a deleted or empty file
+  triggers a new upload.
+- Retry a failed cover after 10 minutes instead of on every presence update.
+- Catbox: detect empty files correctly and retry a broken upload once.
+- Add timeouts for uploads and URL checks.
+- Keep the ImgBB API key out of logs.
 
 ### Changed
 
-- The cover cache stores each cover's URL and size instead of the image, so
-  an entry takes a few hundred bytes; `cover.cache.max_entries` now defaults
-  to 8192. Image files cached by older versions are removed as their entries
-  are rechecked. When the cache is full, uploaded covers are kept over
-  entries that are free to recreate.
-- Cover cache entries record a format number, so later versions can migrate
-  the cache instead of clearing it. Clearing it makes every cover upload
-  again.
+- The cover cache stores URLs instead of image copies;
+  `cover.cache.max_entries` now defaults to 8192. Don't clear it, or every
+  cover is uploaded again.
 
 ## [1.9.0] - 2026-09-30
 
