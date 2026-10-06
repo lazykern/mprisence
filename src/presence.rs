@@ -1254,7 +1254,7 @@ impl Presence {
             let texts_for_task = activity_texts.clone();
             let player_config_for_task = player_config.clone();
             let identity_for_task = self.player.identity().to_string();
-            let metadata_source_for_task = metadata_source;
+            let metadata_source_for_task = Arc::new(metadata_source);
             let art_source_for_task = art_source;
             let read_cache_for_task = art_decision.read_cache;
             let cover_fetch_gen = Arc::clone(&self.cover_fetch_generation);

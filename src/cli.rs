@@ -436,7 +436,10 @@ impl Command {
                         format!("{} MiB", cover_config.cache.max_size_mb),
                     );
                     print_key_value("cache_max_entries", cover_config.cache.max_entries);
-                    print_key_value("cache_ttl", format!("{} h", cover_config.cache.ttl_hours));
+                    print_key_value(
+                        "cache_recheck",
+                        format!("{} h", cover_config.cache.ttl_hours),
+                    );
                     print_key_value("file_names", format_vector(&cover_config.file_names));
 
                     let template_config = config.template_config();
