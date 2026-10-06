@@ -342,6 +342,23 @@ mod tests {
 
     use super::CatboxProvider;
 
+    /// Catbox answers an empty file with `No file!`; that and other non-URL
+    /// replies must fail the upload instead of being cached as a cover URL.
+    #[test]
+    fn catbox_error_replies_are_not_used_as_urls() {
+        for reply in ["No file!", "", "<html>504 Gateway Time-out</html>"] {
+            assert!(
+                CatboxProvider::validate_upload_response("catbox", reply).is_err(),
+                "{reply:?}"
+            );
+        }
+        assert!(CatboxProvider::validate_upload_response(
+            "catbox",
+            "https://files.catbox.moe/abc123.jpg\n"
+        )
+        .is_ok());
+    }
+
     #[test]
     fn temporary_upload_filename_matches_normalized_jpeg() {
         assert_eq!(
