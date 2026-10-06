@@ -29,7 +29,7 @@ normalize_uploads = true
 
 [cover.cache]
 max_size_mb = 32
-max_entries = 1024
+max_entries = 8192
 ttl_hours = 24
 
 [cover.provider]

@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use catbox::{file, litter};
 use log::{debug, info, trace, warn};
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::fs;
@@ -9,6 +10,7 @@ use tokio::fs;
 use crate::config::schema::CatboxConfig;
 use crate::cover::error::CoverArtError;
 use crate::cover::sources::ArtSource;
+use crate::cover::{check_fresh_url, Expect, Timeouts, UrlCheck};
 use crate::metadata::MetadataSource;
 use tokio_util::sync::CancellationToken;
 
@@ -16,12 +18,16 @@ use super::{CoverArtProvider, CoverResult};
 
 pub struct CatboxProvider {
     config: CatboxConfig,
+    pub(in crate::cover) timeouts: Timeouts,
 }
 
 impl CatboxProvider {
     pub fn with_config(config: CatboxConfig) -> Self {
         info!("Initializing Catbox provider");
-        Self { config }
+        Self {
+            config,
+            timeouts: Timeouts::default(),
+        }
     }
 
     fn provider_label(&self) -> &'static str {
@@ -115,6 +121,95 @@ impl CatboxProvider {
     }
 
     async fn upload_from_bytes(&self, data: &[u8]) -> Result<String, CoverArtError> {
+        let this = self;
+        self.upload_checked(data, move |bytes: Vec<u8>| async move {
+            this.upload_once(&bytes).await
+        })
+        .await
+    }
+
+    /// Catbox can answer an upload with a URL whose file is empty (HTTP 200,
+    /// 0 bytes), and it hands the same URL back for identical bytes, so a
+    /// broken upload stays broken. Check the hosted file and, only when it is
+    /// empty or missing, upload once more with altered bytes to get a fresh URL.
+    pub(in crate::cover) async fn upload_checked<F, Fut>(
+        &self,
+        data: &[u8],
+        upload: F,
+    ) -> Result<String, CoverArtError>
+    where
+        F: Fn(Vec<u8>) -> Fut,
+        Fut: Future<Output = Result<String, CoverArtError>>,
+    {
+        let url = upload(data.to_vec()).await?;
+        if self.hosted_file_is_usable(&url).await {
+            return Ok(url);
+        }
+        let Some(altered) = Self::alter_jpeg(data) else {
+            return Err(CoverArtError::provider_error(
+                self.provider_label(),
+                &format!(
+                    "hosted file at {url} is empty or missing; only JPEG uploads can be retried"
+                ),
+            ));
+        };
+        warn!(
+            "{} returned {} but the file is empty or missing; retrying with altered bytes",
+            self.provider_label(),
+            url
+        );
+        let url = upload(altered).await?;
+        if self.hosted_file_is_usable(&url).await {
+            return Ok(url);
+        }
+        Err(CoverArtError::provider_error(
+            self.provider_label(),
+            &format!("hosted file at {url} is empty or missing"),
+        ))
+    }
+
+    /// Alive, or not checkable right now: a timeout or a server error says
+    /// nothing about the file, and uploading again would leave a second copy.
+    async fn hosted_file_is_usable(&self, url: &str) -> bool {
+        let expect = Expect::Upload { len: None };
+        match check_fresh_url(url, expect, self.timeouts).await.0 {
+            UrlCheck::Alive => true,
+            UrlCheck::Unknown => {
+                warn!(
+                    "Could not check {} upload {} yet; using it unverified",
+                    self.provider_label(),
+                    url
+                );
+                true
+            }
+            UrlCheck::Gone => false,
+        }
+    }
+
+    /// Insert a unique JPEG comment segment so the bytes differ from any
+    /// previous upload while the image stays identical. Other formats cannot
+    /// be altered without re-encoding them, so they get `None`.
+    fn alter_jpeg(data: &[u8]) -> Option<Vec<u8>> {
+        if !data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+            return None;
+        }
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|dur| dur.as_nanos())
+            .unwrap_or(0);
+        let comment = format!("mprisence {nonce}");
+        let segment_len = (comment.len() + 2) as u16;
+
+        let mut altered = Vec::with_capacity(data.len() + comment.len() + 4);
+        altered.extend_from_slice(&data[..2]);
+        altered.extend_from_slice(&[0xFF, 0xFE]);
+        altered.extend_from_slice(&segment_len.to_be_bytes());
+        altered.extend_from_slice(comment.as_bytes());
+        altered.extend_from_slice(&data[2..]);
+        Some(altered)
+    }
+
+    async fn upload_once(&self, data: &[u8]) -> Result<String, CoverArtError> {
         let temp_path = Self::temp_file_path();
         trace!(
             "Writing {} bytes to temporary file for Catbox upload: {:?}",
@@ -241,6 +336,10 @@ impl CoverArtProvider for CatboxProvider {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
+    use image::{codecs::jpeg::JpegEncoder, DynamicImage, ImageFormat, Rgb, RgbImage};
+
     use super::CatboxProvider;
 
     #[test]
@@ -251,5 +350,36 @@ mod tests {
                 .and_then(|extension| extension.to_str()),
             Some("jpg")
         );
+    }
+
+    #[test]
+    fn altered_jpeg_differs_and_still_decodes() {
+        let image = DynamicImage::ImageRgb8(RgbImage::from_pixel(16, 16, Rgb([200, 30, 30])));
+        let mut original = Vec::new();
+        JpegEncoder::new_with_quality(&mut original, 85)
+            .encode_image(&image)
+            .unwrap();
+
+        let first = CatboxProvider::alter_jpeg(&original).unwrap();
+        let second = CatboxProvider::alter_jpeg(&original).unwrap();
+
+        assert_ne!(first, original);
+        assert_ne!(first, second);
+        let decoded = image::load_from_memory(&first).unwrap().into_rgb8();
+        assert_eq!(
+            decoded,
+            image::load_from_memory(&original).unwrap().into_rgb8()
+        );
+    }
+
+    #[test]
+    fn non_jpeg_bytes_are_not_altered() {
+        let image = DynamicImage::ImageRgb8(RgbImage::from_pixel(16, 16, Rgb([10, 20, 30])));
+        let mut png = Vec::new();
+        image
+            .write_to(&mut Cursor::new(&mut png), ImageFormat::Png)
+            .unwrap();
+
+        assert_eq!(CatboxProvider::alter_jpeg(&png), None);
     }
 }

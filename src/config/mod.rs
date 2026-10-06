@@ -768,7 +768,7 @@ mod tests {
         let config = parse_config_str("").expect("config should load");
 
         assert_eq!(config.cover.cache.max_size_mb, 32);
-        assert_eq!(config.cover.cache.max_entries, 1024);
+        assert_eq!(config.cover.cache.max_entries, 8192);
         assert_eq!(config.cover.cache.ttl_hours, 24);
     }
 

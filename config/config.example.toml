@@ -160,13 +160,17 @@
 # normalize_uploads = true
 
 [cover.cache]
-# Maximum total disk usage in MiB. The oldest entries are evicted first.
+# Maximum total disk usage in MiB. Entries are a few hundred bytes each.
 # max_size_mb = 32
 
-# Maximum number of logical cache entries.
-# max_entries = 1024
+# Maximum number of cached covers. When full, direct URLs and MusicBrainz
+# results are evicted before uploaded covers, oldest first, since evicting
+# an upload means uploading that cover again.
+# max_entries = 8192
 
-# Maximum time an entry remains cached, in hours.
+# How long a cached cover URL is trusted before it is checked again, in hours.
+# Uploads that still exist are reused, not uploaded again; entries are only
+# dropped when the host deletes the file or the cache limits above are hit.
 # ttl_hours = 24
 
 [cover.provider]
