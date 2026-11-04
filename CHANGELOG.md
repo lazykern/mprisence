@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.9.2] - 2026-11-04
+
+### Fixed
+
+- Show the release year instead of the file's download date for Strawberry
+  ([#115](https://github.com/lazykern/mprisence/issues/115)). `{{{year}}}` now
+  reads the bare `year` key and prefers file tags over `xesam:contentCreated`.
+  A local file without a year tag shows no year.
+
 ## [1.9.1] - 2026-10-06
 
 ### Fixed
