@@ -360,20 +360,15 @@ impl MetadataSource {
     impl_metadata_getter!(disc_total, "xesam:discTotal", ItemKey::DiscTotal, parse_u32);
     pub fn year(&self) -> Option<u32> {
         trace!("Getting year from metadata sources");
-        self.mpris_metadata
-            .as_ref()
+        let mpris = self.mpris_metadata.as_ref();
+        mpris
             .and_then(|m| {
-                m.get("xesam:year")
-                    .and_then(|v| {
-                        mpris_value_as_u32(v)
-                            .filter(|&y| y > 0)
-                            .or_else(|| v.as_str().and_then(parse_year))
-                    })
-                    .or_else(|| {
-                        m.get("xesam:contentCreated")
-                            .and_then(|v| v.as_str())
-                            .and_then(parse_year)
-                    })
+                ["xesam:year", "year"].into_iter().find_map(|key| {
+                    let v = m.get(key)?;
+                    mpris_value_as_u32(v)
+                        .filter(|&y| y > 0)
+                        .or_else(|| v.as_str().and_then(parse_year))
+                })
             })
             .or_else(|| {
                 let tag = self.tagged_file.as_ref()?.primary_tag()?;
@@ -385,6 +380,15 @@ impl MetadataSource {
                 ]
                 .into_iter()
                 .find_map(|key| tag.get_string(key).and_then(parse_year))
+            })
+            .or_else(|| {
+                if self.tagged_file.is_some() {
+                    return None;
+                }
+                mpris?
+                    .get("xesam:contentCreated")
+                    .and_then(|v| v.as_str())
+                    .and_then(parse_year)
             })
     }
 
@@ -862,6 +866,50 @@ mod tests {
             "2022-08-05T00:00:00+07:00".into(),
         )]);
         assert_eq!(source.year(), Some(2022));
+    }
+
+    #[test]
+    fn year_from_bare_year_key() {
+        let source = mpris_source(vec![
+            ("year", mpris::MetadataValue::I32(2020)),
+            ("xesam:contentCreated", "2026-07-11T15:04:22".into()),
+        ]);
+        assert_eq!(source.year(), Some(2020));
+    }
+
+    #[test]
+    fn year_prefers_file_tags_over_content_created() {
+        use lofty::tag::ItemKey;
+        let mut tag = lofty::tag::Tag::new(lofty::tag::TagType::VorbisComments);
+        assert!(tag.insert_text(ItemKey::Year, "2020".to_string()));
+        let tagged = lofty::file::TaggedFile::new(
+            lofty::file::FileType::Flac,
+            Default::default(),
+            vec![tag],
+        );
+        let mut values = HashMap::new();
+        values.insert(
+            "xesam:contentCreated".to_string(),
+            "2026-07-11T15:04:22".into(),
+        );
+        let source = super::MetadataSource::new(Some(Metadata::from(values)), Some(tagged));
+        assert_eq!(source.year(), Some(2020));
+    }
+
+    #[test]
+    fn year_ignores_content_created_for_untagged_local_file() {
+        let tagged = lofty::file::TaggedFile::new(
+            lofty::file::FileType::Flac,
+            Default::default(),
+            vec![lofty::tag::Tag::new(lofty::tag::TagType::VorbisComments)],
+        );
+        let mut values = HashMap::new();
+        values.insert(
+            "xesam:contentCreated".to_string(),
+            "2026-07-11T15:04:22".into(),
+        );
+        let source = super::MetadataSource::new(Some(Metadata::from(values)), Some(tagged));
+        assert_eq!(source.year(), None);
     }
 
     #[test]
